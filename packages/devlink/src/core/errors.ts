@@ -9,7 +9,14 @@ export type DevlinkErrorCode =
   | 'snapshot-missing'
   | 'manifest-drifted'
   | 'state-corrupt'
-  | 'registry-failed';
+  | 'registry-failed'
+  | 'library-linked'
+  | 'group-not-found'
+  | 'invalid-group'
+  | 'invalid-request'
+  | 'daemon-stopping'
+  | 'invalid-config'
+  | 'daemon-failed';
 
 /**
  * An expected failure the user can act on. Clients map `code` to their own wording; `message` is a

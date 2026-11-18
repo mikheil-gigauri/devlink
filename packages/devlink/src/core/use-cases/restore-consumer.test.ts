@@ -20,6 +20,7 @@ import { syncLibrary } from './sync-library.ts';
 const registered: DevlinkState = {
   libraries: [{ name: '@acme/ui', root: LIB, publishDir: `${LIB}/dist/ui` }],
   links: [],
+  groups: [],
 };
 
 /** Links `consumers`, publishes and installs, returning the scenario mid-development. */

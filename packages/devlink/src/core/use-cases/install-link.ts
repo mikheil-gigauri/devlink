@@ -97,8 +97,12 @@ async function resolveTarget(deps: CoreDeps, library: LibraryRecord, consumer: s
 async function saveLink(deps: CoreDeps, link: LinkRecord): Promise<LinkRecord> {
   const state = await deps.state.load();
   const previous = state.links.find((candidate) => sameLink(candidate, link));
-  const merged: LinkRecord =
-    link.status === 'failed' ? { ...link, installedVersion: previous?.installedVersion } : link;
+  // Keep what this function does not own (such as the guard flag); a failure keeps the last good version.
+  const merged: LinkRecord = {
+    ...previous,
+    ...link,
+    ...(link.status === 'failed' && { installedVersion: previous?.installedVersion }),
+  };
   await deps.state.save(withLink(state, merged));
   return merged;
 }

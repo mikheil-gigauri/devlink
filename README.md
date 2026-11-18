@@ -9,11 +9,45 @@ back exactly as it was when you are done. No symlinks, no `file:` paths, no dupl
 > Status: early development. See the [build plan](docs/plan.md) and the
 > [architecture decisions](docs/adr/README.md).
 
+## Using it
+
+devlink is not on npm yet. From a clone, build it and put `devlink` on your PATH:
+
+```bash
+npm install && npm run build
+cd packages/devlink && npm link
+```
+
+Then, once:
+
+```bash
+devlink init --root ~/Repositories    # where your projects live; starts the daemon
+```
+
+And per library:
+
+```bash
+cd ~/Repositories/shared-ui
+devlink add                           # detects Nx, Angular CLI or a build script
+devlink consumers                     # who uses it; nothing changes yet
+devlink link ../shop ../admin         # opt in: snapshot, dev install, commit guard
+devlink watch                         # every save: build, publish, install, clear caches
+devlink restore ../shop ../admin      # back to exactly what you had
+```
+
+`devlink status` shows what is linked and running, `devlink doctor` checks the setup, and
+`devlink daemon install` starts devlink at login. Every command takes `--json` for scripts and agents.
+
+Consumers that run together, such as a federation host and its remotes, can be saved as a group
+(`devlink group save checkout ../shell ../cart`), linked and restored together (`--group checkout`), and
+devlink warns when they end up on different dev versions.
+
 ## Development
 
 ```bash
 npm install
-npm test
+npm test                  # unit tests, about two seconds
+npm run test:integration  # real Verdaccio, npm and git
 npm run typecheck
 npm run lint
 ```

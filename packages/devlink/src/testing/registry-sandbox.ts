@@ -41,13 +41,15 @@ export async function createRegistrySandbox(
   const globalconfig = join(temp.path, 'global.npmrc');
   await Promise.all([writeFile(userconfig, ''), writeFile(globalconfig, '')]);
 
-  const runner = new NodeProcessRunner(process.env, {
-    npm_config_cache: join(temp.path, 'npm-cache'),
-    npm_config_userconfig: userconfig,
-    npm_config_globalconfig: globalconfig,
-    npm_config_update_notifier: 'false',
-    npm_config_fund: 'false',
-    npm_config_audit: 'false',
+  const runner = new NodeProcessRunner({
+    env: {
+      npm_config_cache: join(temp.path, 'npm-cache'),
+      npm_config_userconfig: userconfig,
+      npm_config_globalconfig: globalconfig,
+      npm_config_update_notifier: 'false',
+      npm_config_fund: 'false',
+      npm_config_audit: 'false',
+    },
   });
 
   const startRegistry = async (name: string, uplinks?: Readonly<Record<string, Uplink>>) => {

@@ -14,6 +14,7 @@ const withBuild: DevlinkState = {
     },
   ],
   links: [],
+  groups: [],
 };
 
 describe('publishLibrary', () => {
@@ -93,7 +94,11 @@ describe('publishLibrary', () => {
 
   it('skips the build when none is configured', async () => {
     const { deps, process } = createScenario({
-      state: { libraries: [{ name: '@acme/ui', root: LIB, publishDir: `${LIB}/dist/ui` }], links: [] },
+      state: {
+        libraries: [{ name: '@acme/ui', root: LIB, publishDir: `${LIB}/dist/ui` }],
+        links: [],
+        groups: [],
+      },
     });
 
     await publishLibrary(deps, { library: '@acme/ui' });

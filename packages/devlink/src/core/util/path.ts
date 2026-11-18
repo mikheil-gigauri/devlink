@@ -22,6 +22,20 @@ export function joinPath(first: string, ...rest: readonly string[]): string {
   return absolute ? `/${joined}` : joined;
 }
 
+/** `path` itself when absolute, otherwise `path` resolved against `base`. */
+export function resolvePath(base: string, path: string): string {
+  return path.startsWith('/') ? joinPath(path) : joinPath(base, path);
+}
+
+/** `path` relative to `base` when it is inside it (`''` for `base` itself), otherwise undefined. */
+export function relativeInside(base: string, path: string): string | undefined {
+  const from = joinPath(base);
+  const to = joinPath(path);
+  if (to === from) return '';
+  const prefix = from === '/' ? '/' : `${from}/`;
+  return to.startsWith(prefix) ? to.slice(prefix.length) : undefined;
+}
+
 /**
  * A single folder name for per-item storage (snapshots, staging). The readable part helps when
  * browsing `~/.devlink`; the hash keeps two inputs from sharing a folder when their readable parts

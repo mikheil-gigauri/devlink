@@ -42,6 +42,7 @@ describe('registerLibrary', () => {
           { name: '@acme/ui', root: LIB, publishDir: LIB, lastPublishedVersion: '1.4.1-dev.20261118143201' },
         ],
         links: [],
+        groups: [],
       },
     });
 

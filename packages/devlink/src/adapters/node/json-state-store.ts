@@ -2,11 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { DevlinkError } from '../../core/errors.ts';
-import { type DevlinkState, EMPTY_STATE, type LibraryRecord, type LinkRecord } from '../../core/model.ts';
+import {
+  type DevlinkState,
+  EMPTY_STATE,
+  type GroupRecord,
+  type LibraryRecord,
+  type LinkRecord,
+} from '../../core/model.ts';
 import type { StateStore } from '../../core/ports.ts';
 import { isRecord } from '../../core/util/json.ts';
 
-const STATE_VERSION = 1;
+const STATE_VERSION = 2;
+/** Versions this devlink can read; older ones are upgraded on load. */
+const READABLE_VERSIONS: readonly unknown[] = [1, 2];
 
 /**
  * devlink's state as one JSON file (`~/.devlink/state.json`). Writes go to a temporary file that is
@@ -34,16 +42,18 @@ export class JsonStateStore implements StateStore {
     } catch {
       throw this.#corrupt('is not valid JSON');
     }
-    if (!isRecord(parsed) || parsed.version !== STATE_VERSION) {
+    if (!isRecord(parsed) || !READABLE_VERSIONS.includes(parsed.version)) {
       throw this.#corrupt(`has an unknown format version (this devlink reads version ${STATE_VERSION})`);
     }
-    const { libraries, links } = parsed;
-    if (!Array.isArray(libraries) || !Array.isArray(links)) {
-      throw this.#corrupt('is missing its libraries or links');
+    // Version 1 predates groups.
+    const { libraries, links, groups = parsed.version === 1 ? [] : undefined } = parsed;
+    if (!Array.isArray(libraries) || !Array.isArray(links) || !Array.isArray(groups)) {
+      throw this.#corrupt('is missing its libraries, links or groups');
     }
     if (!libraries.every(isLibraryRecord)) throw this.#corrupt('has a malformed library entry');
     if (!links.every(isLinkRecord)) throw this.#corrupt('has a malformed link entry');
-    return { libraries, links };
+    if (!groups.every(isGroupRecord)) throw this.#corrupt('has a malformed group entry');
+    return { libraries, links, groups };
   }
 
   async save(state: DevlinkState): Promise<void> {
@@ -92,5 +102,14 @@ function isLinkRecord(value: unknown): value is LinkRecord {
     typeof value.library === 'string' &&
     typeof value.consumer === 'string' &&
     LINK_STATUSES.includes(value.status)
+  );
+}
+
+function isGroupRecord(value: unknown): value is GroupRecord {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    Array.isArray(value.consumers) &&
+    value.consumers.every((consumer) => typeof consumer === 'string')
   );
 }

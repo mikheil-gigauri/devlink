@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTempDir } from '../../testing/temp-dir.ts';
 import { NodeProcessRunner } from './node-process-runner.ts';
@@ -43,11 +46,13 @@ describe('NodeProcessRunner', () => {
 
   it('strips npm_* variables so an outer npm cannot reconfigure the npm devlink runs', async () => {
     const runner = new NodeProcessRunner({
-      PATH: process.env.PATH ?? '',
-      npm_config_registry: 'https://wrong.example/',
-      npm_lifecycle_event: 'dev',
-      NPM_CONFIG_GLOBAL: 'true',
-      KEEP_ME: 'yes',
+      baseEnv: {
+        PATH: process.env.PATH ?? '',
+        npm_config_registry: 'https://wrong.example/',
+        npm_lifecycle_event: 'dev',
+        NPM_CONFIG_GLOBAL: 'true',
+        KEEP_ME: 'yes',
+      },
     });
     const script = 'console.log(JSON.stringify(Object.keys(process.env).filter(k => /npm|KEEP/i.test(k))))';
 
@@ -57,10 +62,10 @@ describe('NodeProcessRunner', () => {
   });
 
   it('applies explicit extra variables after stripping, so callers can still configure npm', async () => {
-    const runner = new NodeProcessRunner(
-      { PATH: process.env.PATH ?? '', npm_config_cache: '/inherited' },
-      { npm_config_cache: '/explicit' },
-    );
+    const runner = new NodeProcessRunner({
+      baseEnv: { PATH: process.env.PATH ?? '', npm_config_cache: '/inherited' },
+      env: { npm_config_cache: '/explicit' },
+    });
 
     const result = await runner.run({ command: node, args: ['-p', 'process.env.npm_config_cache'], cwd });
 
@@ -79,5 +84,68 @@ describe('NodeProcessRunner', () => {
 
     expect(result.stdout.length).toBeLessThanOrEqual(1_000_000);
     expect(result.stdout.endsWith('END')).toBe(true);
+  });
+
+  /** A command whose child writes `marker` after a delay, while the command itself never ends. */
+  const hangingTree = (marker: string) => [
+    '-e',
+    [
+      "const { spawn } = require('node:child_process');",
+      `spawn(process.execPath, ['-e', 'setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "x"), 800)'], { stdio: 'ignore' });`,
+      'setInterval(() => {}, 1000);',
+    ].join('\n'),
+  ];
+
+  it('finishes when the command exits, even if something it started in the background holds its output', async () => {
+    const started = Date.now();
+
+    const result = await new NodeProcessRunner().run({
+      command: 'sh',
+      args: ['-c', 'sleep 20 & echo built'],
+      cwd,
+    });
+
+    expect(result).toMatchObject({ exitCode: 0, stdout: 'built\n' });
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('kills a command that outlives its timeout, together with its children', async () => {
+    const marker = join(cwd, 'child-survived');
+    const runner = new NodeProcessRunner({ timeoutMs: 300 });
+
+    const result = await runner.run({ command: node, args: hangingTree(marker), cwd });
+    await sleep(1200);
+
+    expect(result.exitCode).toBe(124);
+    expect(result.stderr).toContain('timed out after 0.3 s');
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('cancels a running command, together with its children, when the signal aborts', async () => {
+    const marker = join(cwd, 'child-survived');
+    const controller = new AbortController();
+    const runner = new NodeProcessRunner({ signal: controller.signal });
+
+    const running = runner.run({ command: node, args: hangingTree(marker), cwd });
+    setTimeout(() => controller.abort(), 300);
+    const result = await running;
+    await sleep(1200);
+
+    expect(result.exitCode).toBe(130);
+    expect(result.stderr).toContain('cancelled');
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('does not start anything once cancelled', async () => {
+    const marker = join(cwd, 'started');
+    const controller = new AbortController();
+    controller.abort();
+    const runner = new NodeProcessRunner({ signal: controller.signal });
+
+    const script = `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'x')`;
+    const result = await runner.run({ command: node, args: ['-e', script], cwd });
+
+    expect(result.exitCode).toBe(130);
+    expect(existsSync(marker)).toBe(false);
   });
 });

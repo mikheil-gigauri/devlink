@@ -6,6 +6,7 @@ import { discoverConsumers } from './discover-consumers.ts';
 const registered: DevlinkState = {
   libraries: [{ name: '@acme/ui', root: LIB, publishDir: `${LIB}/dist/ui` }],
   links: [],
+  groups: [],
 };
 
 describe('discoverConsumers', () => {

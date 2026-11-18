@@ -5,10 +5,11 @@ import { pathSlug } from '../util/path.ts';
 import { linkConsumer } from './link-consumer.ts';
 
 const library = { name: '@acme/ui', root: LIB, publishDir: `${LIB}/dist/ui` };
-const registered: DevlinkState = { libraries: [library], links: [] };
+const registered: DevlinkState = { libraries: [library], links: [], groups: [] };
 const published: DevlinkState = {
   libraries: [{ ...library, lastPublishedVersion: '1.4.1-dev.20261118143201' }],
   links: [],
+  groups: [],
 };
 const snapshotDir = (consumer: string) => `${HOME}/snapshots/${pathSlug(consumer)}`;
 
@@ -75,7 +76,10 @@ describe('linkConsumer', () => {
         dependencies: { '@acme/ui': '^1.4.0', '@acme/icons': '^2.0.0' },
       }),
     };
-    const { deps, fs } = createScenario({ files, state: { libraries: [library, second], links: [] } });
+    const { deps, fs } = createScenario({
+      files,
+      state: { libraries: [library, second], links: [], groups: [] },
+    });
 
     await linkConsumer(deps, { library: '@acme/ui', consumer: SHOP });
     const original = await fs.readText(`${snapshotDir(SHOP)}/package.json`);

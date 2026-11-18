@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, RequestListener, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -13,6 +13,10 @@ const USER = 'devlink';
 export interface Uplink {
   /** Registry URL to fetch packages devlink does not hold, e.g. `https://registry.npmjs.org/`. */
   readonly url: string;
+  /** Credentials for a private registry, held in memory only. */
+  readonly auth?: { readonly type: 'bearer' | 'basic'; readonly token: string };
+  /** Scopes this registry serves, e.g. `['@corp']`. Without scopes it serves everything else. */
+  readonly scopes?: readonly string[];
 }
 
 export interface VerdaccioRegistryOptions {
@@ -23,6 +27,8 @@ export interface VerdaccioRegistryOptions {
   /** Registries to proxy for packages devlink has not published. None by default. */
   readonly uplinks?: Readonly<Record<string, Uplink>>;
   readonly logLevel?: 'fatal' | 'error' | 'warn' | 'info';
+  /** Reading also needs credentials. Only tests use this, to stand in for a private registry. */
+  readonly requireAuthToRead?: boolean;
 }
 
 /**
@@ -57,31 +63,31 @@ export class VerdaccioRegistry {
 
     const credentials = { username: USER, password: randomBytes(32).toString('base64url') };
     const htpasswd = join(options.storage, 'htpasswd');
-    await rm(htpasswd, { force: true });
-    // {SHA} is unsalted, which is fine for 256 random bits: there is nothing to guess.
-    const hash = createHash('sha1').update(credentials.password).digest('base64');
-    await writeFile(htpasswd, `${USER}:{SHA}${hash}\n`, { mode: 0o600 });
 
+    const entries = Object.entries(options.uplinks ?? {});
     const uplinks = Object.fromEntries(
-      Object.entries(options.uplinks ?? {}).map(([name, { url }]) => [
+      entries.map(([name, { url, auth }]) => [
         name,
-        { url, timeout: '30s', max_fails: 2 },
+        { url, timeout: '30s', max_fails: 2, ...(auth && { auth }) },
       ]),
     );
-    const proxy = Object.keys(uplinks);
+    const rule = (proxy: readonly string[]) => ({
+      access: options.requireAuthToRead ? '$authenticated' : '$all',
+      publish: '$authenticated',
+      unpublish: '$authenticated',
+      ...(proxy.length > 0 && { proxy: [...proxy] }),
+    });
+    // Verdaccio takes the first matching rule, so scoped rules come before the catch-all.
+    const scoped = entries.flatMap(([name, uplink]) =>
+      (uplink.scopes ?? []).map((scope) => [`${scope}/*`, rule([name])] as const),
+    );
+    const general = entries.filter(([, uplink]) => !uplink.scopes?.length).map(([name]) => name);
     const server: Server = await runServer({
       self_path: join(options.storage, 'config.yaml'),
       storage: options.storage,
       auth: { htpasswd: { file: htpasswd, max_users: -1 } },
       uplinks,
-      packages: {
-        '**': {
-          access: '$all',
-          publish: '$authenticated',
-          unpublish: '$authenticated',
-          ...(proxy.length > 0 && { proxy }),
-        },
-      },
+      packages: { ...Object.fromEntries(scoped), '**': rule(general) },
       web: { enable: false },
       log: { type: 'stdout', format: 'json', level: options.logLevel ?? 'warn' },
     } as Parameters<typeof runServer>[0]);
@@ -89,6 +95,13 @@ export class VerdaccioRegistry {
     try {
       guardAgainstBrowsers(server);
       const port = await listen(server, options.port);
+      // Only once the port is ours: a second start that loses it must not replace the running
+      // registry's credentials. Until then the file still holds an earlier start's user, whose
+      // password nobody knows, so the user exists before the port opens either way.
+      // {SHA} is unsalted, which is fine for 256 random bits: there is nothing to guess.
+      const hash = createHash('sha1').update(credentials.password).digest('base64');
+      await writeFile(htpasswd, `${USER}:{SHA}${hash}\n`, { mode: 0o600 });
+      await chmod(htpasswd, 0o600);
       return new VerdaccioRegistry(server, `http://${HOST}:${port}/`, credentials);
     } catch (error) {
       await close(server);

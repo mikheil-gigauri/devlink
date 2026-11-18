@@ -1,0 +1,109 @@
+import type { DevlinkErrorCode } from '../core/errors.ts';
+import type { GroupRecord, LibraryRecord, LinkRecord } from '../core/model.ts';
+import type { LibraryBuildKind } from '../core/project/detect-library-build.ts';
+import type { CoherenceWarning } from '../core/status/coherence.ts';
+import type { DiscoveredConsumer } from '../core/use-cases/discover-consumers.ts';
+import type { GroupMemberOutcome } from '../core/use-cases/groups.ts';
+import type { RestoreResult } from '../core/use-cases/restore-consumer.ts';
+import type { SyncResult } from '../core/use-cases/sync-library.ts';
+import type { JobInfo } from './job-queue.ts';
+import { type Infer, s } from './schema.ts';
+
+/**
+ * The daemon's API contract (ADR 0012), shared by the server, the CLI and, through JSON Schema, the
+ * menu bar app. Every operation is `POST /v1/<name>` with a JSON body; `GET /v1/health` and
+ * `GET /v1/events` (server-sent events) complete it.
+ */
+export const API_VERSION = 1;
+
+export const operations = {
+  status: s.object({}),
+  register: s.object({
+    root: s.path(),
+    publishDir: s.optional(s.path()),
+    build: s.optional(s.object({ command: s.string(), args: s.array(s.string()) })),
+  }),
+  unregister: s.object({ library: s.string() }),
+  sync: s.object({ library: s.string() }),
+  watch: s.object({ library: s.string(), enabled: s.boolean() }),
+  discover: s.object({ library: s.optional(s.string()) }),
+  link: s.object({ library: s.string(), consumer: s.path(), guard: s.optional(s.boolean()) }),
+  restore: s.object({ consumer: s.path(), force: s.optional(s.boolean()) }),
+  saveGroup: s.object({ name: s.string(), consumers: s.array(s.path()) }),
+  deleteGroup: s.object({ name: s.string() }),
+  linkGroup: s.object({ group: s.string(), library: s.string() }),
+  restoreGroup: s.object({ group: s.string(), force: s.optional(s.boolean()) }),
+  shutdown: s.object({}),
+} as const;
+
+export type OperationName = keyof typeof operations;
+export type OperationInput<K extends OperationName> = Infer<(typeof operations)[K]>;
+
+export function isOperationName(name: string): name is OperationName {
+  return Object.hasOwn(operations, name);
+}
+
+export interface Health {
+  readonly name: 'devlink';
+  readonly version: string;
+  readonly apiVersion: number;
+  readonly pid: number;
+  readonly registryUrl: string;
+  readonly startedAt: string;
+}
+
+export interface StatusView {
+  readonly daemon: Health;
+  readonly libraries: readonly LibraryRecord[];
+  readonly links: readonly LinkRecord[];
+  readonly groups: readonly GroupRecord[];
+  readonly warnings: readonly CoherenceWarning[];
+  readonly jobs: { readonly running?: JobInfo; readonly queued: readonly JobInfo[] };
+}
+
+export interface RegisterResult {
+  readonly library: LibraryRecord;
+  /** How the build was worked out: detected from the project, or given explicitly. */
+  readonly detected: LibraryBuildKind | 'given';
+}
+
+export interface LinkResult {
+  readonly link: LinkRecord;
+  readonly guard: 'installed' | 'declined' | 'not-a-repo';
+}
+
+export interface Done {
+  readonly ok: true;
+}
+
+export interface OperationOutputs {
+  status: StatusView;
+  register: RegisterResult;
+  unregister: Done;
+  sync: SyncResult;
+  watch: LibraryRecord;
+  discover: readonly DiscoveredConsumer[];
+  link: LinkResult;
+  restore: RestoreResult;
+  saveGroup: GroupRecord;
+  deleteGroup: Done;
+  linkGroup: readonly GroupMemberOutcome[];
+  restoreGroup: readonly GroupMemberOutcome[];
+  shutdown: Done;
+}
+
+export type ApiErrorCode =
+  | DevlinkErrorCode
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not-found'
+  | 'payload-too-large'
+  | 'internal';
+
+export interface ApiErrorBody {
+  readonly error: {
+    readonly code: ApiErrorCode;
+    readonly message: string;
+    readonly details: Readonly<Record<string, unknown>>;
+  };
+}

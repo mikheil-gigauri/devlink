@@ -17,5 +17,6 @@ and update the old one's status line.
 | 0009 | [Testing strategy](0009-testing-strategy.md)                                  | Accepted |
 | 0010 | [Native menu bar app](0010-native-menu-bar-app.md)                            | Accepted |
 | 0011 | [Project website](0011-project-website.md)                                    | Accepted |
+| 0012 | [Daemon runtime, API contract and CLI](0012-daemon-runtime-api-and-cli.md)    | Accepted |
 
 Template: Status, Context, Decision, Consequences. Keep each under a page.

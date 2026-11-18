@@ -38,6 +38,8 @@ export interface LibraryRecord {
   /** Command that produces publishDir. Omitted when the library publishes its sources. */
   readonly build?: CommandSpec | undefined;
   readonly lastPublishedVersion?: string | undefined;
+  /** Whether the daemon rebuilds and syncs the library when its sources change. */
+  readonly watch?: boolean | undefined;
 }
 
 export type LinkStatus = 'pending' | 'installed' | 'failed';
@@ -48,14 +50,24 @@ export interface LinkRecord {
   readonly consumer: string;
   readonly status: LinkStatus;
   readonly installedVersion?: string | undefined;
+  /** Whether the consumer's git pre-commit hook carries the commit guard (ADR 0012). */
+  readonly guard?: boolean | undefined;
+}
+
+/** Consumers that run together, such as a federation host and its remotes (ADR 0005). */
+export interface GroupRecord {
+  readonly name: string;
+  /** Absolute consumer paths, in the order they were given. */
+  readonly consumers: readonly string[];
 }
 
 export interface DevlinkState {
   readonly libraries: readonly LibraryRecord[];
   readonly links: readonly LinkRecord[];
+  readonly groups: readonly GroupRecord[];
 }
 
-export const EMPTY_STATE: DevlinkState = { libraries: [], links: [] };
+export const EMPTY_STATE: DevlinkState = { libraries: [], links: [], groups: [] };
 
 /** What a snapshot remembers about a consumer, stored next to the copied files. */
 export interface SnapshotMeta {

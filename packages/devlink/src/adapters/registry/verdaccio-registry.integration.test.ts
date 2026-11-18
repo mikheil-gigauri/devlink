@@ -126,6 +126,58 @@ describe('VerdaccioRegistry', () => {
     expect(old.status).toBe(401);
   });
 
+  it('proxies a private registry with credentials, for the scopes it serves', async () => {
+    const { path: privateStorage, cleanup: cleanPrivate } = await createTempDir();
+    const corp = await VerdaccioRegistry.start({
+      storage: privateStorage,
+      port: 0,
+      logLevel: 'fatal',
+      requireAuthToRead: true,
+    });
+    running.push(corp);
+    const tarball = Buffer.from('not really a tarball').toString('base64');
+    const published = await send(`${corp.url}@corp%2ftokens`, {
+      method: 'PUT',
+      headers: { ...basic(corp), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: '@corp/tokens',
+        versions: {
+          '1.0.0': {
+            name: '@corp/tokens',
+            version: '1.0.0',
+            dist: { tarball: `${corp.url}@corp/tokens/-/tokens-1.0.0.tgz` },
+          },
+        },
+        'dist-tags': { latest: '1.0.0' },
+        _attachments: {
+          'tokens-1.0.0.tgz': { content_type: 'application/octet-stream', data: tarball, length: 20 },
+        },
+      }),
+    });
+    expect(published.status).toBe(201);
+
+    const { username, password } = corp.credentials;
+    const auth = { type: 'basic' as const, token: btoa(`${username}:${password}`) };
+    const withAuth = await VerdaccioRegistry.start({
+      storage: join(storage, 'with-auth'),
+      port: 0,
+      logLevel: 'fatal',
+      uplinks: { corp: { url: corp.url, auth, scopes: ['@corp'] } },
+    });
+    const withoutAuth = await VerdaccioRegistry.start({
+      storage: join(storage, 'without-auth'),
+      port: 0,
+      logLevel: 'fatal',
+      uplinks: { corp: { url: corp.url, scopes: ['@corp'] } },
+    });
+    running.push(withAuth, withoutAuth);
+
+    expect((await send(`${withAuth.url}@corp%2ftokens`)).status).toBe(200);
+    // Verdaccio reports a refused uplink as a missing package; the twin above differs only in its auth.
+    expect((await send(`${withoutAuth.url}@corp%2ftokens`)).status).toBe(404);
+    await cleanPrivate();
+  });
+
   it('frees its port when stopped', async () => {
     const registry = await start();
     await registry.stop();
@@ -142,5 +194,15 @@ describe('VerdaccioRegistry', () => {
       code: 'registry-failed',
       message: expect.stringMatching(new RegExp(`port ${port}`)),
     });
+  });
+
+  it("leaves the running registry's credentials alone when a second start on its storage loses the port", async () => {
+    const first = await start();
+    const port = Number(new URL(first.url).port);
+
+    await VerdaccioRegistry.start({ storage, port, logLevel: 'fatal' }).catch(() => undefined);
+    const whoami = await send(`${first.url}-/whoami`, { headers: basic(first) });
+
+    expect(whoami.status).toBe(200);
   });
 });

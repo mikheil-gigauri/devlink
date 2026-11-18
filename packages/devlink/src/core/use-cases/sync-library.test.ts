@@ -8,6 +8,7 @@ const VERSION = '1.4.1-dev.20261118143201';
 const linked = (consumers: string[]): DevlinkState => ({
   libraries: [{ name: '@acme/ui', root: LIB, publishDir: `${LIB}/dist/ui` }],
   links: consumers.map((consumer) => ({ library: '@acme/ui', consumer, status: 'pending' as const })),
+  groups: [],
 });
 
 describe('syncLibrary', () => {
@@ -60,6 +61,19 @@ describe('syncLibrary', () => {
 
     expect(store.current.links).toEqual([
       { library: '@acme/ui', consumer: SHOP, status: 'installed', installedVersion: VERSION },
+    ]);
+  });
+
+  it('keeps what else the link records, such as the commit guard flag', async () => {
+    const state = linked([SHOP]);
+    const { deps, store } = createScenario({
+      state: { ...state, links: state.links.map((link) => ({ ...link, guard: true })) },
+    });
+
+    await syncLibrary(deps, { library: '@acme/ui' });
+
+    expect(store.current.links).toEqual([
+      { library: '@acme/ui', consumer: SHOP, status: 'installed', installedVersion: VERSION, guard: true },
     ]);
   });
 

@@ -30,6 +30,7 @@ export async function registerLibrary(deps: CoreDeps, input: RegisterLibraryInpu
     publishDir: resolvePublishDir(root, input.publishDir),
     build: input.build && { ...input.build, cwd: root },
     lastPublishedVersion: existing?.lastPublishedVersion,
+    watch: existing?.watch,
   };
 
   await deps.state.save(withLibrary(state, library));
