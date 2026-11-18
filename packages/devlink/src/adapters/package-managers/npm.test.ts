@@ -73,6 +73,21 @@ describe('npm adapter', () => {
         cwd: '/staging/ui',
       });
     });
+
+    const credentials = { username: 'devlink', password: 's3cret' };
+
+    it('authenticates through an .npmrc in the staging folder, keeping credentials out of the process list', () => {
+      // base64('devlink:s3cret'): npm sends it as HTTP Basic auth.
+      expect(npm.publishAuthFiles({ registryUrl, credentials })).toEqual({
+        '.npmrc': '//127.0.0.1:4873/:_auth=ZGV2bGluazpzM2NyZXQ=\n',
+      });
+    });
+
+    it('scopes the credentials to the registry host and path', () => {
+      expect(npm.publishAuthFiles({ registryUrl: 'http://127.0.0.1:4873/sub', credentials })).toEqual({
+        '.npmrc': '//127.0.0.1:4873/sub/:_auth=ZGV2bGluazpzM2NyZXQ=\n',
+      });
+    });
   });
 
   describe('findRegistryLeaks', () => {

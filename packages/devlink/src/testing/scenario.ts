@@ -106,6 +106,7 @@ export function createScenario({ files = scenarioFiles(), state }: ScenarioOptio
     packageManagers: { npm },
     integrations: builtInIntegrations,
     registryUrl: REGISTRY,
+    registryCredentials: { username: 'devlink', password: 'test-password' },
     home: HOME,
   };
 

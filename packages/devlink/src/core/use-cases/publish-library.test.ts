@@ -46,7 +46,7 @@ describe('publishLibrary', () => {
     await publishLibrary(deps, { library: '@acme/ui' });
 
     const stagedFiles = Object.keys(staged).map((path) => path.replace(/^.*\/staging\/[^/]+/, ''));
-    expect(stagedFiles).toEqual(['/fesm2022/acme-ui.mjs', '/package.json']);
+    expect(stagedFiles).toEqual(['/.npmrc', '/fesm2022/acme-ui.mjs', '/package.json']);
     const stagedManifest = Object.entries(staged).find(([path]) => path.endsWith('/package.json'))?.[1] ?? '';
     expect(JSON.parse(stagedManifest)).toEqual({
       name: '@acme/ui',
@@ -54,6 +54,24 @@ describe('publishLibrary', () => {
       module: 'fesm2022/acme-ui.mjs',
     });
     expect(fs.snapshot(LIB)).toEqual(before);
+  });
+
+  it('hands npm the registry credentials through the staged .npmrc only', async () => {
+    const { deps, fs, process } = createScenario({ state: withBuild });
+    let npmrc: string | undefined;
+    let isPrivate = false;
+    process.on('npm publish', async (spec) => {
+      npmrc = await fs.readText(`${spec.cwd}/.npmrc`);
+      isPrivate = fs.isPrivate(`${spec.cwd}/.npmrc`);
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    await publishLibrary(deps, { library: '@acme/ui' });
+
+    const auth = btoa('devlink:test-password');
+    expect(npmrc).toBe(`//127.0.0.1:4873/:_auth=${auth}\n`);
+    expect(isPrivate).toBe(true);
+    expect(process.lines().join(' ')).not.toMatch(new RegExp(`test-password|${auth}`));
   });
 
   it('removes the staging folder afterwards', async () => {

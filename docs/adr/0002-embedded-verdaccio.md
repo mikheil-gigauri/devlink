@@ -35,3 +35,20 @@ devlink automates the parts that made Verdaccio painful: versioning (ADR 0004), 
 - We depend on Verdaccio's programmatic API and its major-version churn. It is isolated behind a
   `Registry` port so it can be swapped or run as a child process if the API breaks.
 - Private uplinks need auth. devlink reuses the user's existing `.npmrc` tokens and never stores its own.
+
+## Amendment · 2026-11-18 (M2 review)
+
+Hardening found necessary once Verdaccio ran for real. It refines the decision without changing it.
+
+- **Browsers are refused.** Verdaccio answers every origin with permissive CORS, so any web page could
+  read private dev builds from the loopback port. devlink rejects requests that carry an `Origin` header
+  or a `Host` other than the loopback address (which also stops DNS rebinding). npm sends neither.
+- **One user, seeded before the port opens.** Publishing needs HTTP Basic auth as `devlink`. Each start
+  writes a fresh random password's hash into `htpasswd` and sets `max_users: -1`, so registration is
+  disabled and no other local process can register first or obtain publish rights. The password lives
+  only in the daemon's memory and reaches npm through a `0600` `.npmrc` in the staging folder, which is
+  deleted after the publish. Credentials from an earlier start stop working.
+- **Private storage.** The storage folder is forced to `0700`: it holds Verdaccio's token-signing secret.
+- **Accepted limitation.** Any local process can still read packages over HTTP, as with any loopback
+  service. Dev builds are not secrets from the logged-in user's own processes; ADR 0003's daemon token
+  covers the control API, not the registry.

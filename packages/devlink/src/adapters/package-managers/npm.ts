@@ -46,6 +46,13 @@ export const npm: PackageManagerAdapter = {
     };
   },
 
+  publishAuthFiles({ registryUrl, credentials }) {
+    // npm keys auth by registry URL without the protocol, always ending in a slash.
+    const key = registryUrl.replace(/^https?:/, '').replace(/\/*$/, '/');
+    const auth = btoa(`${credentials.username}:${credentials.password}`);
+    return { '.npmrc': `${key}:_auth=${auth}\n` };
+  },
+
   findRegistryLeaks(lockfile, registryUrl) {
     const registry = registryUrl.replace(/\/+$/, '');
     const parsed = tryParseJson(lockfile);

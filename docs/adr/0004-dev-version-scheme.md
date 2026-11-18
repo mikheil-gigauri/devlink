@@ -30,3 +30,17 @@ Every publish gets a fresh semver prerelease derived from the library's own vers
   is what we want, but a _peer_ range on the library (lib A peers on lib B) will reject it. devlink detects
   this case and pins the peer with an `overrides` entry in the consumer's snapshot-protected manifest.
 - `isDevVersion` is the single source of truth for "this must not be committed" checks (ADR 0005).
+
+## Amendment · 2026-11-18 (M2, verified against real npm)
+
+The peer-range consequence above was wrong for npm. Measured with npm 11 and a real registry:
+
+- Installing the exact dev version succeeds even when another dependency peers on `^1.0.0`. npm installs
+  one copy, the dependent resolves it, and `npm ls` only marks the peer as "invalid". That marker exists
+  only because the dev build is a prerelease; the real release would satisfy the range.
+- An `overrides` entry with the exact version fails with `EOVERRIDE`, because it conflicts with the direct
+  dependency. A `$`-reference override works but writes to the user's manifest only to quiet `npm ls`.
+
+So devlink adds no overrides for npm. The contract suite pins the required behaviour for every adapter
+("installs a dev version even when another dependency peers on a release range"); package managers with
+strict peer checks, such as pnpm, must meet it inside their own adapter.

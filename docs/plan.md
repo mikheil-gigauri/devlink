@@ -35,6 +35,34 @@ Embedded Verdaccio behind the `Registry` port. npm adapter contract suite agains
 **Exit:** the e2e test links a fixture library into two fixture consumers, sees the new code, restores, and
 both consumers are byte-identical to before.
 
+**Status:** done. `src/e2e/link-cycle.integration.test.ts` runs the exit check with nothing faked: a public
+registry holding the release, devlink's registry proxying it, real npm, two consumers (one without a
+lockfile), two edit cycles, and a byte-for-byte restore. Mutating restore makes it fail.
+
+- Real adapters: `NodeFileSystem` (passes the shared contract), `NodeProcessRunner` (no shell, strips
+  inherited `npm_*` config), `JsonStateStore` (atomic, versioned), `VerdaccioRegistry`.
+- The registry refuses browser requests (`Origin` header or a foreign `Host`), because Verdaccio's
+  permissive CORS would otherwise let any web page read private dev builds. Publishing uses Basic auth for
+  one user seeded before the port opens, with registration disabled and a password that changes on every
+  start; it reaches npm through a private staged `.npmrc`, never the process list. Storage is `0700`.
+  Details in the ADR 0002 amendment.
+- Peer-range overrides were not needed: real npm installs a dev prerelease against a peer range. ADR 0004
+  is amended, and a contract test pins the behaviour for future adapters.
+- Tests are split: `npm test` (unit, about a second) and `npm run test:integration` (real registries).
+- A review after the exit check led to: the auth redesign above; `copyDir` and the in-memory fake now
+  agree on empty folders and a missing source (new contract cases); state entries are validated on load
+  and the state file is flushed before its atomic rename; integration tests ignore the machine's global
+  npmrc; the e2e compares the installed dependency tree, not only manifests and lockfiles.
+- Deferred to M3, where the daemon's process lifecycle is designed: timeouts and cancellation for child
+  processes (a hung `npm install` currently waits forever), and whether Verdaccio leaves timers or handles
+  behind after `stop()` (harmless in a one-shot test run, relevant to a long-lived daemon that restarts
+  its registry). Also open: how `npm publish` treats symlinks inside `publishDir`; staging copies them
+  verbatim and npm decides.
+- Verdaccio is pinned to 6.x because 7 requires Node 24. `npm audit --omit=dev` reports two root
+  advisories inside Verdaccio's tree (ReDoS in `picomatch` and `minimatch`); both need attacker-controlled
+  glob patterns, which devlink's fixed config and loopback-only registry do not expose. Revisit when the
+  Node 22 floor is raised (Node 22 leaves maintenance in April 2027) or if an advisory becomes reachable.
+
 ## M3 · Daemon and CLI
 
 `devlinkd` with the HTTP API, token auth and SSE. CLI commands: `init`, `add`, `link`, `unlink`/`restore`,

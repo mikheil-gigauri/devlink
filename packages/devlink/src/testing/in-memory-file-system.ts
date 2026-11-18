@@ -5,6 +5,7 @@ import { joinPath } from '../core/util/path.ts';
 export class InMemoryFileSystem implements FileSystem {
   readonly #files = new Map<string, string>();
   readonly #dirs = new Set<string>(['/']);
+  readonly #private = new Set<string>();
 
   /** Seeds files in one call: `{ '/repo/package.json': '{...}' }`. */
   static with(files: Readonly<Record<string, string>>): InMemoryFileSystem {
@@ -19,12 +20,19 @@ export class InMemoryFileSystem implements FileSystem {
     return Object.fromEntries([...this.#files].filter(([path]) => path.startsWith(prefix)).sort());
   }
 
+  /** Whether the file was last written as private. */
+  isPrivate(path: string): boolean {
+    return this.#private.has(normalize(path));
+  }
+
   async readText(path: string): Promise<string | undefined> {
     return this.#files.get(normalize(path));
   }
 
-  async writeText(path: string, content: string): Promise<void> {
+  async writeText(path: string, content: string, options?: { readonly private?: boolean }): Promise<void> {
     this.#write(path, content);
+    if (options?.private) this.#private.add(normalize(path));
+    else this.#private.delete(normalize(path));
   }
 
   async exists(path: string): Promise<boolean> {
@@ -55,7 +63,10 @@ export class InMemoryFileSystem implements FileSystem {
     const target = normalize(path);
     const prefix = `${target}/`;
     for (const file of [...this.#files.keys()]) {
-      if (file === target || file.startsWith(prefix)) this.#files.delete(file);
+      if (file === target || file.startsWith(prefix)) {
+        this.#files.delete(file);
+        this.#private.delete(file);
+      }
     }
     for (const dir of [...this.#dirs]) {
       if (dir === target || dir.startsWith(prefix)) this.#dirs.delete(dir);
@@ -64,14 +75,21 @@ export class InMemoryFileSystem implements FileSystem {
 
   async copyDir(from: string, to: string, options: { readonly exclude: readonly string[] }): Promise<void> {
     const source = normalize(from);
+    if (!this.#dirs.has(source)) throw Object.assign(new Error(`ENOENT: ${source}`), { code: 'ENOENT' });
     const prefix = `${source}/`;
+    const copied = (path: string) => {
+      const relative = path.slice(prefix.length);
+      return relative.split('/').some((segment) => options.exclude.includes(segment)) ? undefined : relative;
+    };
     this.#mkdirs(normalize(to));
 
+    for (const dir of [...this.#dirs]) {
+      const relative = dir.startsWith(prefix) ? copied(dir) : undefined;
+      if (relative !== undefined) this.#mkdirs(normalize(joinPath(to, relative)));
+    }
     for (const [file, content] of [...this.#files]) {
-      if (!file.startsWith(prefix)) continue;
-      const relative = file.slice(prefix.length);
-      if (relative.split('/').some((segment) => options.exclude.includes(segment))) continue;
-      this.#write(joinPath(to, relative), content);
+      const relative = file.startsWith(prefix) ? copied(file) : undefined;
+      if (relative !== undefined) this.#write(joinPath(to, relative), content);
     }
   }
 

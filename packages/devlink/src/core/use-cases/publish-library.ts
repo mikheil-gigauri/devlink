@@ -55,6 +55,13 @@ export async function publishLibrary(
       joinPath(staging, 'package.json'),
       formatManifest({ ...manifest, version }, text),
     );
+    const authFiles = adapter.publishAuthFiles({
+      registryUrl: deps.registryUrl,
+      credentials: deps.registryCredentials,
+    });
+    for (const [file, content] of Object.entries(authFiles)) {
+      await deps.fs.writeText(joinPath(staging, file), content, { private: true });
+    }
 
     const result = await runSafely(
       deps,

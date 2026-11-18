@@ -5,14 +5,17 @@ import type { PackageManagerName } from './package-manager/detect.ts';
 export interface FileSystem {
   /** Returns undefined when the file does not exist. */
   readText(path: string): Promise<string | undefined>;
-  /** Creates missing parent folders. */
-  writeText(path: string, content: string): Promise<void>;
+  /** Creates missing parent folders. A private file is readable and writable by its owner only. */
+  writeText(path: string, content: string, options?: { readonly private?: boolean }): Promise<void>;
   exists(path: string): Promise<boolean>;
   /** Entries directly inside a folder, sorted by name. Empty when the folder does not exist. */
   readDir(path: string): Promise<readonly DirEntry[]>;
   /** Removes a file or a folder recursively. Does nothing when the path does not exist. */
   remove(path: string): Promise<void>;
-  /** Copies a folder recursively, skipping entries whose name is in `exclude` at any depth. */
+  /**
+   * Copies a folder recursively, empty folders included, skipping entries whose name is in `exclude` at
+   * any depth. Rejects when `from` does not exist.
+   */
   copyDir(from: string, to: string, options: { readonly exclude: readonly string[] }): Promise<void>;
 }
 
@@ -61,6 +64,12 @@ export interface CleanInstallSpec {
   readonly hasLockfile: boolean;
 }
 
+/** HTTP Basic credentials for the local registry. The password is random and changes on every start. */
+export interface RegistryCredentials {
+  readonly username: string;
+  readonly password: string;
+}
+
 export interface RegistryLeak {
   /** Where the leak is, e.g. the lockfile key `node_modules/@acme/ui`. */
   readonly location: string;
@@ -75,6 +84,14 @@ export interface PackageManagerAdapter {
   install(spec: InstallSpec): CommandSpec;
   cleanInstall(spec: CleanInstallSpec): CommandSpec;
   publish(spec: PublishSpec): CommandSpec;
+  /**
+   * Files to place in the staging folder so `publish` authenticates, keyed by file name. Files rather
+   * than flags keep credentials out of the process list; the staging folder is deleted afterwards.
+   */
+  publishAuthFiles(spec: {
+    readonly registryUrl: string;
+    readonly credentials: RegistryCredentials;
+  }): Readonly<Record<string, string>>;
   findRegistryLeaks(lockfile: string, registryUrl: string): readonly RegistryLeak[];
 }
 
@@ -142,6 +159,8 @@ export interface CoreDeps {
   readonly integrations: readonly ConsumerIntegration[];
   /** The local registry's base URL, e.g. `http://127.0.0.1:4873/`. */
   readonly registryUrl: string;
+  /** What lets devlink publish to the local registry. */
+  readonly registryCredentials: RegistryCredentials;
   /** devlink's own data folder, e.g. `~/.devlink`. */
   readonly home: string;
 }

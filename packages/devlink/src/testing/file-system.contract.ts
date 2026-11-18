@@ -78,5 +78,19 @@ export function describeFileSystemContract(name: string, setup: () => Promise<Fi
       expect(await fs.exists(`${root}/out/node_modules`)).toBe(false);
       expect(await fs.exists(`${root}/out/lib/node_modules`)).toBe(false);
     });
+
+    it('copies empty folders too', async () => {
+      await fs.writeText(`${root}/src/assets/.keep`, '');
+      await fs.remove(`${root}/src/assets/.keep`);
+
+      await fs.copyDir(`${root}/src`, `${root}/out`, { exclude: [] });
+
+      expect(await fs.readDir(`${root}/out`)).toEqual([{ name: 'assets', isDirectory: true }]);
+    });
+
+    it('refuses to copy a folder that does not exist', async () => {
+      await expect(fs.copyDir(`${root}/missing`, `${root}/out`, { exclude: [] })).rejects.toThrow();
+      expect(await fs.exists(`${root}/out`)).toBe(false);
+    });
   });
 }

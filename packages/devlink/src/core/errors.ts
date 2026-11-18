@@ -7,7 +7,9 @@ export type DevlinkErrorCode =
   | 'build-failed'
   | 'publish-failed'
   | 'snapshot-missing'
-  | 'manifest-drifted';
+  | 'manifest-drifted'
+  | 'state-corrupt'
+  | 'registry-failed';
 
 /**
  * An expected failure the user can act on. Clients map `code` to their own wording; `message` is a
