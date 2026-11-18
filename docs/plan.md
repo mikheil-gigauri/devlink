@@ -17,6 +17,16 @@ invalidate caches, restore. npm adapter. Angular, Native Federation and Vite int
 
 **Exit:** unit tests cover every use case, including restore after a failed install.
 
+**Status:** done. Use cases live in `core/use-cases`, the npm adapter in `adapters/package-managers`, the
+integrations in `adapters/integrations`. Tests run against an in-memory file system that shares a contract
+suite with the real adapter (M2) and a simulated npm that really rewrites manifests and lockfiles, so the
+restore tests prove byte-for-byte equality rather than "the right commands ran". Key behaviours were
+mutation-checked: removing them makes tests fail.
+
+Deferred on purpose: link groups and the version-coherence warning (M3, they are client features over
+existing state), the commit guard hook (M3), peer-range overrides (M2, needs a real registry to verify).
+Paths in core are POSIX; Windows support is not planned before M5.
+
 ## M2 · Real registry and the npm contract
 
 Embedded Verdaccio behind the `Registry` port. npm adapter contract suite against it. Peer-range overrides
