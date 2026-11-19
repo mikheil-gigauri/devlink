@@ -10,3 +10,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  # Sparkle, the menu bar app's only dependency.
+  - package-ecosystem: swift
+    directory: /apps/menubar
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps

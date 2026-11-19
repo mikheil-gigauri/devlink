@@ -8,6 +8,10 @@ let package = Package(
   products: [
     .executable(name: "Dryfit", targets: ["Dryfit"])
   ],
+  dependencies: [
+    // Updates the installed app from the appcast each release publishes (ADR 0010, amendment).
+    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
+  ],
   targets: [
     /// API models, the HTTP and event-stream client, and finding and starting the daemon. No UI.
     .target(name: "DryfitAPI"),
@@ -17,10 +21,13 @@ let package = Package(
       dependencies: ["DryfitAPI"],
       swiftSettings: [.defaultIsolation(MainActor.self)]
     ),
+    /// The app itself: scenes, the daemon connection and Sparkle. Only this target links Sparkle.
     .executableTarget(
       name: "Dryfit",
-      dependencies: ["DryfitMenu"],
-      swiftSettings: [.defaultIsolation(MainActor.self)]
+      dependencies: ["DryfitMenu", .product(name: "Sparkle", package: "Sparkle")],
+      swiftSettings: [.defaultIsolation(MainActor.self)],
+      // bundle.sh puts Sparkle.framework in Dryfit.app/Contents/Frameworks.
+      linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
     ),
     .testTarget(name: "DryfitAPITests", dependencies: ["DryfitAPI"]),
     .testTarget(

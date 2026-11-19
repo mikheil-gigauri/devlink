@@ -25,6 +25,11 @@ struct DryfitApp: App {
     .defaultLaunchBehavior(UserDefaults.standard.bool(forKey: Self.welcomedKey) ? .suppressed : .presented)
     .restorationBehavior(.disabled)
     .commands {
+      if let checkForUpdates = delegate.updates.checkForUpdates {
+        CommandGroup(after: .appInfo) {
+          Button("Check for Updates…", action: checkForUpdates)
+        }
+      }
       SidebarCommands()
       CommandGroup(replacing: .newItem) {
         Button("Add Library…") {
@@ -53,6 +58,7 @@ struct DryfitApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
   let model: MenuModel
   let navigation = AppNavigation()
+  let updates = Updates()
   private let home = DryfitHome.locate()
   private var failureWindow: FailureWindow?
   private var connection: Task<Void, Never>?
@@ -87,7 +93,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       openLog: { [home] in NSWorkspace.shared.open(home.log) },
       showFailures: { [weak self] id in self?.failureWindow?.show(selecting: id) },
       quit: { NSApp.terminate(nil) },
-      openAtLogin: Bundle.main.bundleURL.pathExtension == "app" ? Self.openAtLogin : nil)
+      openAtLogin: Bundle.main.bundleURL.pathExtension == "app" ? Self.openAtLogin : nil,
+      checkForUpdates: updates.checkForUpdates,
+      installUpdatesAutomatically: updates.installAutomatically)
   }
 
   /// Registers the app itself as a login item, only when the user turns it on.

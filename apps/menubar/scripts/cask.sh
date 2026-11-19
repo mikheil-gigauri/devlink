@@ -14,7 +14,9 @@ cask "dryfit" do
   desc "Menu bar app for testing unreleased npm libraries in real apps"
   homepage "https://mikheil-gigauri.github.io/dryfit/"
 
-  depends_on macos: ">= :sonoma"
+  # The app updates itself with Sparkle; brew upgrade leaves it to that.
+  auto_updates true
+  depends_on macos: ">= :tahoe"
 
   app "Dryfit.app"
 
