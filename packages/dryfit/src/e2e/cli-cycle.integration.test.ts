@@ -182,7 +182,9 @@ describe.skipIf(!process.features.typescript)('a working session through the dry
 
     await editLibrary('saved while watching');
     const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline && (await message(admin)) !== 'saved while watching') await sleep(500);
+    // Mid-sync the package is briefly missing from node_modules, so a failed require means "not yet".
+    const settled = () => message(admin).catch(() => undefined);
+    while (Date.now() < deadline && (await settled()) !== 'saved while watching') await sleep(500);
 
     expect([await message(shop), await message(admin)]).toEqual([
       'saved while watching',

@@ -49,7 +49,8 @@ one or two sentences for the changelog, in the user's terms. Changes to tests, d
 
 ## Releasing
 
-Releases run from `.github/workflows/release.yml` on every push to `main`. While changesets are pending,
+Releases run from `.github/workflows/release.yml` on every push to `main`, once CI (`ci.yml`, which
+it calls) passes for that commit. While changesets are pending,
 it keeps a "Version packages" pull request up to date. Merging that pull request publishes to npm with
 provenance, tags `@dryfit/cli@<version>`, and builds the menu bar app.
 

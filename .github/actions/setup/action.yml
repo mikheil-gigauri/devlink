@@ -1,0 +1,25 @@
+name: Set up Node and dependencies
+description: Installs Node (the .nvmrc version unless one is given) and the workspace's dependencies.
+
+inputs:
+  node-version:
+    description: The Node version. Defaults to the one in .nvmrc.
+    default: ""
+  cache:
+    description: The package manager cache to restore, or "" for none (publishing jobs build from a clean cache).
+    default: npm
+  registry-url:
+    description: The registry to write an .npmrc for, when the job publishes.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        node-version-file: ${{ inputs.node-version == '' && '.nvmrc' || '' }}
+        cache: ${{ inputs.cache }}
+        registry-url: ${{ inputs.registry-url }}
+    - shell: bash
+      run: npm ci --prefer-offline --no-audit --no-fund

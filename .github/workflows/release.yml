@@ -1,17 +1,28 @@
 name: Release
 
+# npm trusts this file by name (trusted publishing), so it stays release.yml.
 on:
   push:
     branches: [main]
 
-concurrency: release
-
 permissions: {}
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   npm:
     name: npm
+    needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One release at a time. Pushes that land meanwhile wait, and only the newest of them goes on.
+    concurrency:
+      group: release
+      cancel-in-progress: false
     permissions:
       contents: write # the release pull request, tags and GitHub releases
       pull-requests: write
@@ -20,19 +31,17 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
         with:
-          node-version-file: .nvmrc
-          cache: npm
+          cache: ""
           registry-url: https://registry.npmjs.org
-      - run: npm ci
       # With changesets on main: opens or updates the release pull request. Once that is merged:
       # publishes to npm, tags @dryfit/cli@<version> and creates the GitHub release. No npm token: npm
       # trusts this workflow (trusted publishing, set on the package's npmjs.com settings) and adds
       # provenance by itself.
       - id: changesets
-        uses: changesets/action@v2
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           version-script: npm run version-packages
           publish-script: npm run release
@@ -47,35 +56,38 @@ jobs:
     needs: npm
     if: needs.npm.outputs.published == 'true'
     runs-on: macos-latest
+    timeout-minutes: 45 # notarization waits on Apple
     permissions:
       contents: write # attach the app to the GitHub release
     env:
       VERSION: ${{ needs.npm.outputs.version }}
-      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: "@dryfit/cli@${{ env.VERSION }}"
-      - uses: actions/setup-node@v7
+          ref: refs/tags/@dryfit/cli@${{ needs.npm.outputs.version }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: Use the newest Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+      - uses: ./.github/actions/xcode
       - name: Check signing is set up
+        id: secrets
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           if [ -z "$MACOS_CERTIFICATE" ]; then
             echo "::warning::No Developer ID certificate in the repository secrets, so the app is released signed ad hoc and not notarized. See CONTRIBUTING.md#releasing."
-            echo "SIGN=false" >> "$GITHUB_ENV"
+            echo "sign=false" >> "$GITHUB_OUTPUT"
           else
-            echo "SIGN=true" >> "$GITHUB_ENV"
+            echo "sign=true" >> "$GITHUB_OUTPUT"
           fi
+          echo "cask=$([ -n "$MACOS_CERTIFICATE" ] && [ -n "$HOMEBREW_TAP_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Import the Developer ID certificate
-        if: env.SIGN == 'true'
+        if: steps.secrets.outputs.sign == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password="$(uuidgen)"
@@ -85,40 +97,56 @@ jobs:
           security unlock-keychain -p "$password" "$keychain"
           security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
+          # shellcheck disable=SC2046 # one argument per keychain already in the search list
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm "$RUNNER_TEMP/certificate.p12"
       - name: Build, sign and notarize Dryfit.app
-        if: env.SIGN == 'true'
+        id: notarized
+        if: steps.secrets.outputs.sign == 'true'
         env:
           DRYFIT_UNIVERSAL: "1"
           DRYFIT_SIGN_IDENTITY: Developer ID Application
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           apps/menubar/scripts/bundle.sh
           output="$(apps/menubar/scripts/notarize.sh)"
-          echo "ZIP=$(echo "$output" | tail -2 | head -1)" >> "$GITHUB_ENV"
-          echo "SHA256=$(echo "$output" | tail -1)" >> "$GITHUB_ENV"
+          echo "zip=$(echo "$output" | tail -2 | head -1)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(echo "$output" | tail -1)" >> "$GITHUB_OUTPUT"
       - name: Build Dryfit.app, signed ad hoc
-        if: env.SIGN != 'true'
+        if: steps.secrets.outputs.sign != 'true'
         env:
           DRYFIT_UNIVERSAL: "1"
         run: apps/menubar/scripts/bundle.sh
       - name: Pack it into Dryfit.dmg
+        id: dmg
         env:
-          DRYFIT_SIGN_IDENTITY: ${{ env.SIGN == 'true' && 'Developer ID Application' || '' }}
-        run: echo "DMG=$(apps/menubar/scripts/dmg.sh)" >> "$GITHUB_ENV"
+          DRYFIT_SIGN_IDENTITY: ${{ steps.secrets.outputs.sign == 'true' && 'Developer ID Application' || '' }}
+        run: echo "path=$(apps/menubar/scripts/dmg.sh)" >> "$GITHUB_OUTPUT"
       - name: Attach it to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          DMG: ${{ steps.dmg.outputs.path }}
+          ZIP: ${{ steps.notarized.outputs.zip }}
         run: gh release upload "@dryfit/cli@$VERSION" "$DMG" ${ZIP:+"$ZIP"} --clobber
       - name: Update the Homebrew cask
-        if: env.SIGN == 'true' && env.HOMEBREW_TAP_TOKEN != ''
+        if: steps.secrets.outputs.cask == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SHA256: ${{ steps.notarized.outputs.sha256 }}
         run: |
-          git clone "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/mikheil-gigauri/homebrew-dryfit.git" tap
-          mkdir -p tap/Casks
-          apps/menubar/scripts/cask.sh "$VERSION" "$SHA256" > tap/Casks/dryfit.rb
-          cd tap
+          git clone --depth 1 "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/mikheil-gigauri/homebrew-dryfit.git" "$RUNNER_TEMP/tap"
+          mkdir -p "$RUNNER_TEMP/tap/Casks"
+          apps/menubar/scripts/cask.sh "$VERSION" "$SHA256" > "$RUNNER_TEMP/tap/Casks/dryfit.rb"
+          cd "$RUNNER_TEMP/tap"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/dryfit.rb
-          git commit -m "dryfit $VERSION"
-          git push
+          # A re-run of a release finds the cask already up to date.
+          if git diff --cached --quiet; then
+            echo "The cask is already at $VERSION."
+          else
+            git commit -m "dryfit $VERSION"
+            git push
+          fi
