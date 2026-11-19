@@ -3,24 +3,35 @@ import Testing
 
 @testable import DryfitAPI
 
+/// A folder that is deleted when the last test holding it ends.
+final class TemporaryFolder: Sendable {
+  let url = FileManager.default.temporaryDirectory.appending(path: "dryfit-locator-\(UUID().uuidString)")
+
+  init() throws { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+
+  deinit { try? FileManager.default.removeItem(at: url) }
+}
+
+/// Outside the suite: StubURLProtocol keeps its handlers for the whole run, and a handler that called a
+/// method would keep the suite, and its folder, alive with it.
+private func health(pid: Int32, apiVersion: Int = 1, name: String = "dryfit") -> StubURLProtocol.Reply {
+  .json(#"{"name":"\#(name)","version":"0.1.0","apiVersion":\#(apiVersion),"pid":\#(pid),"registryUrl":"r","startedAt":"s"}"#)
+}
+
 @Suite struct DaemonLocatorTests {
-  let root: URL
+  let folder: TemporaryFolder
+  var root: URL { folder.url }
   let home: DryfitHome
 
   init() throws {
-    root = FileManager.default.temporaryDirectory.appending(path: "dryfit-locator-\(UUID().uuidString)")
-    home = DryfitHome(root: root)
-    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    folder = try TemporaryFolder()
+    home = DryfitHome(root: folder.url)
     try String(repeating: "b", count: 64).appending("\n").write(to: home.token, atomically: true, encoding: .utf8)
   }
 
   func describeDaemon(pid: Int32, port: Int = 4875) throws {
     let info = #"{"pid":\#(pid),"port":\#(port),"version":"0.1.0","registryUrl":"","startedAt":""}"#
     try info.write(to: home.daemonInfo, atomically: true, encoding: .utf8)
-  }
-
-  func health(pid: Int32, apiVersion: Int = 1, name: String = "dryfit") -> StubURLProtocol.Reply {
-    .json(#"{"name":"\#(name)","version":"0.1.0","apiVersion":\#(apiVersion),"pid":\#(pid),"registryUrl":"r","startedAt":"s"}"#)
   }
 
   @Test func findsItInDryfitHomeOrTheDefaultFolder() {
