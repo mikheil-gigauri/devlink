@@ -1,0 +1,65 @@
+{
+  "name": "@dryfit/cli",
+  "version": "0.1.0",
+  "description": "Test unreleased npm libraries in real apps: dryfit publishes your library to a local registry and installs it into its consumers, then puts them back exactly as they were.",
+  "keywords": [
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "link",
+    "yalc",
+    "npm-link",
+    "local-registry",
+    "verdaccio",
+    "monorepo",
+    "library",
+    "development"
+  ],
+  "homepage": "https://mikheil-gigauri.github.io/dryfit/",
+  "bugs": "https://github.com/mikheil-gigauri/dryfit/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikheil-gigauri/dryfit.git",
+    "directory": "packages/dryfit"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "dryfit": "dist/dryfit.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "prepack": "npm run build && cp ../../README.md ../../LICENSE .",
+    "build": "tsdown --config-loader native",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:all": "vitest run",
+    "test:watch": "vitest --project unit",
+    "typecheck": "tsc --noEmit",
+    "api:export": "node scripts/export-api.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/semver": "^7.8.0",
+    "@yarnpkg/cli-dist": "^4.18.1",
+    "bun": "^1.4.4",
+    "pnpm": "^12.21.0",
+    "tsdown": "^0.23.7",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  },
+  "dependencies": {
+    "semver": "^7.8.6",
+    "verdaccio": "^6.11.2"
+  }
+}

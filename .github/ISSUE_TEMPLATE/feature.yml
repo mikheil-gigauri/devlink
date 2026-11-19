@@ -1,12 +1,12 @@
 name: Feature request
-description: Something devlink could do for you.
+description: Something dryfit could do for you.
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
       label: The problem
-      description: What you are trying to do, and where devlink gets in the way or falls short.
+      description: What you are trying to do, and where dryfit gets in the way or falls short.
     validations:
       required: true
   - type: textarea

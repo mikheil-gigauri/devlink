@@ -10,8 +10,8 @@ If each surface owned the logic, they would drift.
 
 ## Decision
 
-One long-lived process, `devlinkd`, owns everything: the embedded registry, build watchers, the
-publish → install → invalidate pipeline, and persisted state in `~/.devlink`. It is started on demand by the
+One long-lived process, `dryfitd`, owns everything: the embedded registry, build watchers, the
+publish → install → invalidate pipeline, and persisted state in `~/.dryfit`. It is started on demand by the
 CLI and can be installed as a launchd agent so it starts at login.
 
 Clients are thin. The CLI and the menu bar app talk to the daemon over a local HTTP API:
@@ -22,7 +22,7 @@ Clients are thin. The CLI and the menu bar app talk to the daemon over a local H
 - The API schema lives in one TypeScript module and is exported as JSON Schema so the Swift client is
   generated from, or at least tested against, the same contract.
 
-Security: the server binds to `127.0.0.1` only, requires a bearer token read from `~/.devlink/token`
+Security: the server binds to `127.0.0.1` only, requires a bearer token read from `~/.dryfit/token`
 (mode `0600`), and rejects any request carrying an `Origin` header. Together these stop a web page in the
 user's browser from triggering a publish or install, which would amount to running arbitrary code.
 

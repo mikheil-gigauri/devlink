@@ -28,7 +28,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       # With changesets on main: opens or updates the release pull request. Once that is merged:
-      # publishes to npm, tags @gigauri96/devlink@<version> and creates the GitHub release. No npm token: npm
+      # publishes to npm, tags @dryfit/cli@<version> and creates the GitHub release. No npm token: npm
       # trusts this workflow (trusted publishing, set on the package's npmjs.com settings) and adds
       # provenance by itself.
       - id: changesets
@@ -40,7 +40,7 @@ jobs:
           pr-title: Release
       - id: version
         if: steps.changesets.outputs.published == 'true'
-        run: echo "version=$(node -p "require('./packages/devlink/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./packages/dryfit/package.json').version")" >> "$GITHUB_OUTPUT"
 
   menubar:
     name: Menu bar app
@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: "@gigauri96/devlink@${{ env.VERSION }}"
+          ref: "@dryfit/cli@${{ env.VERSION }}"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -87,11 +87,11 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm "$RUNNER_TEMP/certificate.p12"
-      - name: Build, sign and notarize Devlink.app
+      - name: Build, sign and notarize Dryfit.app
         if: env.SIGN == 'true'
         env:
-          DEVLINK_UNIVERSAL: "1"
-          DEVLINK_SIGN_IDENTITY: Developer ID Application
+          DRYFIT_UNIVERSAL: "1"
+          DRYFIT_SIGN_IDENTITY: Developer ID Application
         run: |
           apps/menubar/scripts/bundle.sh
           output="$(apps/menubar/scripts/notarize.sh)"
@@ -101,16 +101,16 @@ jobs:
         if: env.SIGN == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "@gigauri96/devlink@$VERSION" "$ZIP" --clobber
+        run: gh release upload "@dryfit/cli@$VERSION" "$ZIP" --clobber
       - name: Update the Homebrew cask
         if: env.SIGN == 'true' && env.HOMEBREW_TAP_TOKEN != ''
         run: |
-          git clone "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/mikheil-gigauri/homebrew-devlink.git" tap
+          git clone "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/mikheil-gigauri/homebrew-dryfit.git" tap
           mkdir -p tap/Casks
-          apps/menubar/scripts/cask.sh "$VERSION" "$SHA256" > tap/Casks/devlink.rb
+          apps/menubar/scripts/cask.sh "$VERSION" "$SHA256" > tap/Casks/dryfit.rb
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/devlink.rb
-          git commit -m "devlink $VERSION"
+          git add Casks/dryfit.rb
+          git commit -m "dryfit $VERSION"
           git push

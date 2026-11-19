@@ -21,7 +21,7 @@ interface ConsumerIntegration {
 }
 ```
 
-After install, devlink removes the union of cache paths for the detected integrations and notifies the
+After install, dryfit removes the union of cache paths for the detected integrations and notifies the
 user (or a managed dev server, later) that a restart is needed. Users can add paths in config for anything
 we do not detect.
 

@@ -4,7 +4,7 @@
 
 ## Context
 
-The CLI is complete on its own, but the state devlink manages (which consumers are on which dev version,
+The CLI is complete on its own, but the state dryfit manages (which consumers are on which dev version,
 whether a build failed) is ambient. It should be glanceable without a terminal.
 
 ## Decision

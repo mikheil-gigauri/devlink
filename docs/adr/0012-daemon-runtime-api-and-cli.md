@@ -12,7 +12,7 @@ usually live there.
 
 ## Decision
 
-**Home folder.** Everything lives in `~/.devlink` (or `$DEVLINK_HOME`): `config.json` (scan roots,
+**Home folder.** Everything lives in `~/.dryfit` (or `$DRYFIT_HOME`): `config.json` (scan roots,
 ports), `state.json`, `token` (0600), `daemon.json` (pid, port, version, written once listening),
 `registry/` (0700), `snapshots/`, `staging/` and `logs/daemon.log`.
 
@@ -26,7 +26,7 @@ lock.
 rather than REST resources because library names contain slashes, and because a single typed operation
 map is the simplest thing to mirror in Swift. The contract (operation names, input and output types,
 input validators, error codes) is one module, `src/daemon/api.ts`; its JSON Schema export lands with the
-menu bar app (M4). Errors are `{ "error": { code, message, details } }` with the `DevlinkError` codes.
+menu bar app (M4). Errors are `{ "error": { code, message, details } }` with the `DryfitError` codes.
 Every request except `GET /v1/health` needs `Authorization: Bearer <token>`; requests with an `Origin`
 header are refused. Health only says who is listening (name, version, pid), so a client can confirm
 that the process on the port is the daemon `daemon.json` describes before it sends the token.
@@ -51,26 +51,26 @@ federation host and its remotes). Groups link and restore together, and `status`
 one group run different dev versions of the same library (ADR 0005). State moves to version 2; version 1
 files are read and upgraded.
 
-**Commit guard.** A POSIX `sh` block that greps staged manifests and lockfiles for devlink's dev-version
-pattern (`-dev.` plus a 14-digit stamp). It needs neither Node nor devlink at commit time, so it works
-from GUI git clients with a minimal `PATH`, and it cannot break when devlink moves. It is inserted,
+**Commit guard.** A POSIX `sh` block that greps staged manifests and lockfiles for dryfit's dev-version
+pattern (`-dev.` plus a 14-digit stamp). It needs neither Node nor dryfit at commit time, so it works
+from GUI git clients with a minimal `PATH`, and it cannot break when dryfit moves. It is inserted,
 between marker lines, at the top of the effective hook file (`git rev-parse --git-path hooks`, which
 follows `core.hooksPath` and therefore Husky), leaving any existing hook intact: restoring gives back the hook's exact bytes, an empty one included,
-and deletes only a file devlink created. Paths are read with `core.quotePath=false`, so non-ASCII
+and deletes only a file dryfit created. Paths are read with `core.quotePath=false`, so non-ASCII
 folder names are checked too. Linking installs it by
 default (`--no-guard` to opt out); restoring removes it; every install re-applies it, because Husky
 regenerates its hook stubs on `npm install`. `git commit --no-verify` remains the escape hatch.
 
 **Uplinks.** The registry proxies the user's own npm registries, read from `npm config` at start:
 the default registry plus every scoped registry. Their auth tokens are read from the user's npmrc files
-into memory and handed to Verdaccio in-process; devlink never writes them anywhere.
+into memory and handed to Verdaccio in-process; dryfit never writes them anywhere.
 
 **Daemon lifecycle.** The CLI starts the daemon on demand, detached, logging to `logs/daemon.log`, and
 waits for `/v1/health`. When the daemon's version differs from the CLI's, the CLI restarts it. A stale
 `daemon.json` (dead pid) is ignored, and the CLI never signals a pid that health has not confirmed as
-the daemon: after a crash or reboot the pid may belong to something else. `devlink daemon install` writes a launchd agent that records the
+the daemon: after a crash or reboot the pid may belong to something else. `dryfit daemon install` writes a launchd agent that records the
 current `node`, CLI path and `PATH` (launchd's default `PATH` cannot find npm under nvm or Homebrew),
-with `KeepAlive` only on unsuccessful exit, so `devlink daemon stop` stays stopped.
+with `KeepAlive` only on unsuccessful exit, so `dryfit daemon stop` stays stopped.
 
 **CLI.** `node:util` `parseArgs`, no framework. Human output by default, `--json` on every command for
 scripts and agents. Library registration detects Nx (`project.json` build target), Angular CLI

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Runs the menu's end-to-end test (EndToEndTests) against a real daemon in a throwaway sandbox:
-# a library, a consumer that depends on it, and a devlink home of their own. Touches nothing else.
+# a library, a consumer that depends on it, and a dryfit home of their own. Touches nothing else.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
-cli="$here/../../packages/devlink/dist/devlink.mjs"
+cli="$here/../../packages/dryfit/dist/dryfit.mjs"
 [ -f "$cli" ] || { echo "Build the CLI first: npm run build" >&2; exit 1; }
 
-sandbox="$(mktemp -d "${TMPDIR%/}/devlink-e2e.XXXXXX")"
-export DEVLINK_HOME="$sandbox/home"
+sandbox="$(mktemp -d "${TMPDIR%/}/dryfit-e2e.XXXXXX")"
+export DRYFIT_HOME="$sandbox/home"
 touch "$sandbox/started"
 finish() {
   status=$?
-  if [ $status -ne 0 ] && [ -f "$DEVLINK_HOME/logs/daemon.log" ]; then
+  if [ $status -ne 0 ] && [ -f "$DRYFIT_HOME/logs/daemon.log" ]; then
     echo "--- daemon log (last 40 lines) ---" >&2
-    tail -40 "$DEVLINK_HOME/logs/daemon.log" >&2
+    tail -40 "$DRYFIT_HOME/logs/daemon.log" >&2
   fi
   # A crash in the test process leaves only "signal code N" above; macOS's report has the stack.
   if [ $status -ne 0 ]; then
@@ -57,24 +57,24 @@ JSON
 (cd "$sandbox/repos/shop" && npm install --no-audit --no-fund --silent && git init -q && git add -A \
   && git -c user.name=e2e -c user.email=e2e@localhost commit -qm init)
 
-# Ports of its own, so a devlink you already run is left alone.
-mkdir -p "$DEVLINK_HOME"
+# Ports of its own, so a dryfit you already run is left alone.
+mkdir -p "$DRYFIT_HOME"
 printf '{"roots":["%s"],"ports":{"api":%s,"registry":%s}}\n' "$sandbox/repos" \
-  "${DEVLINK_E2E_API_PORT:-4885}" "${DEVLINK_E2E_REGISTRY_PORT:-4884}" > "$DEVLINK_HOME/config.json"
+  "${DRYFIT_E2E_API_PORT:-4885}" "${DRYFIT_E2E_REGISTRY_PORT:-4884}" > "$DRYFIT_HOME/config.json"
 node "$cli" daemon start >/dev/null
 (cd "$sandbox/repos/ui" && node "$cli" add --publish-dir dist --build "node build.js" >/dev/null)
 node "$cli" daemon stop >/dev/null   # the test starts it from the menu
 
 cd "$here"
-export DEVLINK_E2E_CLI="$cli" DEVLINK_E2E_LIBRARY="$sandbox/repos/ui" DEVLINK_E2E_CONSUMER="$sandbox/repos/shop"
+export DRYFIT_E2E_CLI="$cli" DRYFIT_E2E_LIBRARY="$sandbox/repos/ui" DRYFIT_E2E_CONSUMER="$sandbox/repos/shop"
 if ! xcrun swift test --filter EndToEndTests; then
   # In CI, run it again under lldb: a crash in the test process otherwise leaves no stack at all.
   if [ -n "${CI:-}" ]; then
     helper="$(dirname "$(xcrun --find swift)")/../libexec/swift/pm/swiftpm-testing-helper"
     # One bundle for the package (Xcode 26), or one per test target (Xcode 27).
     bin="$(xcrun swift build --show-bin-path)"
-    bundle="$bin/DevlinkMenuBarPackageTests.xctest/Contents/MacOS/DevlinkMenuBarPackageTests"
-    [ -f "$bundle" ] || bundle="$bin/DevlinkMenuTests.xctest/Contents/MacOS/DevlinkMenuTests"
+    bundle="$bin/DryfitMenuBarPackageTests.xctest/Contents/MacOS/DryfitMenuBarPackageTests"
+    [ -f "$bundle" ] || bundle="$bin/DryfitMenuTests.xctest/Contents/MacOS/DryfitMenuTests"
     node "$cli" daemon stop >/dev/null 2>&1 || true   # the test starts from offline
     platform="$(xcrun --show-sdk-platform-path)/Developer"
     echo "--- the test again, under lldb ---" >&2

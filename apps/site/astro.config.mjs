@@ -2,15 +2,15 @@
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 
-const repo = 'https://github.com/mikheil-gigauri/devlink';
+const repo = 'https://github.com/mikheil-gigauri/dryfit';
 
 export default defineConfig({
   site: 'https://mikheil-gigauri.github.io',
-  base: '/devlink',
+  base: '/dryfit',
   trailingSlash: 'always',
   integrations: [
     starlight({
-      title: 'devlink',
+      title: 'dryfit',
       description:
         'Test unreleased npm libraries inside real consumer apps, installed the way they will be released.',
       favicon: '/favicon.svg',

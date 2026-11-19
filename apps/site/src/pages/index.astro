@@ -1,23 +1,23 @@
 ---
 // The landing page (ADR 0011). Everything else on the site is Starlight; this page is its own layout so
-// the hero can show what devlink does instead of describing it.
+// the hero can show what dryfit does instead of describing it.
 import '@fontsource-variable/schibsted-grotesk';
 import '@fontsource-variable/martian-mono';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const repo = 'https://github.com/mikheil-gigauri/devlink';
+const repo = 'https://github.com/mikheil-gigauri/dryfit';
 const docs = (path: string) => `${base}${path}/`;
 const apps = ['shop', 'admin', 'checkout'];
 
 const steps = [
   {
     title: 'Link',
-    command: 'devlink link ../shop',
-    text: 'devlink saves the app’s package.json and lockfile, and adds a git hook that keeps dev builds out of commits.',
+    command: 'dryfit link ../shop',
+    text: 'dryfit saves the app’s package.json and lockfile, and adds a git hook that keeps dev builds out of commits.',
   },
   {
     title: 'Edit',
-    command: 'devlink watch',
+    command: 'dryfit watch',
     text: 'Work on the library as usual. Every save starts a build.',
   },
   {
@@ -27,7 +27,7 @@ const steps = [
   },
   {
     title: 'Restore',
-    command: 'devlink restore ../shop',
+    command: 'dryfit restore ../shop',
     text: 'package.json and the lockfile go back byte for byte, the app reinstalls from them, and the hook is removed.',
   },
 ];
@@ -46,10 +46,10 @@ const comparison: [string, string, string, string][] = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>devlink: test library changes in your real apps</title>
+    <title>dryfit: test library changes in your real apps</title>
     <meta
       name="description"
-      content="devlink publishes every library change as a new dev version to a registry on your machine, installs it into the apps you choose, and puts them back exactly as they were."
+      content="dryfit publishes every library change as a new dev version to a registry on your machine, installs it into the apps you choose, and puts them back exactly as they were."
     />
     <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
     <script is:inline>
@@ -70,7 +70,7 @@ const comparison: [string, string, string, string][] = [
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="bar">
-      <a class="mark" href={base} aria-label="devlink home">
+      <a class="mark" href={base} aria-label="dryfit home">
         <svg viewBox="0 0 32 32" aria-hidden="true"
           ><circle cx="9" cy="16" r="4" class="mark-release"></circle><path d="M13 16h6"></path><circle
             cx="23"
@@ -78,7 +78,7 @@ const comparison: [string, string, string, string][] = [
             r="4"
             class="mark-dev"></circle></svg
         >
-        devlink
+        dryfit
       </a>
       <nav aria-label="Site">
         <a href={docs('guides/getting-started')}>Docs</a>
@@ -92,12 +92,12 @@ const comparison: [string, string, string, string][] = [
         <div class="pitch">
           <h1>Your library’s next release, running in your app today.</h1>
           <p class="lede">
-            devlink publishes each change you save as a new dev version to a registry on your machine, installs it
+            dryfit publishes each change you save as a new dev version to a registry on your machine, installs it
             into the apps you choose with their own package manager, and puts every app back exactly as it was when
             you are done.
           </p>
-          <div class="command" data-copy="npx @gigauri96/devlink init">
-            <code><span class="prompt" aria-hidden="true">$</span> npx @gigauri96/devlink init</code>
+          <div class="command" data-copy="npx @dryfit/cli init">
+            <code><span class="prompt" aria-hidden="true">$</span> npx @dryfit/cli init</code>
             <button type="button" class="copy">Copy</button>
             <span class="copied" role="status"></span>
           </div>
@@ -153,11 +153,11 @@ const comparison: [string, string, string, string][] = [
         <div class="menu-text">
           <h2 id="menu-title">Or from the menu bar</h2>
           <p>
-            On macOS, devlink’s menu shows every library, the apps it is linked to and the version each one has. Turn
+            On macOS, dryfit’s menu shows every library, the apps it is linked to and the version each one has. Turn
             watching on, link another app, restore one, or read why an install failed, without a terminal.
           </p>
-          <div class="command" data-copy="brew install --cask mikheil-gigauri/devlink/devlink">
-            <code><span class="prompt" aria-hidden="true">$</span> brew install --cask mikheil-gigauri/devlink/devlink</code>
+          <div class="command" data-copy="brew install --cask mikheil-gigauri/dryfit/dryfit">
+            <code><span class="prompt" aria-hidden="true">$</span> brew install --cask mikheil-gigauri/dryfit/dryfit</code>
             <button type="button" class="copy">Copy</button>
             <span class="copied" role="status"></span>
           </div>
@@ -168,7 +168,7 @@ const comparison: [string, string, string, string][] = [
             src={`${base}menu/online.light.png`}
             width="340"
             height="490"
-            alt="The devlink menu: a failed install of @acme/ui into admin at the top, then @acme/ui watching with shop and admin linked, @acme/forms not published yet, and a checkout group warning that its apps have different versions."
+            alt="The dryfit menu: a failed install of @acme/ui into admin at the top, then @acme/ui watching with shop and admin linked, @acme/forms not published yet, and a checkout group warning that its apps have different versions."
           />
           <img class="only-dark" src={`${base}menu/online.dark.png`} width="340" height="490" alt="" />
         </div>
@@ -177,7 +177,7 @@ const comparison: [string, string, string, string][] = [
       <section class="compare" aria-labelledby="compare-title">
         <h2 id="compare-title">Why not npm link or yalc?</h2>
         <p>
-          Both are faster for a quick look. devlink is for when the change has to behave in the app exactly as the
+          Both are faster for a quick look. dryfit is for when the change has to behave in the app exactly as the
           release will. <a href={docs('guides/comparison')}>The full comparison</a> covers what each one trades.
         </p>
         <div class="table">
@@ -185,7 +185,7 @@ const comparison: [string, string, string, string][] = [
             <thead>
               <tr>
                 <td></td>
-                <th scope="col">devlink</th>
+                <th scope="col">dryfit</th>
                 <th scope="col">npm link</th>
                 <th scope="col">yalc</th>
               </tr>
@@ -209,7 +209,7 @@ const comparison: [string, string, string, string][] = [
 
     <footer class="foot">
       <p>
-        devlink is open source under the MIT license. Read <a href={docs('design')}>why it works the way it does</a>,{' '}
+        dryfit is open source under the MIT license. Read <a href={docs('design')}>why it works the way it does</a>,{' '}
         or <a href={repo}>see the code on GitHub</a>.
       </p>
     </footer>

@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# The M5 exit check, rehearsed: someone who has never seen devlink runs it with npx from the packed
+# The M5 exit check, rehearsed: someone who has never seen dryfit runs it with npx from the packed
 # package, in a home folder of their own, and gets a library's change into an app and back out again.
 #
-#   scripts/newcomer.sh [path/to/devlink-x.y.z.tgz]
+#   scripts/newcomer.sh [path/to/dryfit-x.y.z.tgz]
 #
-# Without a tarball it builds and packs packages/devlink. It touches nothing outside a temporary
-# folder: HOME, the npm cache and devlink's home all live there. Set DEVLINK_PORTS=api,registry to
-# avoid the default ports when a devlink is already running on this machine.
+# Without a tarball it builds and packs packages/dryfit. It touches nothing outside a temporary
+# folder: HOME, the npm cache and dryfit's home all live there. Set DRYFIT_PORTS=api,registry to
+# avoid the default ports when a dryfit is already running on this machine.
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
-sandbox="$(mktemp -d "${TMPDIR:-/tmp}/devlink-newcomer.XXXXXX")"
+sandbox="$(mktemp -d "${TMPDIR:-/tmp}/dryfit-newcomer.XXXXXX")"
 sandbox="${sandbox%/}"
 
 tarball="${1:-}"
 if [ -z "$tarball" ]; then
-  (cd "$repo" && npm run build --silent -w @gigauri96/devlink >/dev/null)
-  tarball="$(cd "$repo/packages/devlink" && npm pack --silent --pack-destination "$sandbox" | tail -1)"
+  (cd "$repo" && npm run build --silent -w @dryfit/cli >/dev/null)
+  tarball="$(cd "$repo/packages/dryfit" && npm pack --silent --pack-destination "$sandbox" | tail -1)"
   tarball="$sandbox/$tarball"
 fi
 tarball="$(cd "$(dirname "$tarball")" && pwd)/$(basename "$tarball")"
@@ -25,15 +25,15 @@ export HOME="$sandbox/home"
 export npm_config_cache="$sandbox/npm-cache"
 export npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false
 code="$HOME/code"
-devlink() { npx --yes --package="$tarball" devlink "$@"; }
+dryfit() { npx --yes --package="$tarball" dryfit "$@"; }
 
 finish() {
   status=$?
   if [ $status -ne 0 ]; then
     echo "--- newcomer check failed; daemon log (last 40 lines) ---" >&2
-    tail -40 "$HOME/.devlink/logs/daemon.log" 2>/dev/null >&2 || true
+    tail -40 "$HOME/.dryfit/logs/daemon.log" 2>/dev/null >&2 || true
   fi
-  (cd "$code/ui" 2>/dev/null && devlink daemon stop >/dev/null 2>&1) || true
+  (cd "$code/ui" 2>/dev/null && dryfit daemon stop >/dev/null 2>&1) || true
   rm -rf "$sandbox"
 }
 trap finish EXIT
@@ -57,25 +57,25 @@ JSON
 before_manifest="$(cat "$code/shop/package.json")"
 before_lockfile="$(cat "$code/shop/package-lock.json")"
 
-if [ -n "${DEVLINK_PORTS:-}" ]; then
-  mkdir -p "$HOME/.devlink"
-  printf '{"roots":[],"ports":{"api":%s,"registry":%s}}\n' "${DEVLINK_PORTS%,*}" "${DEVLINK_PORTS#*,}" \
-    > "$HOME/.devlink/config.json"
+if [ -n "${DRYFIT_PORTS:-}" ]; then
+  mkdir -p "$HOME/.dryfit"
+  printf '{"roots":[],"ports":{"api":%s,"registry":%s}}\n' "${DRYFIT_PORTS%,*}" "${DRYFIT_PORTS#*,}" \
+    > "$HOME/.dryfit/config.json"
 fi
 
 cd "$code/ui"
-step "npx @gigauri96/devlink init"
-devlink init
-step "npx @gigauri96/devlink add"
-devlink add
-step "npx @gigauri96/devlink consumers"
-devlink consumers | tee "$sandbox/consumers.txt"
+step "npx @dryfit/cli init"
+dryfit init
+step "npx @dryfit/cli add"
+dryfit add
+step "npx @dryfit/cli consumers"
+dryfit consumers | tee "$sandbox/consumers.txt"
 grep -q shop "$sandbox/consumers.txt" || fail "consumers did not find shop"
-step "npx @gigauri96/devlink link ../shop"
-devlink link ../shop
-step "Edit the library, then npx @gigauri96/devlink sync"
+step "npx @dryfit/cli link ../shop"
+dryfit link ../shop
+step "Edit the library, then npx @dryfit/cli sync"
 echo "module.exports = 'edited';" > index.js
-devlink sync
+dryfit sync
 got="$(cd "$code/shop" && node -p "require('@acme/ui')")"
 [ "$got" = edited ] || fail "shop runs '$got', not the edit"
 echo "✓ shop runs the edited library"
@@ -87,13 +87,13 @@ fi
 (cd "$code/shop" && git reset -q)
 echo "✓ refused"
 
-step "npx @gigauri96/devlink restore --all"
-devlink restore --all
+step "npx @dryfit/cli restore --all"
+dryfit restore --all
 [ "$(cat "$code/shop/package.json")" = "$before_manifest" ] || fail "package.json differs after restore"
 [ "$(cat "$code/shop/package-lock.json")" = "$before_lockfile" ] || fail "package-lock.json differs after restore"
 version="$(cd "$code/shop" && node -p "require('@acme/ui/package.json').version")"
 [ "$version" = 1.0.0 ] || fail "shop still has $version installed"
 echo "✓ shop is back as it was"
 
-devlink daemon stop >/dev/null
+dryfit daemon stop >/dev/null
 printf '\n\033[1;32m✓ newcomer check passed\033[0m\n'

@@ -9,5 +9,5 @@ DerivedData/
 .astro/
 apps/menubar/build/
 *.actual.png
-packages/devlink/README.md
-packages/devlink/LICENSE
+packages/dryfit/README.md
+packages/dryfit/LICENSE

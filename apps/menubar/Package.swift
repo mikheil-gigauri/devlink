@@ -1,31 +1,31 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-/// The devlink menu bar app (ADR 0010, ADR 0013): a pure client of the daemon's API.
+/// The dryfit menu bar app (ADR 0010, ADR 0013): a pure client of the daemon's API.
 let package = Package(
-  name: "DevlinkMenuBar",
+  name: "DryfitMenuBar",
   platforms: [.macOS(.v26)],
   products: [
-    .executable(name: "Devlink", targets: ["Devlink"])
+    .executable(name: "Dryfit", targets: ["Dryfit"])
   ],
   targets: [
     /// API models, the HTTP and event-stream client, and finding and starting the daemon. No UI.
-    .target(name: "DevlinkAPI"),
+    .target(name: "DryfitAPI"),
     /// The view model and views.
     .target(
-      name: "DevlinkMenu",
-      dependencies: ["DevlinkAPI"],
+      name: "DryfitMenu",
+      dependencies: ["DryfitAPI"],
       swiftSettings: [.defaultIsolation(MainActor.self)]
     ),
     .executableTarget(
-      name: "Devlink",
-      dependencies: ["DevlinkMenu"],
+      name: "Dryfit",
+      dependencies: ["DryfitMenu"],
       swiftSettings: [.defaultIsolation(MainActor.self)]
     ),
-    .testTarget(name: "DevlinkAPITests", dependencies: ["DevlinkAPI"]),
+    .testTarget(name: "DryfitAPITests", dependencies: ["DryfitAPI"]),
     .testTarget(
-      name: "DevlinkMenuTests",
-      dependencies: ["DevlinkMenu"],
+      name: "DryfitMenuTests",
+      dependencies: ["DryfitMenu"],
       exclude: ["__Snapshots__"]
     ),
   ]

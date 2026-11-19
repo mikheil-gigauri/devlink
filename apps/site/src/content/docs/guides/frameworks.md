@@ -1,10 +1,10 @@
 ---
 title: Frameworks and caches
-description: Which build caches devlink clears after an install, and when to restart your dev server.
+description: Which build caches dryfit clears after an install, and when to restart your dev server.
 ---
 
 Several build tools keep a prebuilt copy of your dependencies and serve it until they notice a change.
-A new version in `node_modules` is not always noticed, so after every install devlink deletes the caches
+A new version in `node_modules` is not always noticed, so after every install dryfit deletes the caches
 it knows about in that app:
 
 | Detected from                           | Cache cleared                                             |
@@ -13,12 +13,12 @@ it knows about in that app:
 | `@angular-architects/native-federation` | `node_modules/.cache/native-federation`                   |
 | `vite`                                  | `node_modules/.vite`                                      |
 
-devlink only ever deletes folders inside the app.
+dryfit only ever deletes folders inside the app.
 
 ## Restart the dev server
 
 A running dev server holds the old build in memory. After a sync, restart it unless it reloaded by itself.
-`devlink events` and the menu bar show when each install finished.
+`dryfit events` and the menu bar show when each install finished.
 
 ## Apps that run together
 
@@ -27,9 +27,9 @@ they end up on different dev versions, the shared copy may not be the one you ju
 group so they are linked, synced and restored together:
 
 ```bash
-devlink group save checkout ../shell ../cart ../payments
-devlink link --group checkout
+dryfit group save checkout ../shell ../cart ../payments
+dryfit link --group checkout
 ```
 
-`devlink status` and the menu bar warn when the apps in a group have different versions of the same
+`dryfit status` and the menu bar warn when the apps in a group have different versions of the same
 library.

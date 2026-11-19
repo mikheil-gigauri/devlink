@@ -1,19 +1,19 @@
 ---
 title: Troubleshooting
-description: What to do when a change does not show up, an install fails, or devlink will not start.
+description: What to do when a change does not show up, an install fails, or dryfit will not start.
 ---
 
-Start with `devlink doctor`. It checks Node, npm, your config and project roots, and the service, and says
-what to fix. `devlink events` follows what the service is doing while you reproduce a problem, and its log is in
-`~/.devlink/logs/daemon.log`.
+Start with `dryfit doctor`. It checks Node, npm, your config and project roots, and the service, and says
+what to fix. `dryfit events` follows what the service is doing while you reproduce a problem, and its log is in
+`~/.dryfit/logs/daemon.log`.
 
 ## My change does not show up
 
-Check that the install reached the app: `devlink status` lists each linked app with the version it has.
+Check that the install reached the app: `dryfit status` lists each linked app with the version it has.
 If the version is right, the app's dev server is still serving the old build. Restart it. If it uses a
-build cache devlink does not know about, delete that folder too.
+build cache dryfit does not know about, delete that folder too.
 
-If the version is not right, the build or the install failed. `devlink status` shows the failure, and the
+If the version is not right, the build or the install failed. `dryfit status` shows the failure, and the
 menu bar app shows its full output.
 
 ## An install fails with a peer dependency error
@@ -25,32 +25,32 @@ fails for the release too. npm's `ERESOLVE` errors are often fixed by the app's 
 ## pnpm refuses the dev build
 
 `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` comes from a `pnpm install` run by hand while the app is linked.
-devlink's own installs lift that limit; yours do not. Run `devlink sync`, or restore the app first.
+dryfit's own installs lift that limit; yours do not. Run `dryfit sync`, or restore the app first.
 
 ## "Unsupported package manager"
 
-devlink supports npm, pnpm, Yarn 2 or newer, and Bun with a text lockfile. Yarn 1 projects cannot be
+dryfit supports npm, pnpm, Yarn 2 or newer, and Bun with a text lockfile. Yarn 1 projects cannot be
 linked, and Bun projects with only a binary `bun.lockb` need `bun install --save-text-lockfile` once.
 
 ## The ports are taken
 
-devlink uses `127.0.0.1:4874` for its registry and `127.0.0.1:4875` for the service. To use others, set
-`ports` in `~/.devlink/config.json` and restart:
+dryfit uses `127.0.0.1:4874` for its registry and `127.0.0.1:4875` for the service. To use others, set
+`ports` in `~/.dryfit/config.json` and restart:
 
 ```json
 { "roots": ["/Users/you/code"], "ports": { "api": 4885, "registry": 4884 } }
 ```
 
 ```bash
-devlink daemon restart
+dryfit daemon restart
 ```
 
-## An app is still linked after I deleted devlink's state
+## An app is still linked after I deleted dryfit's state
 
-Restoring needs the snapshot in `~/.devlink/snapshots`. Without it, put the app back with git:
+Restoring needs the snapshot in `~/.dryfit/snapshots`. Without it, put the app back with git:
 
 ```bash
 git checkout -- package.json package-lock.json && npm ci
 ```
 
-Use your own lockfile name and install command, and delete `.git/hooks/pre-commit` if devlink created it.
+Use your own lockfile name and install command, and delete `.git/hooks/pre-commit` if dryfit created it.

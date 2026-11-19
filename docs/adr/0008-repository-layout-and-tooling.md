@@ -10,8 +10,8 @@ one install, and have tests pass, without learning a monorepo framework.
 ## Decision
 
 ```
-devlink/
-├── packages/devlink/     the published npm package: CLI, daemon, core
+dryfit/
+├── packages/dryfit/     the published npm package: CLI, daemon, core
 │   └── src/
 │       ├── core/         pure domain logic; no Node I/O imports
 │       ├── adapters/     package managers, integrations, registry, fs, process
@@ -27,7 +27,7 @@ devlink/
 - **TypeScript**, strict, ESM only, Node 22.12 or newer (Node 20 is end-of-life). Bundled with tsdown into a single CLI entry.
 - **Vitest** for tests, **Biome** for linting and formatting (one fast tool, zero plugin config).
 - **Changesets** for versioning and changelogs; releases publish to npm with provenance from GitHub Actions.
-- The name `devlink` is unscoped on npm and currently free.
+- The name `dryfit` is unscoped on npm and currently free.
 - The `core` folder may not import `node:*` modules. A lint rule enforces it, which keeps the domain
   testable without mocks of the file system.
 - License: MIT.

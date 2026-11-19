@@ -8,9 +8,9 @@ Committing them would break the app for everyone else, so linking adds a git `pr
 refuses such a commit:
 
 ```text
-devlink: these staged files point at a local dev build:
+dryfit: these staged files point at a local dev build:
   package-lock.json
-Run `devlink restore` in this project first, or commit with --no-verify if you are sure.
+Run `dryfit restore` in this project first, or commit with --no-verify if you are sure.
 ```
 
 The hook looks at the staged manifest and lockfiles for a dev version, which always ends in `dev.`

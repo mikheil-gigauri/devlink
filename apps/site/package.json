@@ -1,5 +1,5 @@
 {
-  "name": "@devlink/site",
+  "name": "@dryfit/site",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,5 +1,5 @@
 name: Bug report
-description: Something devlink did wrong, or did not do.
+description: Something dryfit did wrong, or did not do.
 labels: [bug]
 body:
   - type: textarea
@@ -24,12 +24,12 @@ body:
   - type: textarea
     id: doctor
     attributes:
-      label: Output of `devlink doctor --json`
+      label: Output of `dryfit doctor --json`
       render: json
     validations:
       required: true
   - type: textarea
     id: log
     attributes:
-      label: Relevant lines from ~/.devlink/logs/daemon.log
+      label: Relevant lines from ~/.dryfit/logs/daemon.log
       render: text

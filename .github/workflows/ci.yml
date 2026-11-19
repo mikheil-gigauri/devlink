@@ -30,14 +30,14 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       # Some tests make real commits in throwaway repositories.
-      - run: git config --global user.name "devlink CI" && git config --global user.email "ci@devlink.invalid"
+      - run: git config --global user.name "dryfit CI" && git config --global user.email "ci@dryfit.invalid"
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run build -w @gigauri96/devlink
-      # The site needs a newer Node than devlink's minimum (Astro 7 wants 22.23.4 or later).
+      - run: npm run build -w @dryfit/cli
+      # The site needs a newer Node than dryfit's minimum (Astro 7 wants 22.23.4 or later).
       - if: matrix.node != '22.12'
-        run: npm run build -w @devlink/site
+        run: npm run build -w @dryfit/site
       # Unit tests, then integration tests against real Verdaccio, npm, pnpm, Yarn and Bun.
       - run: npm run test:all
       - name: The exit check, as a newcomer would run it
@@ -58,4 +58,4 @@ jobs:
       # Snapshot tests skip themselves on a macOS version other than the one the references were drawn on.
       - run: npm run menubar:test
       - run: npm run menubar:e2e
-      - run: DEVLINK_UNIVERSAL=1 npm run menubar:bundle
+      - run: DRYFIT_UNIVERSAL=1 npm run menubar:bundle

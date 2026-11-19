@@ -9,7 +9,7 @@
     "includes": [
       "**",
       "!**/package-lock.json",
-      "!packages/devlink/api",
+      "!packages/dryfit/api",
       "!.changeset",
       "!apps/site/src/content",
       "!apps/menubar/Resources/AppIcon.icon"
@@ -52,7 +52,7 @@
       }
     },
     {
-      "includes": ["packages/devlink/src/core/**"],
+      "includes": ["packages/dryfit/src/core/**"],
       "linter": {
         "rules": {
           "style": {

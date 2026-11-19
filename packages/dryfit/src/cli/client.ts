@@ -1,0 +1,140 @@
+import type {
+  ApiErrorBody,
+  ApiErrorCode,
+  Health,
+  OperationInput,
+  OperationName,
+  OperationOutputs,
+} from '../daemon/api.ts';
+import type { ServerEvent } from '../daemon/event-hub.ts';
+
+/** A failure the daemon reported, or `daemon-unavailable` when it could not be reached. */
+export class ApiError extends Error {
+  override readonly name = 'ApiError';
+  readonly code: ApiErrorCode | 'daemon-unavailable';
+  readonly details: Readonly<Record<string, unknown>>;
+
+  constructor(code: ApiError['code'], message: string, details: Readonly<Record<string, unknown>> = {}) {
+    super(message);
+    this.code = code;
+    this.details = details;
+  }
+}
+
+/** What commands need from the daemon. The CLI's tests substitute a fake. */
+export interface ApiClient {
+  call<K extends OperationName>(name: K, input: OperationInput<K>): Promise<OperationOutputs[K]>;
+  /** Follows events until `signal` aborts. `onOpen` runs once the stream is live, so nothing is missed. */
+  events(onEvent: (event: ServerEvent) => void, options: EventOptions): Promise<void>;
+}
+
+export interface EventOptions {
+  readonly signal: AbortSignal;
+  readonly onOpen?: () => void;
+}
+
+/** Talks to dryfitd over its HTTP API (ADR 0012). */
+export class DaemonClient implements ApiClient {
+  readonly baseUrl: string;
+  readonly #token: string;
+
+  constructor(baseUrl: string, token: string) {
+    this.baseUrl = baseUrl;
+    this.#token = token;
+  }
+
+  /**
+   * Who is listening. Sent without the token, so a client can check it is talking to dryfit before
+   * trusting the port; a daemon that does not answer within `timeoutMs` counts as unavailable.
+   */
+  health(options: { readonly timeoutMs?: number } = {}): Promise<Health> {
+    return this.#request('GET', 'v1/health', undefined, {
+      token: false,
+      signal: AbortSignal.timeout(options.timeoutMs ?? 2_000),
+    }) as Promise<Health>;
+  }
+
+  call<K extends OperationName>(name: K, input: OperationInput<K>): Promise<OperationOutputs[K]> {
+    return this.#request('POST', `v1/${name}`, input) as Promise<OperationOutputs[K]>;
+  }
+
+  /** Delivers events as they happen until `signal` aborts or the daemon goes away. */
+  async events(onEvent: (event: ServerEvent) => void, options: EventOptions): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}v1/events`, {
+        headers: this.#headers(),
+        signal: options.signal,
+      });
+    } catch (error) {
+      if (options.signal.aborted) return;
+      throw unavailable(error);
+    }
+    if (!response.ok || !response.body) throw await toError(response);
+    options.onOpen?.();
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const data = block
+            .split('\n')
+            .filter((line) => line.startsWith('data: '))
+            .map((line) => line.slice(6))
+            .join('\n');
+          if (data) onEvent(JSON.parse(data) as ServerEvent);
+          if (options.signal.aborted) return;
+          boundary = buffer.indexOf('\n\n');
+        }
+      }
+    } catch (error) {
+      if (!options.signal.aborted) throw unavailable(error);
+    }
+  }
+
+  async #request(
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+    options: { readonly token?: boolean; readonly signal?: AbortSignal } = {},
+  ): Promise<unknown> {
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          ...(options.token !== false && this.#headers()),
+          ...(body !== undefined && { 'content-type': 'application/json' }),
+        },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+        ...(options.signal && { signal: options.signal }),
+      });
+      if (!response.ok) throw await toError(response);
+      return await response.json();
+    } catch (error) {
+      // Anything but dryfit's own error replies: no answer, a timeout, or something else on the port.
+      throw error instanceof ApiError ? error : unavailable(error);
+    }
+  }
+
+  #headers(): Record<string, string> {
+    return { authorization: `Bearer ${this.#token}` };
+  }
+}
+
+async function toError(response: Response): Promise<ApiError> {
+  const body = (await response.json().catch(() => undefined)) as Partial<ApiErrorBody> | undefined;
+  const error = body?.error;
+  return error
+    ? new ApiError(error.code, error.message, error.details)
+    : new ApiError('internal', `The daemon answered HTTP ${response.status}`);
+}
+
+function unavailable(error: unknown): ApiError {
+  const reason = error instanceof Error ? error.message : String(error);
+  return new ApiError('daemon-unavailable', `Could not reach the dryfit daemon (${reason})`);
+}

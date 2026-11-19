@@ -5,7 +5,7 @@
 ## Context
 
 The first users run npm, but an open-source tool that only supports npm loses most of its audience.
-Package managers differ in exactly the operations devlink needs: installing one package from another
+Package managers differ in exactly the operations dryfit needs: installing one package from another
 registry, clean installs, lockfile formats, and how they record tarball URLs.
 
 ## Decision
@@ -49,7 +49,7 @@ Building pnpm, Yarn and Bun against real registries changed the port and two of 
 - **`findRegistryLeaks` is gone.** It was never called in production. The commit guard's pattern, a
   dev version ending in `dev.` and 14 digits, is the single check, and the contract suite runs it against
   each manager's real lockfile.
-- **npm and pnpm install by version** with the scope pointed at devlink for that command
+- **npm and pnpm install by version** with the scope pointed at dryfit for that command
   (`--@scope:registry` for npm, `--config.@scope:registry` for pnpm). pnpm 12 also needs
   `--config.minimumReleaseAge=0`, because its default one-day release-age gate refuses a minutes-old dev
   build. A plain `pnpm install` by the user while linked still applies the gate; the docs say so.
@@ -65,5 +65,5 @@ Building pnpm, Yarn and Bun against real registries changed the port and two of 
   without a lockfile.
 
 The contract suite now installs with the scope pointed at a dead registry, so an adapter that ignores
-devlink's registry fails, and checks that nothing in the project changes but the manifest and lockfile.
+dryfit's registry fails, and checks that nothing in the project changes but the manifest and lockfile.
 An end-to-end test links one library into an npm, a pnpm, a Yarn and a Bun app at once.

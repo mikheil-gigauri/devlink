@@ -14,16 +14,16 @@ the TypeScript API, how the app finds, trusts and starts the daemon, and what it
 **A Swift package, no Xcode project.** `apps/menubar` is a SwiftPM package (Swift 6 language mode,
 strict concurrency, macOS 14 and later as ADR 0010 says; macOS 26 since the amendment below) with three targets:
 
-- `DevlinkAPI`: the API models, the HTTP and server-sent-events client, and finding and starting the
+- `DryfitAPI`: the API models, the HTTP and server-sent-events client, and finding and starting the
   daemon. No SwiftUI.
-- `DevlinkMenu`: the `@MainActor` view model and the views, with main-actor default isolation.
-- `Devlink`: the executable, a few lines of `App` and `MenuBarExtra`.
+- `DryfitMenu`: the `@MainActor` view model and the views, with main-actor default isolation.
+- `Dryfit`: the executable, a few lines of `App` and `MenuBarExtra`.
 
 `swift build` and `swift test` work from a clean clone, and a package diffs and reviews like code where
-a `.pbxproj` does not. `scripts/bundle.sh` assembles `Devlink.app` (an `LSUIElement` agent, ad-hoc
+a `.pbxproj` does not. `scripts/bundle.sh` assembles `Dryfit.app` (an `LSUIElement` agent, ad-hoc
 signed) from the release build; signing and notarization for distribution land with M5.
 
-**One contract, checked from both sides.** `packages/devlink/api/` holds two generated files:
+**One contract, checked from both sides.** `packages/dryfit/api/` holds two generated files:
 
 - `schema.json`: the API version, every operation with its input as JSON Schema (the validators
   already describe themselves), the error codes and the event types.
@@ -37,12 +37,12 @@ hand-written `Codable` types read better and the API is small. The Swift decoder
 not know (new event types, new fields), so an older app keeps working against a newer daemon, and it
 refuses an `apiVersion` it was not built for.
 
-**Finding and starting the daemon.** The app reads `daemon.json` and the token from `~/.devlink` (or
-`$DEVLINK_HOME`), and trusts the daemon only after `/v1/health` reports the pid the file names (the
+**Finding and starting the daemon.** The app reads `daemon.json` and the token from `~/.dryfit` (or
+`$DRYFIT_HOME`), and trusts the daemon only after `/v1/health` reports the pid the file names (the
 CLI's rule, ADR 0012). It follows `/v1/events`, resumes with `Last-Event-ID`, and reconnects with
 backoff, re-reading `daemon.json` each time since a restarted daemon may have moved. When nothing
-answers it offers to start devlink: through the launchd agent when installed, otherwise by running
-`devlink daemon start` from a login shell, because an app launched from Finder does not have the PATH
+answers it offers to start dryfit: through the launchd agent when installed, otherwise by running
+`dryfit daemon start` from a login shell, because an app launched from Finder does not have the PATH
 that finds `node` under nvm or Homebrew. It never starts the daemon on its own.
 
 **What the menu shows.** The menu bar icon is the aggregate state: offline, idle, working, or
@@ -64,7 +64,7 @@ compare against committed PNGs with a small tolerance; `SNAPSHOT_RECORD=1` rewri
   checked in, so the Swift tests run without Node.
 - Snapshots are tied to the macOS version that recorded them; a new major release may need a
   re-record, which is a reviewed diff of images.
-- Starting the daemon from the app depends on the user's shell profile finding `devlink`. When it does
+- Starting the daemon from the app depends on the user's shell profile finding `dryfit`. When it does
   not, the app says so and shows the command to run.
 
 ## Amendment · 2026-11-19 (an app that needs no terminal)
@@ -81,11 +81,11 @@ in a terminal. The app now does all of it.
 - **Three operations added to the API.** `inspect` previews what registering a folder would do (name,
   version, detected build and publish folder) without registering it, so the form can show and correct
   it first. `roots` and `setRoots` read and replace the project folders in `config.json`, which the CLI
-  sets with `devlink init`. API version stays 1: these are additions.
+  sets with `dryfit init`. API version stays 1: these are additions.
 - **Restoring an app whose `package.json` changed asks first.** A `manifest-drifted` refusal becomes a
   question with Restore Anyway (`force`), instead of an error.
-- **The CLI can be installed from the app.** When no shell finds `devlink`, the app offers to run
-  `npm install --global @gigauri96/devlink`. `$DEVLINK_CLI` names another command to start the daemon with, which
+- **The CLI can be installed from the app.** When no shell finds `dryfit`, the app offers to run
+  `npm install --global @dryfit/cli`. `$DRYFIT_CLI` names another command to start the daemon with, which
   is how a checkout's build is tested.
 - **macOS 26 and later.** The window and its toolbar use the system's Liquid Glass chrome (sidebar,
   toolbar, `.glassProminent` for each page's primary action) with no custom glass. Supporting older

@@ -4,7 +4,7 @@
 
 ## Context
 
-devlink is meant to be open source. Contributors arrive without the conversations that shaped it, and the
+dryfit is meant to be open source. Contributors arrive without the conversations that shaped it, and the
 interesting parts of the design (why a registry instead of symlinks, why a daemon) are exactly the parts
 that look over-engineered from the outside.
 

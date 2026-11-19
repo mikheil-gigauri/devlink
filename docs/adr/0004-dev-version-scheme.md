@@ -21,13 +21,13 @@ Every publish gets a fresh semver prerelease derived from the library's own vers
 - A prerelease keeps its identifiers and appends `dev.<stamp>`, which sorts above it as well.
 - The stamp is `YYYYMMDDHHmmss` in UTC, a safe integer that sorts chronologically.
 - If two publishes land in the same second, the stamp is bumped by one so versions stay strictly increasing.
-- Dev versions are published under the `devlink` dist-tag, never `latest`.
+- Dev versions are published under the `dryfit` dist-tag, never `latest`.
 
 ## Consequences
 
 - Versions are unique, ordered, and readable: you can tell when a consumer's build was made.
 - Prereleases do not satisfy ordinary ranges such as `^1.4.0`. Consumers install the exact version, which
-  is what we want, but a _peer_ range on the library (lib A peers on lib B) will reject it. devlink detects
+  is what we want, but a _peer_ range on the library (lib A peers on lib B) will reject it. dryfit detects
   this case and pins the peer with an `overrides` entry in the consumer's snapshot-protected manifest.
 - `isDevVersion` is the single source of truth for "this must not be committed" checks (ADR 0005).
 
@@ -41,6 +41,6 @@ The peer-range consequence above was wrong for npm. Measured with npm 11 and a r
 - An `overrides` entry with the exact version fails with `EOVERRIDE`, because it conflicts with the direct
   dependency. A `$`-reference override works but writes to the user's manifest only to quiet `npm ls`.
 
-So devlink adds no overrides for npm. The contract suite pins the required behaviour for every adapter
+So dryfit adds no overrides for npm. The contract suite pins the required behaviour for every adapter
 ("installs a dev version even when another dependency peers on a release range"); package managers with
 strict peer checks, such as pnpm, must meet it inside their own adapter.

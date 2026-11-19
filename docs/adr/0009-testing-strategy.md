@@ -4,7 +4,7 @@
 
 ## Context
 
-devlink edits other people's repositories. A bug does not crash devlink; it corrupts someone's lockfile.
+dryfit edits other people's repositories. A bug does not crash dryfit; it corrupts someone's lockfile.
 That calls for strong tests, and the hexagonal split (ADR 0008) makes most of the logic testable without
 I/O.
 

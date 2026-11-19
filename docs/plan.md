@@ -36,7 +36,7 @@ Embedded Verdaccio behind the `Registry` port. npm adapter contract suite agains
 both consumers are byte-identical to before.
 
 **Status:** done. `src/e2e/link-cycle.integration.test.ts` runs the exit check with nothing faked: a public
-registry holding the release, devlink's registry proxying it, real npm, two consumers (one without a
+registry holding the release, dryfit's registry proxying it, real npm, two consumers (one without a
 lockfile), two edit cycles, and a byte-for-byte restore. Mutating restore makes it fail.
 
 - Real adapters: `NodeFileSystem` (passes the shared contract), `NodeProcessRunner` (no shell, strips
@@ -60,19 +60,19 @@ lockfile), two edit cycles, and a byte-for-byte restore. Mutating restore makes 
   verbatim and npm decides.
 - Verdaccio is pinned to 6.x because 7 requires Node 24. `npm audit --omit=dev` reports two root
   advisories inside Verdaccio's tree (ReDoS in `picomatch` and `minimatch`); both need attacker-controlled
-  glob patterns, which devlink's fixed config and loopback-only registry do not expose. Revisit when the
+  glob patterns, which dryfit's fixed config and loopback-only registry do not expose. Revisit when the
   Node 22 floor is raised (Node 22 leaves maintenance in April 2027) or if an advisory becomes reachable.
 
 ## M3 · Daemon and CLI
 
-`devlinkd` with the HTTP API, token auth and SSE. CLI commands: `init`, `add`, `link`, `unlink`/`restore`,
+`dryfitd` with the HTTP API, token auth and SSE. CLI commands: `init`, `add`, `link`, `unlink`/`restore`,
 `watch`, `status`, `doctor`, `daemon start|stop|status`, `hook install`. launchd agent.
 
-**Exit:** the author uses devlink on `shared-fe-library` and its MFEs for a full working week.
+**Exit:** the author uses dryfit on `shared-fe-library` and its MFEs for a full working week.
 
 **Status:** built; the exit check is the author's working week, which has not happened yet. Decisions are in
 ADR 0012. `src/e2e/cli-cycle.integration.test.ts` rehearses that week in about fifteen seconds through the
-`devlink` binary alone: init, add, discover, save and link a group, sync, a real `git commit` refused by
+`dryfit` binary alone: init, add, discover, save and link a group, sync, a real `git commit` refused by
 the guard, watch picking up a saved file, and a byte-for-byte group restore with the guard removed.
 
 - Daemon (`src/daemon`): the API contract with a small validator that can describe itself as JSON
@@ -114,7 +114,7 @@ the guard, watch picking up a saved file, and a byte-for-byte group restore with
     - `doctor` checks that the launchd agent is loaded;
     - an Angular library without `dest` publishes ng-packagr's `dist`.
 - Known limits:
-  - On Linux, Node's recursive `fs.watch` also watches `node_modules` before devlink filters it, which
+  - On Linux, Node's recursive `fs.watch` also watches `node_modules` before dryfit filters it, which
     can exhaust inotify on large repositories; Linux is an M5 platform, so a filtered walk lands then.
   - Two CLI versions used side by side restart the daemon on each switch, cancelling a running job.
   - Nx projects defined without `project.json`, or with inferred targets, fall back to an npm build
@@ -132,22 +132,22 @@ notifications on failure.
 pass.
 
 **Status:** built; the exit check's last part, clicking through the cycle by hand, has not happened yet.
-Decisions are in ADR 0013. `apps/menubar` is a Swift package (`DevlinkAPI`, `DevlinkMenu`, the `Devlink`
+Decisions are in ADR 0013. `apps/menubar` is a Swift package (`DryfitAPI`, `DryfitMenu`, the `Dryfit`
 app), tested with Swift Testing: 45 tests, five of them light/dark snapshot pairs. `npm run menubar:e2e` drives
 the menu's model, which every control calls, through a full cycle against a real daemon in a throwaway
-sandbox in about three seconds: start devlink from the menu, discover, link, sync, watch, an edit reaching
+sandbox in about three seconds: start dryfit from the menu, discover, link, sync, watch, an edit reaching
 the consumer, restore.
 
-- The API contract is generated: `npm run api:export` writes `packages/devlink/api/schema.json` and
+- The API contract is generated: `npm run api:export` writes `packages/dryfit/api/schema.json` and
   `fixtures.json` from the TypeScript types. The TypeScript test fails when they are stale, and the Swift
   tests decode every fixture and check operations, error codes and event types against the schema.
 - The app finds the daemon through `daemon.json`, trusts it only when health confirms the pid, refuses
   another API version, and starts it only when asked: the launchd agent if installed, otherwise
-  `devlink daemon start` in a login shell, then an interactive one for nvm users.
+  `dryfit daemon start` in a login shell, then an interactive one for nvm users.
 - It follows the daemon from launch and resumes the event stream after the last event id, so failures
   are noticed with the menu closed. Builds, installs, publishes and watches that fail become
-  notifications in `Devlink.app`, and a click opens the failure window with the full output.
-- `apps/menubar/scripts/bundle.sh` builds `Devlink.app` (menu bar only, signed ad hoc). It installs
+  notifications in `Dryfit.app`, and a click opens the failure window with the full output.
+- `apps/menubar/scripts/bundle.sh` builds `Dryfit.app` (menu bar only, signed ad hoc). It installs
   nothing; Open at Login registers the app only when turned on.
 - Known limits:
   - Snapshots are rendered by AppKit on the author's macOS 27; another macOS version may draw controls
@@ -161,7 +161,7 @@ pnpm, Yarn and Bun adapters passing the contract suite. Website with landing pag
 GitHub Actions for tests on macOS and Linux, Changesets releases with npm provenance. README, contributing
 guide, issue templates. Signed and notarized menu bar build, Homebrew cask.
 
-**Exit:** `npx @gigauri96/devlink init` works for someone who has never seen the project.
+**Exit:** `npx @dryfit/cli init` works for someone who has never seen the project.
 
 **Status:** built; the exit check is rehearsed but the package is not on npm yet, and nothing has run on
 GitHub, because the repository is not published. `scripts/newcomer.sh` packs the CLI and runs it the way a
@@ -181,13 +181,13 @@ a refused commit, and a byte-for-byte restore. It passes locally and runs in CI.
 - CI (`ci.yml`): typecheck, lint, build, unit and integration tests, and the newcomer check on Ubuntu with
   Node 22.12 and 24 and on macOS; the menu bar app's tests and a universal bundle on macOS.
 - Releases (`release.yml`): Changesets with npm provenance; then, when Apple secrets are present, a signed,
-  notarized universal `Devlink.app` attached to the GitHub release and a cask pushed to
-  `mikheil-gigauri/homebrew-devlink`. CONTRIBUTING lists the secrets.
-- The `npx` hint: `init` run through `npx` suggests `npx @gigauri96/devlink` commands and how to install globally.
+  notarized universal `Dryfit.app` attached to the GitHub release and a cask pushed to
+  `mikheil-gigauri/homebrew-dryfit`. CONTRIBUTING lists the secrets.
+- The `npx` hint: `init` run through `npx` suggests `npx @dryfit/cli` commands and how to install globally.
 - Known limits:
   - Signing, notarization and the cask are scripted but untested: they need an Apple Developer ID.
   - With pnpm's release-age gate, a plain `pnpm install` by the user while linked refuses the dev build;
-    `devlink sync` or a restore is the way through, and the docs say so.
+    `dryfit sync` or a restore is the way through, and the docs say so.
   - Snapshot tests compare only on the macOS major they were recorded on; elsewhere, such as CI's
     runners, they are skipped with a note.
 - To launch: create the GitHub repository, enable Pages from Actions, merge the first "Version packages"
