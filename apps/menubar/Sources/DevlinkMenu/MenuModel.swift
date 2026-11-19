@@ -105,7 +105,8 @@ public struct LibraryRow: Identifiable, Equatable {
   @ObservationIgnored private let sleep: (@Sendable (Duration) async throws -> Void)?
   @ObservationIgnored private var api: (any DaemonAPI)?
   @ObservationIgnored private var nudged = false
-  @ObservationIgnored private var refreshing = false
+  /// The status request in flight; callers that arrive meanwhile wait for it and its re-run.
+  @ObservationIgnored private var refreshing: Task<Void, Never>?
   @ObservationIgnored private var refreshAgain = false
   @ObservationIgnored private var startDeadline: ContinuousClock.Instant?
 
@@ -334,16 +335,24 @@ public struct LibraryRow: Identifiable, Equatable {
 
   /// Reloads status. Requests that arrive while one is loading fold into a single follow-up.
   private func refresh(clearingActivityWhenIdle: Bool = false) async {
-    if refreshing {
+    // One request at a time. A caller that arrives mid-request asks for another round and waits
+    // for it, so the status it sees was read after whatever it just did.
+    if let running = refreshing {
       refreshAgain = true
+      await running.value
     } else {
-      refreshing = true
-      repeat {
-        refreshAgain = false
-        guard let api else { break }
-        if let next = try? await api.status(), next != status { status = next }
-      } while refreshAgain
-      refreshing = false
+      let task = Task {
+        repeat {
+          refreshAgain = false
+          guard let api else { break }
+          if let next = try? await api.status(), next != status { status = next }
+        } while refreshAgain
+        // Cleared in the task, not by its first waiter, so a caller arriving after the last round
+        // starts a new one instead of waiting on a finished task.
+        refreshing = nil
+      }
+      refreshing = task
+      await task.value
     }
     if clearingActivityWhenIdle, status?.jobs.running == nil, status?.jobs.queued.isEmpty != false {
       activity = nil

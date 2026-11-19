@@ -59,7 +59,8 @@ JSON
 
 # Ports of its own, so a devlink you already run is left alone.
 mkdir -p "$DEVLINK_HOME"
-printf '{"roots":["%s"],"ports":{"api":4885,"registry":4884}}\n' "$sandbox/repos" > "$DEVLINK_HOME/config.json"
+printf '{"roots":["%s"],"ports":{"api":%s,"registry":%s}}\n' "$sandbox/repos" \
+  "${DEVLINK_E2E_API_PORT:-4885}" "${DEVLINK_E2E_REGISTRY_PORT:-4884}" > "$DEVLINK_HOME/config.json"
 node "$cli" daemon start >/dev/null
 (cd "$sandbox/repos/ui" && node "$cli" add --publish-dir dist --build "node build.js" >/dev/null)
 node "$cli" daemon stop >/dev/null   # the test starts it from the menu
