@@ -13,7 +13,7 @@ export default defineConfig({
       title: 'dryfit',
       description:
         'Test unreleased npm libraries inside real consumer apps, installed the way they will be released.',
-      favicon: '/favicon.svg',
+      favicon: '/favicon.svg?v=2',
       logo: { light: './src/assets/mark-light.svg', dark: './src/assets/mark-dark.svg' },
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/apps/site/` },
