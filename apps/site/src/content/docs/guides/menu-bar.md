@@ -54,8 +54,16 @@ It also tells you, in a notification, when an install fails while the menu is cl
 
 ## Install
 
+The app needs macOS 26 or later. [Download Dryfit.dmg](https://github.com/mikheil-gigauri/dryfit/releases/latest/download/Dryfit.dmg),
+open it and drag **Dryfit** to **Applications**.
+
+The app is not notarized by Apple yet, so the first time you open it macOS says it cannot check it and
+offers only **Done** and **Move to Trash**. Choose **Done**, open **System Settings → Privacy & Security**,
+and under Security choose **Open Anyway** for Dryfit. macOS remembers the choice; updates need it again.
+To do the same from a terminal:
+
 ```bash
-brew install --cask mikheil-gigauri/dryfit/dryfit
+xattr -dr com.apple.quarantine /Applications/Dryfit.app
 ```
 
 The app runs dryfit's command-line tool in the background. If it is not installed, the app offers to

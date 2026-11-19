@@ -69,7 +69,7 @@ jobs:
       - name: Check signing is set up
         run: |
           if [ -z "$MACOS_CERTIFICATE" ]; then
-            echo "::warning::No Developer ID certificate in the repository secrets, so no app is released. See CONTRIBUTING.md#releasing."
+            echo "::warning::No Developer ID certificate in the repository secrets, so the app is released signed ad hoc and not notarized. See CONTRIBUTING.md#releasing."
             echo "SIGN=false" >> "$GITHUB_ENV"
           else
             echo "SIGN=true" >> "$GITHUB_ENV"
@@ -97,11 +97,19 @@ jobs:
           output="$(apps/menubar/scripts/notarize.sh)"
           echo "ZIP=$(echo "$output" | tail -2 | head -1)" >> "$GITHUB_ENV"
           echo "SHA256=$(echo "$output" | tail -1)" >> "$GITHUB_ENV"
+      - name: Build Dryfit.app, signed ad hoc
+        if: env.SIGN != 'true'
+        env:
+          DRYFIT_UNIVERSAL: "1"
+        run: apps/menubar/scripts/bundle.sh
+      - name: Pack it into Dryfit.dmg
+        env:
+          DRYFIT_SIGN_IDENTITY: ${{ env.SIGN == 'true' && 'Developer ID Application' || '' }}
+        run: echo "DMG=$(apps/menubar/scripts/dmg.sh)" >> "$GITHUB_ENV"
       - name: Attach it to the GitHub release
-        if: env.SIGN == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "@dryfit/cli@$VERSION" "$ZIP" --clobber
+        run: gh release upload "@dryfit/cli@$VERSION" "$DMG" ${ZIP:+"$ZIP"} --clobber
       - name: Update the Homebrew cask
         if: env.SIGN == 'true' && env.HOMEBREW_TAP_TOKEN != ''
         run: |

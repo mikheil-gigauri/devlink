@@ -25,3 +25,10 @@ feel like part of macOS, and the logic it would share with the CLI already lives
 
 - macOS only. Linux and Windows users get the CLI, which is a complete product.
 - Code signing and notarization need an Apple Developer account before the first public release.
+
+## Amendment · 2026-11-19
+
+Until there is a Developer ID, releases ship the app as `Dryfit.dmg`, signed ad hoc and not notarized,
+and push no cask. Users confirm it once under Privacy & Security; the menu bar guide says how. With the
+signing secrets set, the same release job signs and notarizes the app and pushes the cask, with no other
+change.

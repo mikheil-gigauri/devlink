@@ -57,7 +57,8 @@ Publishing needs no npm token: the `@dryfit/cli` package trusts this workflow th
 publishing (on npmjs.com, the package's Settings → Trusted publishing: user `mikheil-gigauri`, repository
 `dryfit`, workflow `release.yml`, with `npm publish` allowed). npm adds the provenance itself.
 
-The menu bar app needs these secrets:
+Every release attaches `Dryfit.dmg`, a universal build of the menu bar app. Signing and notarizing it
+needs these secrets:
 
 | Secret                                            | For                                                                                                                                     |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -65,10 +66,12 @@ The menu bar app needs these secrets:
 | `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | Notarizing the app. The password is an app-specific password for the Apple ID.                                                          |
 | `HOMEBREW_TAP_TOKEN`                              | Pushing the updated cask to `mikheil-gigauri/homebrew-dryfit`. A fine-grained token with contents write access to that repository only. |
 
-Without the Apple secrets the menu bar job is skipped with a warning; npm publishing does not depend on
-it. To build a release locally: `DRYFIT_UNIVERSAL=1 DRYFIT_SIGN_IDENTITY="Developer ID Application"
-npm run menubar:bundle`, then `apps/menubar/scripts/notarize.sh`, then
-`apps/menubar/scripts/cask.sh <version> <sha256>` for the cask.
+Without the Apple secrets the app is signed ad hoc and not notarized, so users confirm it once in System
+Settings (the menu bar guide says how), and no cask is pushed; npm publishing does not depend on any of
+it. To build the disk image locally: `DRYFIT_UNIVERSAL=1 npm run menubar:dmg`. A signed release adds
+`DRYFIT_SIGN_IDENTITY="Developer ID Application"`, runs `apps/menubar/scripts/notarize.sh` between
+`menubar:bundle` and `apps/menubar/scripts/dmg.sh`, then `apps/menubar/scripts/cask.sh <version> <sha256>`
+for the cask.
 
 ## Conduct
 

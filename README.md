@@ -30,11 +30,10 @@ Consumers that run together, such as a federation host and its remotes, can be s
 (`dryfit group save checkout ../shell ../cart`), linked and restored together (`--group checkout`), and
 dryfit warns when they end up on different dev versions.
 
-On macOS, the menu bar app shows all of this and drives it without a terminal:
-
-```bash
-brew install --cask mikheil-gigauri/dryfit/dryfit
-```
+On macOS 26 or later, the menu bar app shows all of this and drives it without a terminal:
+**[download Dryfit.dmg](https://github.com/mikheil-gigauri/dryfit/releases/latest/download/Dryfit.dmg)** and
+drag the app to Applications. It is not notarized yet, so the first time, macOS refuses to open it: open it
+once, then choose **Open Anyway** in System Settings → Privacy & Security.
 
 The [getting started guide](https://mikheil-gigauri.github.io/dryfit/guides/getting-started/) walks
 through it, and the [design decisions](docs/adr/README.md) explain why it works the way it does.
