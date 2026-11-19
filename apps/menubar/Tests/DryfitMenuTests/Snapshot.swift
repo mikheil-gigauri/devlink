@@ -62,6 +62,7 @@ private func render(_ view: some View, appearance: NSAppearance, size: CGSize?) 
   // Let SwiftUI settle (tasks, ViewThatFits) before drawing.
   RunLoop.main.run(until: .now + 0.05)
   host.layoutSubtreeIfNeeded()
+  drawWithoutBackdrops(host)
 
   let bounds = host.bounds
   let rep = NSBitmapImageRep(
@@ -72,6 +73,26 @@ private func render(_ view: some View, appearance: NSAppearance, size: CGSize?) 
   NSAppearance.current = appearance
   appearance.performAsCurrentDrawingAppearance { host.cacheDisplay(in: bounds, to: rep) }
   return rep.representation(using: .png, properties: [:])!
+}
+
+/// `cacheDisplay` can't draw what the window server composites: a selected sidebar row's highlight is
+/// a visual effect view, and comes out as a black bar that hides the row. Draw the highlight a window
+/// that isn't in front shows instead, a plain gray one. (Vibrant sidebar labels and icons still come out
+/// a little dim, as their tint is applied by the window server too.)
+@MainActor
+private func drawWithoutBackdrops(_ view: NSView) {
+  if let row = view as? NSTableRowView { row.isEmphasized = false }
+  if let effect = view as? NSVisualEffectView, let row = effect.superview as? NSTableRowView, !effect.isHidden {
+    effect.isHidden = true
+    let highlight = NSBox(frame: effect.frame)
+    highlight.boxType = .custom
+    highlight.borderWidth = 0
+    highlight.cornerRadius = 8
+    highlight.fillColor = .unemphasizedSelectedContentBackgroundColor
+    highlight.autoresizingMask = effect.autoresizingMask
+    row.addSubview(highlight, positioned: .below, relativeTo: nil)
+  }
+  for subview in view.subviews { drawWithoutBackdrops(subview) }
 }
 
 /// Nil when the images match closely enough: font smoothing differs by a shade between runs.
