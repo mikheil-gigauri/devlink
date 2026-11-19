@@ -74,6 +74,7 @@ if ! xcrun swift test --filter EndToEndTests; then
     bin="$(xcrun swift build --show-bin-path)"
     bundle="$bin/DevlinkMenuBarPackageTests.xctest/Contents/MacOS/DevlinkMenuBarPackageTests"
     [ -f "$bundle" ] || bundle="$bin/DevlinkMenuTests.xctest/Contents/MacOS/DevlinkMenuTests"
+    node "$cli" daemon stop >/dev/null 2>&1 || true   # the test starts from offline
     platform="$(xcrun --show-sdk-platform-path)/Developer"
     echo "--- the test again, under lldb ---" >&2
     xcrun lldb --batch \

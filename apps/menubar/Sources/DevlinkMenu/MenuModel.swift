@@ -101,7 +101,8 @@ public struct LibraryRow: Identifiable, Equatable {
   @ObservationIgnored private let launch: () async throws -> Void
   @ObservationIgnored private let install: () async throws -> Void
   @ObservationIgnored private let notifier: any Notifier
-  @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
+  /// Tests' clock; nil sleeps for real.
+  @ObservationIgnored private let sleep: (@Sendable (Duration) async throws -> Void)?
   @ObservationIgnored private var api: (any DaemonAPI)?
   @ObservationIgnored private var nudged = false
   @ObservationIgnored private var refreshing = false
@@ -117,7 +118,10 @@ public struct LibraryRow: Identifiable, Equatable {
     launch: @escaping () async throws -> Void,
     install: @escaping () async throws -> Void = {},
     notifier: any Notifier,
-    sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    // No closure literal as the default: Swift 6.2 on macOS 26 aborts in swift_task_dealloc when a
+    // default async closure from this MainActor-by-default module is called ("freed pointer was not
+    // the last allocation").
+    sleep: (@Sendable (Duration) async throws -> Void)? = nil
   ) {
     self.connect = connect
     self.launch = launch
@@ -277,7 +281,7 @@ public struct LibraryRow: Identifiable, Equatable {
     let step = Duration.milliseconds(250)
     var waited = Duration.zero
     while waited < total, !nudged, !Task.isCancelled {
-      try? await sleep(step)
+      if let sleep { try? await sleep(step) } else { try? await Task.sleep(for: step) }
       waited += step
     }
     nudged = false
