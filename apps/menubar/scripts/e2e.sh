@@ -65,5 +65,21 @@ node "$cli" daemon start >/dev/null
 node "$cli" daemon stop >/dev/null   # the test starts it from the menu
 
 cd "$here"
-DEVLINK_E2E_CLI="$cli" DEVLINK_E2E_LIBRARY="$sandbox/repos/ui" DEVLINK_E2E_CONSUMER="$sandbox/repos/shop" \
-  xcrun swift test --filter EndToEndTests
+export DEVLINK_E2E_CLI="$cli" DEVLINK_E2E_LIBRARY="$sandbox/repos/ui" DEVLINK_E2E_CONSUMER="$sandbox/repos/shop"
+if ! xcrun swift test --filter EndToEndTests; then
+  # In CI, run it again under lldb: a crash in the test process otherwise leaves no stack at all.
+  if [ -n "${CI:-}" ]; then
+    helper="$(dirname "$(xcrun --find swift)")/../libexec/swift/pm/swiftpm-testing-helper"
+    # One bundle for the package (Xcode 26), or one per test target (Xcode 27).
+    bin="$(xcrun swift build --show-bin-path)"
+    bundle="$bin/DevlinkMenuBarPackageTests.xctest/Contents/MacOS/DevlinkMenuBarPackageTests"
+    [ -f "$bundle" ] || bundle="$bin/DevlinkMenuTests.xctest/Contents/MacOS/DevlinkMenuTests"
+    platform="$(xcrun --show-sdk-platform-path)/Developer"
+    echo "--- the test again, under lldb ---" >&2
+    xcrun lldb --batch \
+      -o "settings set target.env-vars DYLD_FRAMEWORK_PATH=$platform/Library/Frameworks DYLD_LIBRARY_PATH=$platform/usr/lib" \
+      -o run -k "thread backtrace all" -k quit -- \
+      "$helper" --test-bundle-path "$bundle" --filter EndToEndTests "$bundle" --testing-library swift-testing >&2 || true
+  fi
+  exit 1
+fi
