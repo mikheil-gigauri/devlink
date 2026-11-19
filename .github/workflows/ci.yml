@@ -34,7 +34,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run build -w devlink
+      - run: npm run build -w @gigauri96/devlink
       # The site needs a newer Node than devlink's minimum (Astro 7 wants 22.23.4 or later).
       - if: matrix.node != '22.12'
         run: npm run build -w @devlink/site

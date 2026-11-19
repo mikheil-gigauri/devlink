@@ -8,6 +8,9 @@ import { VERSION } from '../version.ts';
 import { type ApiClient, ApiError } from './client.ts';
 import { Output, renderEvent } from './output.ts';
 
+/** devlink's name on npm, for the commands it suggests. The command itself is `devlink`. */
+export const PACKAGE_NAME = '@gigauri96/devlink';
+
 /** Everything that touches this machine directly rather than through the daemon. */
 export interface LocalControl {
   init(roots: readonly string[]): Promise<{ readonly home: string; readonly roots: readonly string[] }>;
@@ -286,12 +289,13 @@ const COMMANDS: Record<string, Command> = {
       out.line(`  registry  ${status.daemon.registryUrl}`);
       // npx runs from its cache folder, and leaves no `devlink` on the PATH afterwards.
       const npx = /[\\/]_npx[\\/]/.test(ctx.entry ?? '');
-      const devlink = npx ? 'npx devlink' : 'devlink';
+      const devlink = npx ? `npx ${PACKAGE_NAME}` : 'devlink';
       out.line();
       out.line(
         `Next: run ${out.bold(`${devlink} add`)} in a library, then ${out.bold(`${devlink} link <consumer>`)}.`,
       );
-      if (npx) out.line(`To type ${out.bold('devlink')} directly, install it: npm install --global devlink`);
+      if (npx)
+        out.line(`To type ${out.bold('devlink')} directly, install it: npm install --global ${PACKAGE_NAME}`);
       return 0;
     },
   },

@@ -60,10 +60,10 @@ public struct DaemonLauncher: Sendable {
     try await runInShell("\(cli) daemon start", environment)
   }
 
-  /// Installs the CLI with npm, at the user's request: `npm install --global devlink`.
+  /// Installs the CLI with npm, at the user's request: `npm install --global @gigauri96/devlink`.
   public func installCLI(environment: [String: String] = ProcessInfo.processInfo.environment) async throws {
     do {
-      try await runInShell("npm install --global devlink", environment)
+      try await runInShell("npm install --global @gigauri96/devlink", environment)
     } catch Failure.cliNotFound {
       throw Failure.failed(output: "npm was not found. Install Node.js from nodejs.org, then try again.")
     }

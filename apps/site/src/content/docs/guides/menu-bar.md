@@ -59,4 +59,4 @@ brew install --cask mikheil-gigauri/devlink/devlink
 ```
 
 The app runs devlink's command-line tool in the background. If it is not installed, the app offers to
-install it with npm (`npm install --global devlink`), which needs Node.js.
+install it with npm (`npm install --global @gigauri96/devlink`), which needs Node.js.

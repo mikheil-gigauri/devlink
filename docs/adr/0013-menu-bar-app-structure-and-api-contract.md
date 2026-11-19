@@ -85,7 +85,7 @@ in a terminal. The app now does all of it.
 - **Restoring an app whose `package.json` changed asks first.** A `manifest-drifted` refusal becomes a
   question with Restore Anyway (`force`), instead of an error.
 - **The CLI can be installed from the app.** When no shell finds `devlink`, the app offers to run
-  `npm install --global devlink`. `$DEVLINK_CLI` names another command to start the daemon with, which
+  `npm install --global @gigauri96/devlink`. `$DEVLINK_CLI` names another command to start the daemon with, which
   is how a checkout's build is tested.
 - **macOS 26 and later.** The window and its toolbar use the system's Liquid Glass chrome (sidebar,
   toolbar, `.glassProminent` for each page's primary action) with no custom glass. Supporting older

@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: write # the release pull request, tags and GitHub releases
       pull-requests: write
-      id-token: write # npm provenance
+      id-token: write # npm trusted publishing (OIDC) and provenance
     outputs:
       published: ${{ steps.changesets.outputs.published }}
       version: ${{ steps.version.outputs.version }}
@@ -28,7 +28,9 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       # With changesets on main: opens or updates the release pull request. Once that is merged:
-      # publishes to npm with provenance, tags devlink@<version> and creates the GitHub release.
+      # publishes to npm, tags @gigauri96/devlink@<version> and creates the GitHub release. No npm token: npm
+      # trusts this workflow (trusted publishing, set on the package's npmjs.com settings) and adds
+      # provenance by itself.
       - id: changesets
         uses: changesets/action@v2
         with:
@@ -36,9 +38,6 @@ jobs:
           publish-script: npm run release
           commit-message: "chore: release"
           pr-title: Release
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
       - id: version
         if: steps.changesets.outputs.published == 'true'
         run: echo "version=$(node -p "require('./packages/devlink/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -61,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: devlink@${{ env.VERSION }}
+          ref: "@gigauri96/devlink@${{ env.VERSION }}"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -102,7 +101,7 @@ jobs:
         if: env.SIGN == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "devlink@$VERSION" "$ZIP" --clobber
+        run: gh release upload "@gigauri96/devlink@$VERSION" "$ZIP" --clobber
       - name: Update the Homebrew cask
         if: env.SIGN == 'true' && env.HOMEBREW_TAP_TOKEN != ''
         run: |

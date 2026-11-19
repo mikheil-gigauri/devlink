@@ -101,12 +101,12 @@ describe('devlink CLI', () => {
   });
 
   it('tells someone trying it through npx how to type `devlink` directly', async () => {
-    const entry = '/Users/me/.npm/_npx/0c8a3f/node_modules/devlink/dist/devlink.mjs';
+    const entry = '/Users/me/.npm/_npx/0c8a3f/node_modules/@gigauri96/devlink/dist/devlink.mjs';
 
     const { stdout } = await devlink('init', { entry });
 
-    expect(stdout).toContain('Next: run npx devlink add in a library');
-    expect(stdout).toContain('npm install --global devlink');
+    expect(stdout).toContain('Next: run npx @gigauri96/devlink add in a library');
+    expect(stdout).toContain('npm install --global @gigauri96/devlink');
   });
 
   it('links consumers given relative to here, into the library this folder belongs to', async () => {

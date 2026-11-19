@@ -28,7 +28,7 @@ export interface NodeProcessRunnerOptions {
  * Runs commands as child processes without a shell, so arguments can never be interpreted.
  *
  * `npm_*` variables are removed from the child's environment. When devlink itself is started by npm
- * (`npx devlink`, an npm script), npm exports its whole config as `npm_config_*`, which the npm that
+ * (`npx @gigauri96/devlink`, an npm script), npm exports its whole config as `npm_config_*`, which the npm that
  * devlink runs would obey: a stray `npm_config_global` or `npm_config_registry` would install into the
  * wrong place or from the wrong registry.
  *

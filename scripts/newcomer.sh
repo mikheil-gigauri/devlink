@@ -15,7 +15,7 @@ sandbox="${sandbox%/}"
 
 tarball="${1:-}"
 if [ -z "$tarball" ]; then
-  (cd "$repo" && npm run build --silent -w devlink >/dev/null)
+  (cd "$repo" && npm run build --silent -w @gigauri96/devlink >/dev/null)
   tarball="$(cd "$repo/packages/devlink" && npm pack --silent --pack-destination "$sandbox" | tail -1)"
   tarball="$sandbox/$tarball"
 fi
@@ -64,16 +64,16 @@ if [ -n "${DEVLINK_PORTS:-}" ]; then
 fi
 
 cd "$code/ui"
-step "npx devlink init"
+step "npx @gigauri96/devlink init"
 devlink init
-step "npx devlink add"
+step "npx @gigauri96/devlink add"
 devlink add
-step "npx devlink consumers"
+step "npx @gigauri96/devlink consumers"
 devlink consumers | tee "$sandbox/consumers.txt"
 grep -q shop "$sandbox/consumers.txt" || fail "consumers did not find shop"
-step "npx devlink link ../shop"
+step "npx @gigauri96/devlink link ../shop"
 devlink link ../shop
-step "Edit the library, then npx devlink sync"
+step "Edit the library, then npx @gigauri96/devlink sync"
 echo "module.exports = 'edited';" > index.js
 devlink sync
 got="$(cd "$code/shop" && node -p "require('@acme/ui')")"
@@ -87,7 +87,7 @@ fi
 (cd "$code/shop" && git reset -q)
 echo "✓ refused"
 
-step "npx devlink restore --all"
+step "npx @gigauri96/devlink restore --all"
 devlink restore --all
 [ "$(cat "$code/shop/package.json")" = "$before_manifest" ] || fail "package.json differs after restore"
 [ "$(cat "$code/shop/package-lock.json")" = "$before_lockfile" ] || fail "package-lock.json differs after restore"

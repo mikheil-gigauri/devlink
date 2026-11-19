@@ -504,7 +504,7 @@ struct ServiceUnavailableView: View {
         Button("Install devlink") { Task { await model.installCLI() } }
           .buttonStyle(.borderedProminent)
           .padding(.top, 4)
-        Text("Runs npm install --global devlink").font(.caption).foregroundStyle(.tertiary)
+        Text("Runs npm install --global @gigauri96/devlink").font(.caption).foregroundStyle(.tertiary)
       } else {
         Button("Start devlink") { Task { await model.startDaemon() } }
           .buttonStyle(.borderedProminent)

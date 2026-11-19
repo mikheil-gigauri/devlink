@@ -1,4 +1,4 @@
-# devlink
+# @gigauri96/devlink
 
 ## 0.1.0
 

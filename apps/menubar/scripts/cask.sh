@@ -9,7 +9,7 @@ cask "devlink" do
   version "$version"
   sha256 "$sha256"
 
-  url "https://github.com/mikheil-gigauri/devlink/releases/download/devlink%40#{version}/Devlink-#{version}.zip"
+  url "https://github.com/mikheil-gigauri/devlink/releases/download/%40gigauri96%2Fdevlink%40#{version}/Devlink-#{version}.zip"
   name "devlink"
   desc "Menu bar app for testing unreleased npm libraries in real apps"
   homepage "https://mikheil-gigauri.github.io/devlink/"
@@ -22,7 +22,7 @@ cask "devlink" do
 
   caveats <<~EOS
     The menu bar app drives the devlink command-line tool. Install it with:
-      npm install --global devlink
+      npm install --global @gigauri96/devlink
   EOS
 end
 RUBY

@@ -132,7 +132,7 @@ import Testing
   @Test func installsTheCLIWithNpm_andSaysSoWhenNpmIsMissing() async throws {
     let installed = Commands(replies: [0])
     try await launcher(agentInstalled: false, installed).installCLI(environment: [:])
-    #expect(await installed.ran == [["/bin/zsh", "-l", "-c", "npm install --global devlink"]])
+    #expect(await installed.ran == [["/bin/zsh", "-l", "-c", "npm install --global @gigauri96/devlink"]])
 
     let missing = Commands(replies: [127, 127])
     await #expect(throws: DaemonLauncher.Failure.self) {

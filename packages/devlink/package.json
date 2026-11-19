@@ -1,5 +1,5 @@
 {
-  "name": "devlink",
+  "name": "@gigauri96/devlink",
   "version": "0.1.0",
   "description": "Test unreleased npm libraries in real apps: devlink publishes your library to a local registry and installs it into its consumers, then puts them back exactly as they were.",
   "keywords": [
@@ -26,7 +26,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "devlink": "./dist/devlink.mjs"
+    "devlink": "dist/devlink.mjs"
   },
   "files": [
     "dist"

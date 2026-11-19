@@ -11,7 +11,7 @@ or newer, or Bun.
 Run this in the folder of the library you are working on:
 
 ```bash
-npx devlink init
+npx @gigauri96/devlink init
 ```
 
 `init` remembers where your projects live and starts devlink's background service. By default that is the
@@ -19,7 +19,7 @@ folder above the one you are in, so a library in `~/code/ui` makes devlink look 
 `--root` once per folder to choose others:
 
 ```bash
-npx devlink init --root ~/code --root ~/work
+npx @gigauri96/devlink init --root ~/code --root ~/work
 ```
 
 Nothing in your projects changes yet. devlink keeps its own state in `~/.devlink`.
@@ -27,7 +27,7 @@ Nothing in your projects changes yet. devlink keeps its own state in `~/.devlink
 ## Register the library
 
 ```bash
-npx devlink add
+npx @gigauri96/devlink add
 ```
 
 devlink works out how the library is built and what gets published. It recognises Nx and Angular CLI
@@ -37,7 +37,7 @@ libraries and packages with a `build` script. When it cannot tell, say so with `
 ## Find the apps that use it
 
 ```bash
-npx devlink consumers
+npx @gigauri96/devlink consumers
 ```
 
 This lists every project under your roots that depends on the library. It only looks.
@@ -45,7 +45,7 @@ This lists every project under your roots that depends on the library. It only l
 ## Link an app
 
 ```bash
-npx devlink link ../shop
+npx @gigauri96/devlink link ../shop
 ```
 
 Linking is the first time devlink touches the app. It saves a copy of the app's `package.json` and
@@ -56,7 +56,7 @@ cannot be committed by accident.
 ## Work
 
 ```bash
-npx devlink watch
+npx @gigauri96/devlink watch
 ```
 
 Every time you save, devlink builds the library, publishes a new dev version such as
@@ -66,7 +66,7 @@ not pick the change up on its own. `devlink sync` does the same once, without wa
 ## Put the app back
 
 ```bash
-npx devlink restore ../shop
+npx @gigauri96/devlink restore ../shop
 ```
 
 The app's `package.json` and lockfile are written back exactly as they were, its dependencies are
@@ -77,7 +77,7 @@ reinstalled from them, and the commit guard is removed. `restore --all` does eve
 `npx` works for trying devlink. Once you use it daily, install it so `devlink` is always on your PATH:
 
 ```bash
-npm install --global devlink
+npm install --global @gigauri96/devlink
 ```
 
 `devlink daemon install` then starts devlink when you log in, and on macOS the

@@ -161,7 +161,7 @@ pnpm, Yarn and Bun adapters passing the contract suite. Website with landing pag
 GitHub Actions for tests on macOS and Linux, Changesets releases with npm provenance. README, contributing
 guide, issue templates. Signed and notarized menu bar build, Homebrew cask.
 
-**Exit:** `npx devlink init` works for someone who has never seen the project.
+**Exit:** `npx @gigauri96/devlink init` works for someone who has never seen the project.
 
 **Status:** built; the exit check is rehearsed but the package is not on npm yet, and nothing has run on
 GitHub, because the repository is not published. `scripts/newcomer.sh` packs the CLI and runs it the way a
@@ -183,15 +183,16 @@ a refused commit, and a byte-for-byte restore. It passes locally and runs in CI.
 - Releases (`release.yml`): Changesets with npm provenance; then, when Apple secrets are present, a signed,
   notarized universal `Devlink.app` attached to the GitHub release and a cask pushed to
   `mikheil-gigauri/homebrew-devlink`. CONTRIBUTING lists the secrets.
-- The `npx` hint: `init` run through `npx` suggests `npx devlink` commands and how to install globally.
+- The `npx` hint: `init` run through `npx` suggests `npx @gigauri96/devlink` commands and how to install globally.
 - Known limits:
   - Signing, notarization and the cask are scripted but untested: they need an Apple Developer ID.
   - With pnpm's release-age gate, a plain `pnpm install` by the user while linked refuses the dev build;
     `devlink sync` or a restore is the way through, and the docs say so.
   - Snapshot tests compare only on the macOS major they were recorded on; elsewhere, such as CI's
     runners, they are skipped with a note.
-- To launch: create the GitHub repository, add `NPM_TOKEN`, enable Pages from Actions, and merge the
-  first "Version packages" pull request.
+- To launch: create the GitHub repository, enable Pages from Actions, merge the first "Version packages"
+  pull request, publish that first version by hand (npm only lets a package that exists trust a
+  workflow), then set up npm trusted publishing for `release.yml`; later releases need no token.
 
 ## Later
 

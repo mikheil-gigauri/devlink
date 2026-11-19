@@ -14,15 +14,15 @@ You need Node 22.12 or newer, macOS or Linux, and apps that install with npm, pn
 folder of the library you are working on:
 
 ```bash
-npx devlink init                      # remembers where your projects live; starts devlink
-npx devlink add                       # detects Nx, Angular CLI or a build script
-npx devlink consumers                 # who uses it; nothing changes yet
-npx devlink link ../shop ../admin     # opt in: snapshot, dev install, commit guard
-npx devlink watch                     # every save: build, publish, install, clear caches
-npx devlink restore ../shop ../admin  # back to exactly what you had
+npx @gigauri96/devlink init                      # remembers where your projects live; starts devlink
+npx @gigauri96/devlink add                       # detects Nx, Angular CLI or a build script
+npx @gigauri96/devlink consumers                 # who uses it; nothing changes yet
+npx @gigauri96/devlink link ../shop ../admin     # opt in: snapshot, dev install, commit guard
+npx @gigauri96/devlink watch                     # every save: build, publish, install, clear caches
+npx @gigauri96/devlink restore ../shop ../admin  # back to exactly what you had
 ```
 
-Once you use it daily, `npm install --global devlink` puts `devlink` on your PATH, and
+Once you use it daily, `npm install --global @gigauri96/devlink` puts `devlink` on your PATH, and
 `devlink daemon install` starts it at login. `devlink status` shows what is linked and running,
 `devlink doctor` checks the setup, and every command takes `--json` for scripts and agents.
 
@@ -67,7 +67,7 @@ npm run dev -w @devlink/site     # http://localhost:4321/devlink/
 npm run build -w @devlink/site   # generates the CLI reference and design pages, then builds
 ```
 
-After changing the daemon's API, run `npm run api:export -w devlink` so both sides share the new
+After changing the daemon's API, run `npm run api:export -w @gigauri96/devlink` so both sides share the new
 contract. `SNAPSHOT_RECORD=1 npm run menubar:test` records the snapshots again after a deliberate UI change.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how changes and releases work.

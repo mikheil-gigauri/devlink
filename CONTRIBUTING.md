@@ -51,16 +51,19 @@ one or two sentences for the changelog, in the user's terms. Changes to tests, d
 
 Releases run from `.github/workflows/release.yml` on every push to `main`. While changesets are pending,
 it keeps a "Version packages" pull request up to date. Merging that pull request publishes to npm with
-provenance, tags `devlink@<version>`, and builds the menu bar app.
+provenance, tags `@gigauri96/devlink@<version>`, and builds the menu bar app.
 
-The repository needs these secrets:
+Publishing needs no npm token: the `devlink` package trusts this workflow through npm's trusted
+publishing (on npmjs.com, the package's Settings → Trusted publishing: user `mikheil-gigauri`, repository
+`devlink`, workflow `release.yml`, with `npm publish` allowed). npm adds the provenance itself.
 
-| Secret                                            | For                                                                                                                                                                     |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NPM_TOKEN`                                       | Publishing to npm. A granular token with publish rights to `devlink`; once the package exists, switch to npm trusted publishing for this workflow and remove the token. |
-| `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD` | A base64 "Developer ID Application" certificate (`.p12`) and its password, for signing `Devlink.app`.                                                                   |
-| `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | Notarizing the app. The password is an app-specific password for the Apple ID.                                                                                          |
-| `HOMEBREW_TAP_TOKEN`                              | Pushing the updated cask to `mikheil-gigauri/homebrew-devlink`. A fine-grained token with contents write access to that repository only.                                |
+The menu bar app needs these secrets:
+
+| Secret                                            | For                                                                                                                                      |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD` | A base64 "Developer ID Application" certificate (`.p12`) and its password, for signing `Devlink.app`.                                    |
+| `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | Notarizing the app. The password is an app-specific password for the Apple ID.                                                           |
+| `HOMEBREW_TAP_TOKEN`                              | Pushing the updated cask to `mikheil-gigauri/homebrew-devlink`. A fine-grained token with contents write access to that repository only. |
 
 Without the Apple secrets the menu bar job is skipped with a warning; npm publishing does not depend on
 it. To build a release locally: `DEVLINK_UNIVERSAL=1 DEVLINK_SIGN_IDENTITY="Developer ID Application"
