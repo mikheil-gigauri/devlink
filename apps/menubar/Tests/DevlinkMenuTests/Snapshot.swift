@@ -3,6 +3,15 @@ import Foundation
 import SwiftUI
 import Testing
 
+enum Snapshots {
+  /// The macOS major version the references in `__Snapshots__` were drawn on. AppKit draws controls
+  /// differently from one major version to the next, so elsewhere the comparison would only measure that.
+  static let recordedOn = 27
+  static let recording = ProcessInfo.processInfo.environment["SNAPSHOT_RECORD"] == "1"
+  static let comparable = recording || ProcessInfo.processInfo.operatingSystemVersion.majorVersion == recordedOn
+  static let skipped = "references were drawn on macOS \(recordedOn); record them on this one with SNAPSHOT_RECORD=1"
+}
+
 /// Renders a view in light and dark, at 2x whatever the screen, and compares it with the reference
 /// PNGs in `__Snapshots__`. `SNAPSHOT_RECORD=1` rewrites the references; a mismatch leaves
 /// `<name>.<appearance>.actual.png` beside the reference to look at.
@@ -13,7 +22,7 @@ func assertSnapshot(
 ) {
   _ = NSApplication.shared
   let folder = URL(filePath: filePath).deletingLastPathComponent().appending(path: "__Snapshots__")
-  let record = ProcessInfo.processInfo.environment["SNAPSHOT_RECORD"] == "1"
+  let record = Snapshots.recording
 
   for (appearance, suffix) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
     let png = render(view, appearance: NSAppearance(named: appearance)!, size: size)

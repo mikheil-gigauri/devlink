@@ -1,5 +1,5 @@
 import { builtInIntegrations } from '../adapters/integrations/index.ts';
-import { npm } from '../adapters/package-managers/npm.ts';
+import { npm, npmPublisher } from '../adapters/package-managers/npm.ts';
 import type { CommandSpec, DevlinkState, Manifest } from '../core/model.ts';
 import type { CoreDeps } from '../core/ports.ts';
 import { formatManifest } from '../core/project/manifest.ts';
@@ -104,6 +104,7 @@ export function createScenario({ files = scenarioFiles(), state }: ScenarioOptio
     state: store,
     events,
     packageManagers: { npm },
+    publisher: npmPublisher,
     integrations: builtInIntegrations,
     registryUrl: REGISTRY,
     registryCredentials: { username: 'devlink', password: 'test-password' },

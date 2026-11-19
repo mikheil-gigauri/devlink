@@ -163,6 +163,36 @@ guide, issue templates. Signed and notarized menu bar build, Homebrew cask.
 
 **Exit:** `npx devlink init` works for someone who has never seen the project.
 
+**Status:** built; the exit check is rehearsed but the package is not on npm yet, and nothing has run on
+GitHub, because the repository is not published. `scripts/newcomer.sh` packs the CLI and runs it the way a
+newcomer would, with `npx` in an empty home folder: init, add, consumers, link, an edit reaching the app,
+a refused commit, and a byte-for-byte restore. It passes locally and runs in CI.
+
+- Package managers: pnpm, Yarn 2+ and Bun adapters pass the same contract suite as npm against real
+  registries, and an end-to-end test links one library into all four at once. pnpm installs by version;
+  Yarn and Bun install from the tarball URL, because neither lets a command override a scope's registry.
+  Publishing is always npm. Yarn 1 and binary-only `bun.lockb` projects are refused with a fix. The ADR 0006
+  amendment has the details.
+- Linux: a `walk` watcher strategy, one watch per relevant folder, replaces recursive `fs.watch` there
+  (ADR 0012 amendment). It runs the same tests as the macOS strategy, but has not run on real inotify yet.
+- Website in `apps/site` (ADR 0011 amendment): a landing page with a working diagram of the cycle,
+  guides, a CLI reference generated from the CLI's help text, the ADRs, and the menu's real snapshots.
+  Deployed to GitHub Pages by `site.yml`.
+- CI (`ci.yml`): typecheck, lint, build, unit and integration tests, and the newcomer check on Ubuntu with
+  Node 22.12 and 24 and on macOS; the menu bar app's tests and a universal bundle on macOS.
+- Releases (`release.yml`): Changesets with npm provenance; then, when Apple secrets are present, a signed,
+  notarized universal `Devlink.app` attached to the GitHub release and a cask pushed to
+  `mikheil-gigauri/homebrew-devlink`. CONTRIBUTING lists the secrets.
+- The `npx` hint: `init` run through `npx` suggests `npx devlink` commands and how to install globally.
+- Known limits:
+  - Signing, notarization and the cask are scripted but untested: they need an Apple Developer ID.
+  - With pnpm's release-age gate, a plain `pnpm install` by the user while linked refuses the dev build;
+    `devlink sync` or a restore is the way through, and the docs say so.
+  - Snapshot tests compare only on the macOS major they were recorded on; elsewhere, such as CI's
+    runners, they are skipped with a note.
+- To launch: create the GitHub repository, add `NPM_TOKEN`, enable Pages from Actions, and merge the
+  first "Version packages" pull request.
+
 ## Later
 
 `--fast` mode (copy `dist` between full installs), managed dev-server restarts, editor extension,

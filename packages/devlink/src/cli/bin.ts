@@ -41,6 +41,7 @@ const code = await run(argv, {
   local,
   color,
   signal: interrupt.signal,
+  entry: process.argv[1] ?? '',
 });
 
 if (argv[0] === 'daemon' && argv[1] === 'run') {

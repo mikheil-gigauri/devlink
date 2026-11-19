@@ -74,6 +74,19 @@ describe('restoreConsumer', () => {
     expect(process.lines(ADMIN).at(-1)).toBe('npm install --no-package-lock --no-audit --no-fund');
   });
 
+  it('removes a lockfile the clean install itself created when the consumer had none', async () => {
+    // Yarn Berry, for one, always writes a lockfile on install.
+    const { deps, fs, process } = await linkedAndSynced([ADMIN]);
+    process.on('npm install --no-package-lock', async (spec) => {
+      await fs.writeText(`${spec.cwd}/package-lock.json`, '{}\n');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    await restoreConsumer(deps, { consumer: ADMIN });
+
+    expect(await fs.exists(`${ADMIN}/package-lock.json`)).toBe(false);
+  });
+
   it('restores npm-shrinkwrap.json as well as package-lock.json', async () => {
     const files = { ...scenarioFiles(), [`${SHOP}/npm-shrinkwrap.json`]: json({ shrinkwrap: 'original' }) };
     const scenario = createScenario({ files, state: registered });
@@ -191,6 +204,95 @@ describe('restoreConsumer', () => {
 
     await expect(restoreConsumer(deps, { consumer: SHOP })).rejects.toMatchObject({
       code: 'snapshot-missing',
+    });
+  });
+
+  describe('one library of several', () => {
+    const FORMS = '/repos/forms';
+    const twoLibraries: DevlinkState = {
+      ...registered,
+      libraries: [...registered.libraries, { name: '@acme/forms', root: FORMS, publishDir: FORMS }],
+    };
+    const files = () => ({
+      ...scenarioFiles(),
+      [`${FORMS}/package.json`]: json({ name: '@acme/forms', version: '2.0.0' }),
+      [`${SHOP}/package.json`]: json({
+        ...shopManifest,
+        dependencies: { ...shopManifest.dependencies, '@acme/forms': '^2.0.0' },
+      }),
+      [`${SHOP}/package-lock.json`]: lockfileFor('shop', {
+        '@acme/ui': '1.4.0',
+        '@angular/core': '20.1.3',
+        '@acme/forms': '2.0.0',
+      }),
+    });
+
+    async function bothLinked() {
+      const scenario = createScenario({ files: files(), state: twoLibraries });
+      for (const library of ['@acme/ui', '@acme/forms']) {
+        await linkConsumer(scenario.deps, { library, consumer: SHOP });
+        await syncLibrary(scenario.deps, { library });
+      }
+      return scenario;
+    }
+
+    it('puts that library back on its release and keeps the others on their dev builds', async () => {
+      const { deps, fs, store, events } = await bothLinked();
+      const forms = store.current.links.find((link) => link.library === '@acme/forms');
+      expect(forms?.installedVersion).toMatch(/^2\.0\.1-dev\./);
+
+      const result = await restoreConsumer(deps, { consumer: SHOP, library: '@acme/ui' });
+
+      expect(result).toEqual({ ok: true });
+      const manifest = JSON.parse((await fs.readText(`${SHOP}/package.json`)) ?? '{}');
+      expect(manifest.dependencies['@acme/ui']).toBe('^1.4.0');
+      expect(manifest.dependencies['@acme/forms']).toBe(forms?.installedVersion);
+      const lock = JSON.parse((await fs.readText(`${SHOP}/package-lock.json`)) ?? '{}');
+      expect(lock.packages['node_modules/@acme/ui'].version).toBe('1.4.0');
+      expect(store.current.links).toEqual([
+        expect.objectContaining({
+          library: '@acme/forms',
+          consumer: SHOP,
+          status: 'installed',
+          installedVersion: forms?.installedVersion,
+        }),
+      ]);
+      expect(await fs.exists(`${HOME}/snapshots/${pathSlug(SHOP)}/meta.json`)).toBe(true);
+      expect(events.events.at(-1)).toEqual({
+        type: 'consumer:restored',
+        consumer: SHOP,
+        library: '@acme/ui',
+        ok: true,
+      });
+    });
+
+    it('restores the whole app, byte for byte, when the last library goes back', async () => {
+      const original = createScenario({ files: files() }).fs.snapshot(SHOP);
+      const { deps, fs, store } = await bothLinked();
+
+      await restoreConsumer(deps, { consumer: SHOP, library: '@acme/ui' });
+      await restoreConsumer(deps, { consumer: SHOP, library: '@acme/forms' });
+
+      expect(manifestAndLock(fs.snapshot(SHOP), SHOP)).toEqual(manifestAndLock(original, SHOP));
+      expect(store.current.links).toEqual([]);
+      expect(await fs.exists(`${HOME}/snapshots/${pathSlug(SHOP)}`)).toBe(false);
+    });
+
+    it('leaves the others pending, for the next sync, when the clean install fails', async () => {
+      const { deps, process, store } = await bothLinked();
+      process.on('npm ci', async () => failed('npm error network'));
+
+      const result = await restoreConsumer(deps, { consumer: SHOP, library: '@acme/ui' });
+
+      expect(result).toEqual({ ok: false, output: 'npm error network' });
+      expect(store.current.links).toEqual([{ library: '@acme/forms', consumer: SHOP, status: 'pending' }]);
+    });
+
+    it('refuses a library that is not linked into the app', async () => {
+      const { deps } = await linkedAndSynced([SHOP]);
+      await expect(restoreConsumer(deps, { consumer: SHOP, library: '@acme/forms' })).rejects.toMatchObject({
+        code: 'invalid-request',
+      });
     });
   });
 });

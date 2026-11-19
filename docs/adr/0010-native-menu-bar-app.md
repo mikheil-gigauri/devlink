@@ -9,7 +9,7 @@ whether a build failed) is ambient. It should be glanceable without a terminal.
 
 ## Decision
 
-A native SwiftUI app using `MenuBarExtra` with the window style, targeting macOS 14 and later. It is a pure
+A native SwiftUI app using `MenuBarExtra` with the window style, targeting macOS 14 and later (raised to macOS 26 by ADR 0013's amendment). It is a pure
 client of the daemon API (ADR 0003): it renders state from the SSE stream and sends commands; it never
 touches the registry, package managers or repositories.
 

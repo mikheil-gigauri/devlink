@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: 22.12 }
+          - { os: ubuntu-latest, node: 24 }
+          - { os: macos-latest, node: 24 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # Some tests make real commits in throwaway repositories.
+      - run: git config --global user.name "devlink CI" && git config --global user.email "ci@devlink.invalid"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build -w devlink
+      # The site needs a newer Node than devlink's minimum (Astro 7 wants 22.23.4 or later).
+      - if: matrix.node != '22.12'
+        run: npm run build -w @devlink/site
+      # Unit tests, then integration tests against real Verdaccio, npm, pnpm, Yarn and Bun.
+      - run: npm run test:all
+      - name: The exit check, as a newcomer would run it
+        run: scripts/newcomer.sh
+
+  menubar:
+    name: Menu bar app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Use the newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+      - run: npm ci
+      # Snapshot tests skip themselves on a macOS version other than the one the references were drawn on.
+      - run: npm run menubar:test
+      - run: npm run menubar:e2e
+      - run: DEVLINK_UNIVERSAL=1 npm run menubar:bundle

@@ -10,18 +10,49 @@ struct DevlinkApp: App {
 
   var body: some Scene {
     MenuBarExtra {
-      MenuContent(model: delegate.model, actions: delegate.actions)
+      MenuContent(model: delegate.model, navigation: delegate.navigation, actions: delegate.actions)
     } label: {
       Image(nsImage: MenuBarIcon.image(for: delegate.model.icon))
     }
     .menuBarExtraStyle(.window)
+
+    Window("devlink", id: mainWindowID) {
+      MainWindow(model: delegate.model, navigation: delegate.navigation, actions: delegate.actions)
+        .onAppear { UserDefaults.standard.set(true, forKey: Self.welcomedKey) }
+    }
+    .defaultSize(width: 900, height: 580)
+    // Opens by itself only the first time, so a new user sees where to start.
+    .defaultLaunchBehavior(UserDefaults.standard.bool(forKey: Self.welcomedKey) ? .suppressed : .presented)
+    .restorationBehavior(.disabled)
+    .commands {
+      SidebarCommands()
+      CommandGroup(replacing: .newItem) {
+        Button("Add Library…") {
+          Task { await delegate.model.chooseLibraryFolder(navigation: delegate.navigation) }
+        }
+        .keyboardShortcut("o")
+        Button("Add App…") {
+          Task { await delegate.model.chooseApp(navigation: delegate.navigation) }
+        }
+        .keyboardShortcut("o", modifiers: [.command, .shift])
+        Button("New Group…") { delegate.navigation.groupEditor = .new }
+          .keyboardShortcut("n", modifiers: [.command, .shift])
+      }
+    }
+
+    Settings {
+      SettingsView(model: delegate.model, actions: delegate.actions)
+    }
   }
+
+  private static let welcomedKey = "welcomed"
 }
 
 /// Owns the model for the app's lifetime and follows the daemon from launch, not from the first time
 /// the menu opens, so failures are noticed (and notified) while the menu is closed.
 final class AppDelegate: NSObject, NSApplicationDelegate {
   let model: MenuModel
+  let navigation = AppNavigation()
   private let home = DevlinkHome.locate()
   private var failureWindow: FailureWindow?
   private var connection: Task<Void, Never>?
@@ -40,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
       },
       launch: { try await launcher.start() },
+      install: { try await launcher.installCLI() },
       notifier: relay)
     super.init()
     failureWindow = FailureWindow(model: model)

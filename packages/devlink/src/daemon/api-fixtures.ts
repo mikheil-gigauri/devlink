@@ -78,6 +78,15 @@ export const outputs = {
   },
   register: { library, detected: 'angular' },
   unregister: { ok: true },
+  inspect: {
+    name: '@acme/ui',
+    version: '1.4.0',
+    root: '/Users/me/repos/ui-lib/projects/ui',
+    detected: 'angular',
+    publishDir: '/Users/me/repos/ui-lib/dist/ui',
+    build: { command: '/Users/me/repos/ui-lib/node_modules/.bin/ng', args: ['build', 'ui'] },
+    registered: false,
+  },
   sync: {
     version: VERSION,
     installs: [
@@ -116,6 +125,8 @@ export const outputs = {
     { consumer: SHOP, status: 'done' },
     { consumer: ADMIN, status: 'skipped' },
   ],
+  roots: { roots: ['/Users/me/repos'] },
+  setRoots: { roots: ['/Users/me/repos', '/Users/me/work'] },
   shutdown: { ok: true },
 } satisfies { [K in OperationName]: OperationOutputs[K] };
 
@@ -163,7 +174,12 @@ const eventSamples = {
     consumer: SHOP,
     paths: [`${SHOP}/.angular/cache`],
   }),
-  'consumer:restored': event<'consumer:restored'>(9, { type: 'consumer:restored', consumer: SHOP, ok: true }),
+  'consumer:restored': event<'consumer:restored'>(9, {
+    type: 'consumer:restored',
+    consumer: SHOP,
+    library: '@acme/ui',
+    ok: true,
+  }),
   'job:queued': event<'job:queued'>(10, { type: 'job:queued', job }),
   'job:started': event<'job:started'>(11, { type: 'job:started', job: { ...job, startedAt: AT } }),
   'job:finished': event<'job:finished'>(12, {

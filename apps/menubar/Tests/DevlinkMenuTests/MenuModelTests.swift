@@ -15,12 +15,14 @@ import Testing
 
   func makeModel(
     lookup: @escaping @MainActor () -> MenuModel.Lookup? = { nil },
-    launch: @escaping @MainActor () async throws -> Void = {}
+    launch: @escaping @MainActor () async throws -> Void = {},
+    install: @escaping @MainActor () async throws -> Void = {}
   ) -> MenuModel {
     let daemon = daemon
     return MenuModel(
       connect: { lookup() ?? .running(daemon, health) },
       launch: launch,
+      install: install,
       notifier: notifier,
       sleep: { _ in try await Task.sleep(for: .milliseconds(2)) }
     )
@@ -72,7 +74,89 @@ import Testing
     await model.startDaemon()
 
     #expect(model.connection == .offline)
-    #expect(model.startError?.contains("could not find the devlink command") == true)
+    #expect(model.startError?.contains("not installed") == true)
+    #expect(model.cliMissing)
+  }
+
+  @Test func installsTheCLIWhenAsked_thenStartsTheDaemon() async {
+    let installed = Switch()
+    let daemonUp = Switch()
+    let model = makeModel(
+      lookup: { daemonUp.on ? nil : .notRunning },
+      launch: {
+        guard installed.on else { throw DaemonLauncher.Failure.cliNotFound }
+        daemonUp.on = true
+      },
+      install: { installed.on = true })
+    let task = Task { await model.run() }
+    defer { task.cancel() }
+    await eventually { model.connection == .offline }
+    await model.startDaemon()
+    #expect(model.cliMissing)
+
+    await model.installCLI()
+
+    await eventually { model.connection == .online }
+    #expect(!model.cliMissing)
+  }
+
+  @Test func readsTheProjectFoldersOnConnecting_andReplacesThem() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    #expect(model.roots == ["/Users/me/repos"])
+
+    try? await model.setRoots(["/Users/me/work"])
+
+    #expect(model.roots == ["/Users/me/work"])
+    #expect(await daemon.calls == ["setRoots /Users/me/work", "discover"])
+  }
+
+  @Test func addsALibraryWithTheSettingsChosen_thenLooksForItsProjects() async throws {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    let preview = try await model.inspect("/r/ui")
+    try await model.register(preview.root, publishDir: "/r/ui/dist", build: BuildCommand(line: "npm run build"))
+
+    #expect(await daemon.calls == ["inspect /r/ui", "register /r/ui /r/ui/dist npm run build", "discover"])
+  }
+
+  @Test func asksBeforeRestoringAnAppWhosePackageJsonChanged() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    await daemon.fail(with: APIError(code: .manifestDrifted, message: "package.json changed"))
+
+    await model.restore(shop)
+
+    #expect(model.driftedRestore == RestoreRequest(consumer: shop))
+    #expect(model.actionError == nil)
+
+    await daemon.fail(with: nil)
+    await model.restore(shop, force: true)
+
+    #expect(model.driftedRestore == nil)
+    #expect(await daemon.calls.last == "restore \(shop) force")
+  }
+
+  @Test func restoresOneLibraryAndRetriesThatLibraryAfterADrift() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    await daemon.fail(with: APIError(code: .manifestDrifted, message: "package.json changed"))
+
+    await model.restore(shop, library: "@acme/ui")
+    #expect(model.driftedRestore == RestoreRequest(consumer: shop, library: "@acme/ui"))
+
+    await daemon.fail(with: nil)
+    let request = model.driftedRestore!
+    await model.restore(request.consumer, library: request.library, force: true)
+    #expect(await daemon.calls.last == "restore @acme/ui in \(shop) force")
+
+    daemon.channel.send(.consumerRestored(consumer: shop, library: "@acme/ui", ok: true), id: 1)
+    await eventually { model.activity == "Restored @acme/ui in shop" }
   }
 
   @Test func refusesADaemonOfAnotherAPIVersion() async {
@@ -133,7 +217,7 @@ import Testing
     await eventually { notifier.posted.count == 3 }
 
     #expect(notifier.posted.map(\.title) == [
-      "Install of @acme/ui into admin failed", "Publishing failed", "Stopped watching @acme/ui",
+      "Install of @acme/ui into admin failed", "Publishing failed", "Auto-sync of @acme/ui stopped",
     ])
   }
 
@@ -162,10 +246,10 @@ import Testing
     #expect(await daemon.calls == ["sync @acme/ui", "watch @acme/ui false", "link @acme/ui \(admin)"])
     #expect(model.actionError == nil)
 
-    await daemon.fail(with: APIError(code: .manifestDrifted, message: "shop has changes devlink did not make."))
+    await daemon.fail(with: APIError(code: .snapshotMissing, message: "No snapshot of shop was found."))
     await model.restore(shop)
-    #expect(model.actionError == "shop has changes devlink did not make.")
-    #expect(model.isBusy(.restore(shop)) == false)
+    #expect(model.actionError == "No snapshot of shop was found.")
+    #expect(model.isBusy(.restore(shop, nil)) == false)
   }
 
   @Test func leavesBuildFailuresToTheirEventInsteadOfRepeatingThem() async {
@@ -219,5 +303,68 @@ import Testing
 
     #expect(model.linkCandidates(for: "@acme/ui").map(\.root) == [admin])
     #expect(model.linkCandidates(for: "@acme/forms").map(\.root) == ["/r/blog"])
+  }
+
+  @Test func listsAppsThatUseALibraryOrAreLinkedToOne() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    await daemon.setDiscovered([
+      DiscoveredConsumer(root: admin, name: "admin", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .pnpm),
+      DiscoveredConsumer(root: "/r/blog", name: "blog", libraries: [.init(name: "@acme/forms", range: "*")], packageManager: .npm),
+      DiscoveredConsumer(root: "/r/other", name: "other", libraries: [.init(name: "left-pad", range: "*")], packageManager: .npm),
+    ])
+
+    await model.discoverConsumers()
+
+    #expect(model.apps.map(\.name) == ["admin", "blog", "shop"])
+    let shopApp = model.apps.first { $0.root == shop }
+    #expect(shopApp?.linked.map(\.library) == ["@acme/ui"])
+    #expect(shopApp?.packageManager == nil)
+    let adminApp = model.apps.first { $0.root == admin }
+    #expect(adminApp?.unlinked.map(\.library) == ["@acme/ui"])
+    #expect(adminApp?.libraries.first?.range == "^1.4.0")
+    #expect(adminApp?.packageManager == "pnpm")
+  }
+
+  @Test func opensAFolderAsAnApp_aLibrary_orSaysWhyNot() async throws {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    let folder = FileManager.default.temporaryDirectory.appending(path: "devlink-apps-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    func project(_ name: String, _ manifest: String?, lockfile: String? = nil) throws -> String {
+      let root = folder.appending(path: name)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      if let manifest { try manifest.write(to: root.appending(path: "package.json"), atomically: true, encoding: .utf8) }
+      if let lockfile { try "".write(to: root.appending(path: lockfile), atomically: true, encoding: .utf8) }
+      return root.path(percentEncoded: false)
+    }
+    let store = try project(
+      "store", #"{"name":"store","devDependencies":{"@acme/forms":"^2.0.0","typescript":"~5.9.0"}}"#,
+      lockfile: "pnpm-lock.yaml")
+    let unrelated = try project("unrelated", #"{"name":"unrelated","dependencies":{"left-pad":"*"}}"#)
+    let empty = try project("empty", nil)
+    let navigation = AppNavigation()
+
+    model.open(store, navigation: navigation, orAddAsLibrary: false)
+    #expect(navigation.selection == .app(store))
+    let app = model.apps.first { $0.root == store }
+    #expect(app?.unlinked.map(\.library) == ["@acme/forms"])
+    #expect(app?.libraries.first?.range == "^2.0.0")
+    #expect(app?.packageManager == "pnpm")
+    #expect(model.linkCandidates(for: "@acme/forms").map(\.root) == [store])
+
+    model.open(unrelated, navigation: navigation, orAddAsLibrary: false)
+    #expect(model.actionError?.contains("does not depend on any of your libraries") == true)
+    model.open(unrelated, navigation: navigation, orAddAsLibrary: true)
+    #expect(navigation.libraryEditor?.root == unrelated)
+
+    model.open(empty, navigation: navigation, orAddAsLibrary: true)
+    #expect(model.actionError == "empty has no package.json. Choose the folder that holds it.")
+
+    model.open(ui.root, navigation: navigation, orAddAsLibrary: true)
+    #expect(navigation.selection == .library("@acme/ui"))
+    #expect(model.actionError == nil)
   }
 }

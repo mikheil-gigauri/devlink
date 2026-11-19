@@ -72,6 +72,20 @@ describe('NodeProcessRunner', () => {
     expect(result.stdout.trim()).toBe('/explicit');
   });
 
+  it('applies a command’s own variables last, for that command only', async () => {
+    const runner = new NodeProcessRunner({
+      baseEnv: { PATH: process.env.PATH ?? '', YARN_X: 'inherited' },
+      env: { YARN_Y: 'runner' },
+    });
+    const script = 'console.log([process.env.YARN_X, process.env.YARN_Y].join(","))';
+
+    const own = await runner.run({ command: node, args: ['-e', script], cwd, env: { YARN_X: 'command' } });
+    const next = await runner.run({ command: node, args: ['-e', script], cwd });
+
+    expect(own.stdout.trim()).toBe('command,runner');
+    expect(next.stdout.trim()).toBe('inherited,runner');
+  });
+
   it('rejects when the command cannot be started', async () => {
     await expect(
       new NodeProcessRunner().run({ command: 'devlink-no-such-command', args: [], cwd }),

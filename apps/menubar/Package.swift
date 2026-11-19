@@ -4,7 +4,7 @@ import PackageDescription
 /// The devlink menu bar app (ADR 0010, ADR 0013): a pure client of the daemon's API.
 let package = Package(
   name: "DevlinkMenuBar",
-  platforms: [.macOS(.v14)],
+  platforms: [.macOS(.v26)],
   products: [
     .executable(name: "Devlink", targets: ["Devlink"])
   ],

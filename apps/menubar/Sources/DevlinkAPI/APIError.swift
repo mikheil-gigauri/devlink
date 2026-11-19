@@ -48,8 +48,8 @@ public struct APIError: Error, Sendable, Equatable, LocalizedError {
 
   public var errorDescription: String? { message }
 
-  static func unavailable(_ reason: String) -> APIError {
-    APIError(code: .daemonUnavailable, message: "Could not reach the devlink daemon (\(reason))")
+  public static func unavailable(_ reason: String) -> APIError {
+    APIError(code: .daemonUnavailable, message: "Could not reach devlink: \(reason).")
   }
 }
 

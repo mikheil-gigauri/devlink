@@ -102,6 +102,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<RunningD
     hub,
     health,
     roots: async () => (await home.readConfig()).roots,
+    saveRoots: async (roots) => home.writeConfig({ ...(await home.readConfig()), roots }),
     watcher: new NodeLibraryWatcher(),
     guard: new GitCommitGuard(
       new NodeProcessRunner({ baseEnv: env, signal: abort.signal, timeoutMs: 30_000 }),

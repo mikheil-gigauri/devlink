@@ -3,13 +3,22 @@ import Foundation
 /// What the menu needs from the daemon. The view model's tests substitute a fake.
 public protocol DaemonAPI: Sendable {
   func status() async throws -> Status
+  func inspect(root: String) async throws -> LibraryPreview
+  func register(root: String, publishDir: String?, build: BuildCommand?) async throws -> RegisterResult
+  func unregister(library: String) async throws -> Done
   func sync(library: String) async throws -> SyncResult
   func setWatch(library: String, enabled: Bool) async throws -> Library
   func discover() async throws -> [DiscoveredConsumer]
   func link(library: String, consumer: String) async throws -> LinkResult
-  func restore(consumer: String) async throws -> RestoreResult
+  /// Restores `library` in `consumer`, keeping its other links, or every library when nil.
+  func restore(consumer: String, library: String?, force: Bool) async throws -> RestoreResult
+  func saveGroup(_ name: String, consumers: [String]) async throws -> Group
+  func deleteGroup(_ name: String) async throws -> Done
   func linkGroup(_ group: String, library: String) async throws -> [GroupMemberOutcome]
   func restoreGroup(_ group: String) async throws -> [GroupMemberOutcome]
+  func roots() async throws -> [String]
+  func setRoots(_ roots: [String]) async throws -> [String]
+  func shutdown() async throws -> Done
   /// Follows the daemon's events, first replaying any after `lastEventID`. Ends when the daemon goes away.
   func events(after lastEventID: Int?) -> AsyncThrowingStream<ServerEvent, any Error>
 }
@@ -35,6 +44,18 @@ public struct DaemonClient: DaemonAPI {
 
   public func status() async throws -> Status { try await call(.status, Empty()) }
 
+  public func inspect(root: String) async throws -> LibraryPreview {
+    try await call(.inspect, ["root": root])
+  }
+
+  public func register(root: String, publishDir: String?, build: BuildCommand?) async throws -> RegisterResult {
+    try await call(.register, RegisterInput(root: root, publishDir: publishDir, build: build))
+  }
+
+  public func unregister(library: String) async throws -> Done {
+    try await call(.unregister, ["library": library])
+  }
+
   public func sync(library: String) async throws -> SyncResult {
     try await call(.sync, ["library": library])
   }
@@ -49,8 +70,16 @@ public struct DaemonClient: DaemonAPI {
     try await call(.link, ["library": library, "consumer": consumer])
   }
 
-  public func restore(consumer: String) async throws -> RestoreResult {
-    try await call(.restore, ["consumer": consumer])
+  public func restore(consumer: String, library: String?, force: Bool) async throws -> RestoreResult {
+    try await call(.restore, RestoreInput(consumer: consumer, library: library, force: force ? true : nil))
+  }
+
+  public func saveGroup(_ name: String, consumers: [String]) async throws -> Group {
+    try await call(.saveGroup, SaveGroupInput(name: name, consumers: consumers))
+  }
+
+  public func deleteGroup(_ name: String) async throws -> Done {
+    try await call(.deleteGroup, ["name": name])
   }
 
   public func linkGroup(_ group: String, library: String) async throws -> [GroupMemberOutcome] {
@@ -60,6 +89,18 @@ public struct DaemonClient: DaemonAPI {
   public func restoreGroup(_ group: String) async throws -> [GroupMemberOutcome] {
     try await call(.restoreGroup, ["group": group])
   }
+
+  public func roots() async throws -> [String] {
+    let reply: Roots = try await call(.roots, Empty())
+    return reply.roots
+  }
+
+  public func setRoots(_ roots: [String]) async throws -> [String] {
+    let reply: Roots = try await call(.setRoots, Roots(roots: roots))
+    return reply.roots
+  }
+
+  public func shutdown() async throws -> Done { try await call(.shutdown, Empty()) }
 
   public func call<Input: Encodable, Output: Decodable>(_ operation: OperationName, _ input: Input) async throws -> Output {
     // Builds, publishes and installs run inside one call, so it may legitimately take minutes.
@@ -110,13 +151,13 @@ public struct DaemonClient: DaemonAPI {
     }
     if let status = (response as? HTTPURLResponse)?.statusCode, !(200..<300).contains(status) {
       throw (try? JSONDecoder().decode(APIErrorBody.self, from: data))?.apiError
-        ?? APIError.unavailable("the daemon answered HTTP \(status)")
+        ?? APIError.unavailable("it answered with HTTP \(status)")
     }
     do {
       return try JSONDecoder().decode(Output.self, from: data)
     } catch {
       // Something answered, but not devlink speaking this API.
-      throw APIError.unavailable("the reply was not devlink's")
+      throw APIError.unavailable("another program answered on its port")
     }
   }
 
@@ -125,11 +166,29 @@ public struct DaemonClient: DaemonAPI {
     var data = Data()
     do { for try await byte in body { data.append(byte) } } catch {}
     return (try? JSONDecoder().decode(APIErrorBody.self, from: data))?.apiError
-      ?? .unavailable("the daemon answered HTTP \(status)")
+      ?? .unavailable("it answered with HTTP \(status)")
   }
 }
 
 private struct Empty: Encodable {}
+
+/// Optional fields are left out rather than sent as null, which the daemon's schema rejects.
+private struct RegisterInput: Encodable {
+  let root: String
+  let publishDir: String?
+  let build: BuildCommand?
+}
+
+private struct RestoreInput: Encodable {
+  let consumer: String
+  let library: String?
+  let force: Bool?
+}
+
+private struct SaveGroupInput: Encodable {
+  let name: String
+  let consumers: [String]
+}
 
 private struct WatchInput: Encodable {
   let library: String

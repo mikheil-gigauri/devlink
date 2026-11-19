@@ -12,6 +12,9 @@ const LOCKFILES: Readonly<Record<string, PackageManagerName>> = {
   'bun.lockb': 'bun',
 };
 
+/** Lockfiles devlink cannot snapshot and restore, because they are not text. */
+const BINARY_LOCKFILES = ['bun.lockb'];
+
 export interface DetectPackageManagerInput {
   /** File names at the project root. Nested paths are ignored. */
   readonly files: readonly string[];
@@ -25,7 +28,8 @@ export type PackageManagerDetection =
       readonly source: 'packageManager-field' | 'lockfile' | 'default';
     }
   | { readonly ok: false; readonly reason: 'multiple-lockfiles'; readonly lockfiles: readonly string[] }
-  | { readonly ok: false; readonly reason: 'unsupported-package-manager'; readonly value: string };
+  | { readonly ok: false; readonly reason: 'unsupported-package-manager'; readonly value: string }
+  | { readonly ok: false; readonly reason: 'binary-lockfile'; readonly lockfile: string };
 
 /**
  * Decides which package manager owns a project (ADR 0006): the `packageManager` field wins, then a
@@ -38,8 +42,10 @@ export function detectPackageManager({
 }: DetectPackageManagerInput): PackageManagerDetection {
   const field = manifest.packageManager;
   if (field !== undefined) {
-    const name = field.split('@')[0];
-    return isPackageManagerName(name)
+    const [name, version = ''] = field.split('@');
+    // Yarn 1 shares the name but not the commands or the lockfile format of Yarn 2 and later.
+    const yarnClassic = name === 'yarn' && /^1\./.test(version);
+    return isPackageManagerName(name) && !yarnClassic
       ? { ok: true, name, source: 'packageManager-field' }
       : { ok: false, reason: 'unsupported-package-manager', value: field };
   }
@@ -50,6 +56,9 @@ export function detectPackageManager({
 
   if (only === undefined) return { ok: true, name: 'npm', source: 'default' };
   if (others.length > 0) return { ok: false, reason: 'multiple-lockfiles', lockfiles };
+  const textLockfiles = lockfiles.filter((file) => !BINARY_LOCKFILES.includes(file));
+  if (textLockfiles.length === 0)
+    return { ok: false, reason: 'binary-lockfile', lockfile: lockfiles[0] ?? '' };
   return { ok: true, name: only, source: 'lockfile' };
 }
 

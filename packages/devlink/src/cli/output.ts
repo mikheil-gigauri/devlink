@@ -77,7 +77,11 @@ export function renderEvent(out: Output, event: HubEvent, options: { readonly jo
       out.line(out.dim(`  cleared ${event.paths.join(', ')}`));
       return;
     case 'consumer:restored':
-      if (event.ok) out.ok(`Restored ${out.path(event.consumer)}`);
+      if (event.library !== undefined) {
+        if (event.ok) out.ok(`Restored ${event.library} in ${out.path(event.consumer)}`);
+        else
+          out.fail(`Restored ${event.library} in ${out.path(event.consumer)}, but the clean install failed`);
+      } else if (event.ok) out.ok(`Restored ${out.path(event.consumer)}`);
       else out.fail(`Restored the files of ${out.path(event.consumer)}, but the clean install failed`);
       return;
     case 'library:changed':

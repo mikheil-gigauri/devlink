@@ -21,3 +21,16 @@ Astro with Starlight, in `apps/site`, deployed to GitHub Pages from CI.
 
 - Docs live in the same pull request as the change they describe.
 - A custom domain can be added later without changing the setup.
+
+## Amendment · 2026-11-19 (M5, as built)
+
+- Astro 7 and Starlight 0.43, served at `/devlink/` on GitHub Pages by `.github/workflows/site.yml`.
+- `apps/site/scripts/generate.ts` writes three things before each build, all gitignored: the CLI
+  reference from the CLI's exported `USAGE` text, the ADRs with their links rewritten into site links,
+  and the menu bar app's latest snapshot images, which the landing page shows.
+- The landing page is custom Astro with one small script and no client framework: a diagram where
+  "Edit the library" sends a dev version, in the real scheme, down the wires to three apps, and
+  "Restore" brings them back. It respects reduced motion and follows the docs' theme choice.
+- Astro 7 needs Node 22.23.4 or newer, above devlink's own floor of 22.12, so CI builds the site only on
+  its Node 24 legs. The site declares `cookie@2` itself because Verdaccio's Express hoists `cookie@0.7`
+  to the root, where Astro's prerender bundle would otherwise resolve it.

@@ -30,8 +30,13 @@ export interface CommandResult {
   readonly stderr: string;
 }
 
+/** A command to run, with variables set for it alone on top of the runner's environment. */
+export interface RunSpec extends CommandSpec {
+  readonly env?: Readonly<Record<string, string>>;
+}
+
 export interface ProcessRunner {
-  run(spec: CommandSpec): Promise<CommandResult>;
+  run(spec: RunSpec): Promise<CommandResult>;
 }
 
 export interface Clock {
@@ -70,20 +75,21 @@ export interface RegistryCredentials {
   readonly password: string;
 }
 
-export interface RegistryLeak {
-  /** Where the leak is, e.g. the lockfile key `node_modules/@acme/ui`. */
-  readonly location: string;
-  readonly reasons: readonly ('local-registry-url' | 'dev-version')[];
-}
-
-/** Everything devlink needs from a package manager (ADR 0006). Implementations are pure. */
+/**
+ * Everything devlink needs from a package manager to install into a consumer (ADR 0006).
+ * Implementations are pure: they describe commands, and a ProcessRunner runs them.
+ */
 export interface PackageManagerAdapter {
   readonly name: PackageManagerName;
   /** Lockfile names this manager writes, most common first. */
   readonly lockfiles: readonly string[];
-  install(spec: InstallSpec): CommandSpec;
-  cleanInstall(spec: CleanInstallSpec): CommandSpec;
-  publish(spec: PublishSpec): CommandSpec;
+  install(spec: InstallSpec): RunSpec;
+  cleanInstall(spec: CleanInstallSpec): RunSpec;
+}
+
+/** Publishes a staged package to the local registry. npm does it for every library (ADR 0006). */
+export interface Publisher {
+  publish(spec: PublishSpec): RunSpec;
   /**
    * Files to place in the staging folder so `publish` authenticates, keyed by file name. Files rather
    * than flags keep credentials out of the process list; the staging folder is deleted afterwards.
@@ -92,7 +98,6 @@ export interface PackageManagerAdapter {
     readonly registryUrl: string;
     readonly credentials: RegistryCredentials;
   }): Readonly<Record<string, string>>;
-  findRegistryLeaks(lockfile: string, registryUrl: string): readonly RegistryLeak[];
 }
 
 export type PackageManagerAdapters = Readonly<Partial<Record<PackageManagerName, PackageManagerAdapter>>>;
@@ -142,7 +147,13 @@ export type DevlinkEvent =
       readonly output: string;
     }
   | { readonly type: 'caches:cleared'; readonly consumer: string; readonly paths: readonly string[] }
-  | { readonly type: 'consumer:restored'; readonly consumer: string; readonly ok: boolean };
+  | {
+      readonly type: 'consumer:restored';
+      readonly consumer: string;
+      /** Set when only this library was restored and the consumer's other links were kept. */
+      readonly library?: string | undefined;
+      readonly ok: boolean;
+    };
 
 export interface EventSink {
   emit(event: DevlinkEvent): void;
@@ -156,6 +167,7 @@ export interface CoreDeps {
   readonly state: StateStore;
   readonly events: EventSink;
   readonly packageManagers: PackageManagerAdapters;
+  readonly publisher: Publisher;
   readonly integrations: readonly ConsumerIntegration[];
   /** The local registry's base URL, e.g. `http://127.0.0.1:4873/`. */
   readonly registryUrl: string;

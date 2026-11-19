@@ -8,7 +8,6 @@ describe('detectPackageManager', () => {
     ['pnpm-lock.yaml', 'pnpm'],
     ['yarn.lock', 'yarn'],
     ['bun.lock', 'bun'],
-    ['bun.lockb', 'bun'],
   ] as const)('detects %s as %s', (lockfile, name) => {
     expect(detectPackageManager({ files: ['package.json', lockfile], manifest: {} })).toEqual({
       ok: true,
@@ -60,6 +59,24 @@ describe('detectPackageManager', () => {
       ok: false,
       reason: 'unsupported-package-manager',
       value: 'deno@2.1.0',
+    });
+  });
+
+  it('refuses Yarn 1, whose commands and lockfile differ from Yarn 2 and later', () => {
+    expect(
+      detectPackageManager({ files: ['yarn.lock'], manifest: { packageManager: 'yarn@1.22.22' } }),
+    ).toEqual({ ok: false, reason: 'unsupported-package-manager', value: 'yarn@1.22.22' });
+    expect(detectPackageManager({ files: [], manifest: { packageManager: 'yarn@4.18.1' } })).toMatchObject({
+      ok: true,
+      name: 'yarn',
+    });
+  });
+
+  it('refuses a binary bun.lockb, which cannot be snapshotted as text', () => {
+    expect(detectPackageManager({ files: ['bun.lockb'], manifest: {} })).toEqual({
+      ok: false,
+      reason: 'binary-lockfile',
+      lockfile: 'bun.lockb',
     });
   });
 

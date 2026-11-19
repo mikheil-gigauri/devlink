@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/site"
   ],
   "engines": {
     "node": ">=22.12"
@@ -18,9 +19,12 @@
     "test:all": "npm run test:all --workspaces --if-present",
     "menubar:test": "cd apps/menubar && xcrun swift test",
     "menubar:e2e": "npm run build && apps/menubar/scripts/e2e.sh",
-    "menubar:bundle": "apps/menubar/scripts/bundle.sh"
+    "menubar:bundle": "apps/menubar/scripts/bundle.sh",
+    "release": "changeset publish",
+    "version-packages": "changeset version && npm install --package-lock-only"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.8"
+    "@biomejs/biome": "^2.6.8",
+    "@changesets/cli": "^3.0.3"
   }
 }

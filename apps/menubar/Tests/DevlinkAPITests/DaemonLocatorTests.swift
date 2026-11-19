@@ -121,6 +121,25 @@ import Testing
     #expect(await commands.ran.count == 2)
   }
 
+  @Test func runsTheCommandDEVLINK_CLINamesInsteadOfDevlink() async throws {
+    let commands = Commands(replies: [0])
+
+    try await launcher(agentInstalled: false, commands).start(environment: ["DEVLINK_CLI": "node /src/devlink.mjs"])
+
+    #expect(await commands.ran == [["/bin/zsh", "-l", "-c", "node /src/devlink.mjs daemon start"]])
+  }
+
+  @Test func installsTheCLIWithNpm_andSaysSoWhenNpmIsMissing() async throws {
+    let installed = Commands(replies: [0])
+    try await launcher(agentInstalled: false, installed).installCLI(environment: [:])
+    #expect(await installed.ran == [["/bin/zsh", "-l", "-c", "npm install --global devlink"]])
+
+    let missing = Commands(replies: [127, 127])
+    await #expect(throws: DaemonLauncher.Failure.self) {
+      try await launcher(agentInstalled: false, missing).installCLI(environment: [:])
+    }
+  }
+
   @Test func runsARealCommandWithLargeOutputWithoutBlocking() async {
     let result = await DaemonLauncher.runProcess(["/bin/sh", "-c", "yes devlink | head -c 200000; exit 3"], environment: [:])
 

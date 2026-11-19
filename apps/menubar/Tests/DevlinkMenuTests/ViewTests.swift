@@ -16,11 +16,23 @@ import Testing
 let at = Date(timeIntervalSince1970: 1_795_000_000)
 
 @MainActor @Suite(.serialized) struct ViewTests {
-  @Test func everyIconStateHasASymbol() {
-    for icon in [MenuModel.Icon.offline, .idle, .working, .attention] {
-      #expect(NSImage(systemSymbolName: MenuBarIcon.symbolName(for: icon), accessibilityDescription: nil) != nil)
-      #expect(MenuBarIcon.image(for: icon).isTemplate)
+  @Test func everyIconStateLooksDifferentAndIsATemplate() {
+    let icons = [MenuModel.Icon.offline, .idle, .working, .attention]
+    let images = icons.map(MenuBarIcon.image(for:))
+    let allTemplates = images.allSatisfy { $0.isTemplate }
+    #expect(allTemplates)
+    let distinct = Set(images.compactMap(\.tiffRepresentation))
+    #expect(distinct.count == icons.count)
+  }
+
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func menuBarIcons() {
+    let row = HStack(spacing: 18) {
+      ForEach([MenuModel.Icon.idle, .working, .attention, .offline], id: \.self) { icon in
+        Image(nsImage: MenuBarIcon.image(for: icon)).resizable().frame(width: 60, height: 54)
+      }
     }
+    .padding(16)
+    assertSnapshot(of: row, named: "menu-bar-icons")
   }
 
   @Test func describesDevVersionsInLocalTime() {
@@ -35,7 +47,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     #expect(UserNotifier.summary(of: output) == "> ng build ui\nTS2304: Cannot find name 'Butto'.\nat button.ts:4")
   }
 
-  @Test func online() {
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func online() {
     let failed = "npm ERR! code ERESOLVE\nnpm ERR! ERESOLVE unable to resolve dependency tree"
     let busy = model { model in
       model.connection = .online
@@ -61,7 +73,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     assertSnapshot(of: MenuContent(model: busy, actions: MenuActions()), named: "online")
   }
 
-  @Test func emptyAndIdle() {
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func emptyAndIdle() {
     let empty = model { model in
       model.connection = .online
       model.status = Status(daemon: health)
@@ -70,20 +82,75 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     assertSnapshot(of: MenuContent(model: empty, actions: MenuActions()), named: "empty")
   }
 
-  @Test func offlineAfterAFailedStart() {
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func offlineAfterAFailedStart() {
     let offline = model { model in
       model.connection = .offline
       model.startError = DaemonLauncher.Failure.cliNotFound.localizedDescription
+      model.cliMissing = true
     }
     assertSnapshot(of: MenuContent(model: offline, actions: MenuActions()), named: "offline")
   }
 
-  @Test func incompatibleDaemon() {
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func windowShowsALibrary() {
+    let linked = model { model in
+      model.connection = .online
+      model.roots = ["/Users/me/repos"]
+      model.status = Status(
+        daemon: health,
+        libraries: [ui, forms],
+        links: [
+          Link(library: "@acme/ui", consumer: shop, status: .installed, installedVersion: version, guarded: true),
+          Link(library: "@acme/ui", consumer: admin, status: .failed),
+        ],
+        groups: [Group(name: "checkout", consumers: [shop, admin])])
+      model.consumers = [
+        DiscoveredConsumer(root: shop, name: "shop", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .npm),
+        DiscoveredConsumer(root: admin, name: "admin", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .pnpm),
+        DiscoveredConsumer(
+          root: "/Users/me/repos/storybook", name: "storybook",
+          libraries: [.init(name: "@acme/ui", range: "^1.3.0"), .init(name: "@acme/forms", range: "^2.0.0")],
+          packageManager: .npm),
+      ]
+    }
+    let navigation = AppNavigation()
+    navigation.selection = .library("@acme/ui")
+    assertSnapshot(
+      of: MainWindow(model: linked, navigation: navigation, actions: MenuActions()), named: "window-library",
+      size: CGSize(width: 900, height: 820))
+    let app = AppNavigation()
+    app.selection = .app("/Users/me/repos/storybook")
+    assertSnapshot(
+      of: MainWindow(model: linked, navigation: app, actions: MenuActions()), named: "window-app",
+      size: CGSize(width: 900, height: 620))
+  }
+
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func windowWelcomesANewUser() {
+    let fresh = model { model in
+      model.connection = .online
+      model.roots = []
+      model.status = Status(daemon: health)
+    }
+    assertSnapshot(
+      of: MainWindow(model: fresh, navigation: AppNavigation(), actions: MenuActions()), named: "window-welcome",
+      size: CGSize(width: 900, height: 620))
+  }
+
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func settings() {
+    let online = model { model in
+      model.connection = .online
+      model.roots = ["/Users/me/repos", "/Users/me/work"]
+      model.status = Status(daemon: health)
+    }
+    assertSnapshot(
+      of: SettingsView(model: online, actions: MenuActions(openAtLogin: .constant(true))), named: "settings")
+  }
+
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func incompatibleDaemon() {
     let incompatible = model { $0.connection = .incompatible(daemonVersion: "2.0.0") }
     assertSnapshot(of: MenuContent(model: incompatible, actions: MenuActions()), named: "incompatible")
   }
 
-  @Test func failureWindow() {
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func failureWindow() {
     let output = """
       > ng build ui
 
@@ -95,7 +162,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
       """
     let failures = [
       Failure(title: "Build of @acme/ui failed", detail: output, date: at),
-      Failure(title: "Stopped watching @acme/forms", detail: "EMFILE: too many open files", date: at - 600),
+      Failure(title: "Auto-sync of @acme/forms stopped", detail: "EMFILE: too many open files", date: at - 600),
     ]
     assertSnapshot(
       of: FailureView(failures: failures, selection: .constant(failures[0].id)), named: "failures",

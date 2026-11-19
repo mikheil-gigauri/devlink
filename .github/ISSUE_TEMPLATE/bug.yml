@@ -1,0 +1,35 @@
+name: Bug report
+description: Something devlink did wrong, or did not do.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: The smallest library and app setup that shows it, if you can.
+  - type: input
+    id: setup
+    attributes:
+      label: Package manager and framework of the app
+      placeholder: pnpm 10, Angular 21 with Native Federation
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `devlink doctor --json`
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant lines from ~/.devlink/logs/daemon.log
+      render: text

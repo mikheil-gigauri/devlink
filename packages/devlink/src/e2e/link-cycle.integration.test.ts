@@ -2,8 +2,9 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createNodeDeps } from '../adapters/node/node-deps.ts';
-import { npm } from '../adapters/package-managers/npm.ts';
+import { npmPublisher } from '../adapters/package-managers/npm.ts';
 import type { VerdaccioRegistry } from '../adapters/registry/verdaccio-registry.ts';
+import { DEV_VERSION_PATTERN } from '../core/guard/commit-guard.ts';
 import type { CoreDeps } from '../core/ports.ts';
 import { linkConsumer } from '../core/use-cases/link-consumer.ts';
 import { registerLibrary } from '../core/use-cases/register-library.ts';
@@ -72,7 +73,10 @@ describe('link → edit → sync → restore, against real npm and Verdaccio', (
     await sandbox.run(process.execPath, ['build.mjs'], libRoot);
     const dist = join(libRoot, 'dist');
     for (const [file, content] of Object.entries(
-      npm.publishAuthFiles({ registryUrl: publicRegistry.url, credentials: publicRegistry.credentials }),
+      npmPublisher.publishAuthFiles({
+        registryUrl: publicRegistry.url,
+        credentials: publicRegistry.credentials,
+      }),
     )) {
       await writeFile(join(dist, file), content);
     }
@@ -139,7 +143,8 @@ describe('link → edit → sync → restore, against real npm and Verdaccio', (
   it('flags the linked lockfile so it cannot be committed by accident', async () => {
     const lockfile = (await read(join(shop, 'package-lock.json'))) ?? '';
 
-    expect(npm.findRegistryLeaks(lockfile, devlinkRegistry.url).length).toBeGreaterThan(0);
+    // The commit guard's pattern, which its pre-commit hook greps staged files for.
+    expect(lockfile).toMatch(new RegExp(DEV_VERSION_PATTERN));
   });
 
   it('restores both consumers byte for byte and reinstalls the released tree (M2 exit check)', async () => {

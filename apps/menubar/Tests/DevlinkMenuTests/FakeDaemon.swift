@@ -70,9 +70,51 @@ actor FakeDaemon: DaemonAPI {
     return try JSONDecoder().decode(LinkResult.self, from: Data(json.utf8))
   }
 
-  func restore(consumer: String) async throws -> RestoreResult {
-    try record("restore \(consumer)")
+  func restore(consumer: String, library: String?, force: Bool) async throws -> RestoreResult {
+    try record("restore \(library.map { "\($0) in " } ?? "")\(consumer)\(force ? " force" : "")")
     return restoreReply
+  }
+
+  func inspect(root: String) async throws -> LibraryPreview {
+    try record("inspect \(root)")
+    return LibraryPreview(
+      name: "@acme/ui", version: "1.4.0", root: root, detected: "npm-script", publishDir: root,
+      build: BuildCommand(command: "npm", args: ["run", "build"]), registered: false)
+  }
+
+  func register(root: String, publishDir: String?, build: BuildCommand?) async throws -> RegisterResult {
+    try record("register \(root) \(publishDir ?? "-") \(build?.line ?? "-")")
+    return RegisterResult(library: ui, detected: "given")
+  }
+
+  func unregister(library: String) async throws -> Done {
+    try record("unregister \(library)")
+    return Done()
+  }
+
+  func saveGroup(_ name: String, consumers: [String]) async throws -> Group {
+    try record("saveGroup \(name) \(consumers.joined(separator: ","))")
+    return Group(name: name, consumers: consumers)
+  }
+
+  func deleteGroup(_ name: String) async throws -> Done {
+    try record("deleteGroup \(name)")
+    return Done()
+  }
+
+  var rootsReply = ["/Users/me/repos"]
+
+  func roots() async throws -> [String] { rootsReply }
+
+  func setRoots(_ roots: [String]) async throws -> [String] {
+    try record("setRoots \(roots.joined(separator: ","))")
+    rootsReply = roots
+    return roots
+  }
+
+  func shutdown() async throws -> Done {
+    try record("shutdown")
+    return Done()
   }
 
   func linkGroup(_ group: String, library: String) async throws -> [GroupMemberOutcome] {

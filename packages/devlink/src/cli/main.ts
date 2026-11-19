@@ -28,6 +28,8 @@ export interface RunContext {
   readonly color: boolean;
   /** Aborts on Ctrl-C, ending commands that follow events. */
   readonly signal?: AbortSignal;
+  /** The file this CLI runs from, which tells a run through npx apart from an installed one. */
+  readonly entry?: string;
 }
 
 interface Command {
@@ -53,7 +55,8 @@ class CliError extends Error {
   }
 }
 
-const USAGE = `Usage: devlink <command> [options]
+/** The help text, which the website also turns into its CLI reference. */
+export const USAGE = `Usage: devlink <command> [options]
 
 Set up
   init [--root <dir>]...        Choose where your projects live and start devlink
@@ -69,6 +72,7 @@ Linking
       --group <name>            Link every consumer in a saved group
       --no-guard                Do not add the pre-commit guard
   restore [consumer]...         Put consumers back exactly as they were (alias: unlink)
+      --library <name>          Restore only this library and keep the others linked
       --group <name>  --all  --force
 
 Working
@@ -280,10 +284,14 @@ const COMMANDS: Record<string, Command> = {
       out.line(`  home      ${out.path(result.home)}`);
       out.line(`  roots     ${result.roots.map(out.path).join(', ')}`);
       out.line(`  registry  ${status.daemon.registryUrl}`);
+      // npx runs from its cache folder, and leaves no `devlink` on the PATH afterwards.
+      const npx = /[\\/]_npx[\\/]/.test(ctx.entry ?? '');
+      const devlink = npx ? 'npx devlink' : 'devlink';
       out.line();
       out.line(
-        `Next: run ${out.bold('devlink add')} in a library, then ${out.bold('devlink link <consumer>')}.`,
+        `Next: run ${out.bold(`${devlink} add`)} in a library, then ${out.bold(`${devlink} link <consumer>`)}.`,
       );
+      if (npx) out.line(`To type ${out.bold('devlink')} directly, install it: npm install --global devlink`);
       return 0;
     },
   },
@@ -545,11 +553,17 @@ const COMMANDS: Record<string, Command> = {
 
 function restoreCommand(): Command {
   return {
-    options: { group: { type: 'string' }, all: { type: 'boolean' }, force: { type: 'boolean' } },
+    options: {
+      group: { type: 'string' },
+      all: { type: 'boolean' },
+      force: { type: 'boolean' },
+      library: { type: 'string' },
+    },
     async run(input) {
       const { positionals, values, ctx, out, json } = input;
       const client = await ctx.connect();
       const force = values.force === true ? { force: true } : {};
+      const library = string(values.library);
       const group = string(values.group);
       if (group) {
         const outcomes = await client.call('restoreGroup', { group, ...force });
@@ -576,7 +590,7 @@ function restoreCommand(): Command {
       for (const consumer of consumers) {
         let result: OperationOutputs['restore'];
         try {
-          result = await client.call('restore', { consumer, ...force });
+          result = await client.call('restore', { consumer, ...(library && { library }), ...force });
         } catch (error) {
           // One consumer's problem should not leave the others linked.
           if (!(error instanceof ApiError || error instanceof DevlinkError)) throw error;
@@ -588,9 +602,10 @@ function restoreCommand(): Command {
         results.push({ consumer, ...result });
         if (!result.ok) failed = true;
         if (json) continue;
-        if (result.ok) out.ok(`Restored ${out.path(consumer)}`);
+        const what = library ? `${library} in ${out.path(consumer)}` : out.path(consumer);
+        if (result.ok) out.ok(`Restored ${what}`);
         else {
-          out.fail(`Restored the files of ${out.path(consumer)}, but the clean install failed:`);
+          out.fail(`Restored the files of ${what}, but the clean install failed:`);
           out.output(result.output);
         }
       }

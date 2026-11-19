@@ -9,7 +9,7 @@ export interface RegistrySandbox {
   /** Root of everything this sandbox writes. */
   readonly dir: string;
   readonly registry: VerdaccioRegistry;
-  /** Runs commands with an isolated npm cache and empty user and global configs, ignoring the machine's npmrc files. */
+  /** Runs commands with isolated package manager caches and empty user configs, ignoring the machine's own. */
   readonly runner: NodeProcessRunner;
   /** Runs a command and throws with its output when it fails. */
   run(command: string, args: readonly string[], cwd: string): Promise<CommandResult>;
@@ -30,7 +30,7 @@ export async function distTags(
   return meta['dist-tags'] ?? {};
 }
 
-/** A hermetic world for integration tests: real Verdaccio, real npm, nothing shared with the machine. */
+/** A hermetic world for integration tests: real Verdaccio, real package managers, nothing shared with the machine. */
 export async function createRegistrySandbox(
   options: { readonly uplinks?: Readonly<Record<string, Uplink>> } = {},
 ): Promise<RegistrySandbox> {
@@ -49,6 +49,17 @@ export async function createRegistrySandbox(
       npm_config_update_notifier: 'false',
       npm_config_fund: 'false',
       npm_config_audit: 'false',
+      // pnpm, Yarn and Bun keep their stores, caches and settings inside the sandbox too.
+      PNPM_CONFIG_STORE_DIR: join(temp.path, 'pnpm-store'),
+      PNPM_CONFIG_CACHE_DIR: join(temp.path, 'pnpm-cache'),
+      PNPM_CONFIG_STATE_DIR: join(temp.path, 'pnpm-state'),
+      PNPM_CONFIG_NPMRC_AUTH_FILE: userconfig,
+      PNPM_CONFIG_UPDATE_NOTIFIER: 'false',
+      YARN_GLOBAL_FOLDER: join(temp.path, 'yarn'),
+      YARN_ENABLE_TELEMETRY: '0',
+      YARN_ENABLE_GLOBAL_CACHE: 'false',
+      BUN_INSTALL_CACHE_DIR: join(temp.path, 'bun-cache'),
+      DO_NOT_TRACK: '1',
     },
   });
 

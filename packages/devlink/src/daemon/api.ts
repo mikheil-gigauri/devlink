@@ -24,15 +24,18 @@ export const operations = {
     build: s.optional(s.object({ command: s.string(), args: s.array(s.string()) })),
   }),
   unregister: s.object({ library: s.string() }),
+  inspect: s.object({ root: s.path() }),
   sync: s.object({ library: s.string() }),
   watch: s.object({ library: s.string(), enabled: s.boolean() }),
   discover: s.object({ library: s.optional(s.string()) }),
   link: s.object({ library: s.string(), consumer: s.path(), guard: s.optional(s.boolean()) }),
-  restore: s.object({ consumer: s.path(), force: s.optional(s.boolean()) }),
+  restore: s.object({ consumer: s.path(), library: s.optional(s.string()), force: s.optional(s.boolean()) }),
   saveGroup: s.object({ name: s.string(), consumers: s.array(s.path()) }),
   deleteGroup: s.object({ name: s.string() }),
   linkGroup: s.object({ group: s.string(), library: s.string() }),
   restoreGroup: s.object({ group: s.string(), force: s.optional(s.boolean()) }),
+  roots: s.object({}),
+  setRoots: s.object({ roots: s.array(s.path()) }),
   shutdown: s.object({}),
 } as const;
 
@@ -67,6 +70,23 @@ export interface RegisterResult {
   readonly detected: LibraryBuildKind | 'given';
 }
 
+/** What registering a folder would do, so a client can show it before asking (ADR 0013). */
+export interface LibraryPreview {
+  readonly name: string;
+  readonly version: string;
+  readonly root: string;
+  /** How the build was detected; for a registered library, the settings shown are the stored ones. */
+  readonly detected: LibraryBuildKind;
+  readonly publishDir: string;
+  readonly build?: { readonly command: string; readonly args: readonly string[] };
+  readonly registered: boolean;
+}
+
+/** The folders searched for projects that use a library (`roots` in config.json). */
+export interface Roots {
+  readonly roots: readonly string[];
+}
+
 export interface LinkResult {
   readonly link: LinkRecord;
   readonly guard: 'installed' | 'declined' | 'not-a-repo';
@@ -80,6 +100,7 @@ export interface OperationOutputs {
   status: StatusView;
   register: RegisterResult;
   unregister: Done;
+  inspect: LibraryPreview;
   sync: SyncResult;
   watch: LibraryRecord;
   discover: readonly DiscoveredConsumer[];
@@ -89,6 +110,8 @@ export interface OperationOutputs {
   deleteGroup: Done;
   linkGroup: readonly GroupMemberOutcome[];
   restoreGroup: readonly GroupMemberOutcome[];
+  roots: Roots;
+  setRoots: Roots;
   shutdown: Done;
 }
 

@@ -1,7 +1,5 @@
 import type { DependencyField } from '../../core/model.ts';
-import type { PackageManagerAdapter, RegistryLeak } from '../../core/ports.ts';
-import { isRecord, tryParseJson } from '../../core/util/json.ts';
-import { isDevVersion } from '../../core/version/dev-version.ts';
+import type { PackageManagerAdapter, Publisher } from '../../core/ports.ts';
 
 const QUIET = ['--no-audit', '--no-fund'] as const;
 
@@ -37,7 +35,10 @@ export const npm: PackageManagerAdapter = {
     const args = hasLockfile ? ['ci', ...QUIET] : ['install', '--no-package-lock', ...QUIET];
     return { command: 'npm', args, cwd };
   },
+};
 
+/** Publishes every library, whichever package manager it uses: the staged folder is a plain package. */
+export const npmPublisher: Publisher = {
   publish({ cwd, registryUrl, tag }) {
     return {
       command: 'npm',
@@ -51,32 +52,6 @@ export const npm: PackageManagerAdapter = {
     const key = registryUrl.replace(/^https?:/, '').replace(/\/*$/, '/');
     const auth = btoa(`${credentials.username}:${credentials.password}`);
     return { '.npmrc': `${key}:_auth=${auth}\n` };
-  },
-
-  findRegistryLeaks(lockfile, registryUrl) {
-    const registry = registryUrl.replace(/\/+$/, '');
-    const parsed = tryParseJson(lockfile);
-
-    if (!isRecord(parsed) || !isRecord(parsed.packages)) {
-      // Unparseable (often mid-merge-conflict): a plain text scan is still a useful guard.
-      return lockfile.includes(registry)
-        ? [{ location: 'package-lock.json', reasons: ['local-registry-url'] }]
-        : [];
-    }
-
-    const leaks: RegistryLeak[] = [];
-    for (const [location, entry] of Object.entries(parsed.packages)) {
-      if (!isRecord(entry)) continue;
-      const reasons: RegistryLeak['reasons'][number][] = [];
-      if (typeof entry.resolved === 'string' && entry.resolved.startsWith(`${registry}/`)) {
-        reasons.push('local-registry-url');
-      }
-      if (typeof entry.version === 'string' && isDevVersion(entry.version)) {
-        reasons.push('dev-version');
-      }
-      if (reasons.length > 0) leaks.push({ location, reasons });
-    }
-    return leaks;
   },
 };
 

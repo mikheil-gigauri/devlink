@@ -1,4 +1,14 @@
-import { describePackageManagerContract } from '../../testing/package-manager.contract.ts';
-import { npm } from './npm.ts';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import {
+  describePackageManagerContract,
+  describePublisherContract,
+} from '../../testing/package-manager.contract.ts';
+import { npm, npmPublisher } from './npm.ts';
 
-describePackageManagerContract(npm);
+describePublisherContract(npmPublisher);
+
+describePackageManagerContract(npm, {
+  pointScopeAt: (dir, registryUrl) => writeFile(join(dir, '.npmrc'), `@fixture:registry=${registryUrl}\n`),
+  install: { command: 'npm', args: ['install'] },
+});

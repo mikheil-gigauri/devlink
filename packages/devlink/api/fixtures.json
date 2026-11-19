@@ -118,6 +118,21 @@
     "unregister": {
       "ok": true
     },
+    "inspect": {
+      "name": "@acme/ui",
+      "version": "1.4.0",
+      "root": "/Users/me/repos/ui-lib/projects/ui",
+      "detected": "angular",
+      "publishDir": "/Users/me/repos/ui-lib/dist/ui",
+      "build": {
+        "command": "/Users/me/repos/ui-lib/node_modules/.bin/ng",
+        "args": [
+          "build",
+          "ui"
+        ]
+      },
+      "registered": false
+    },
     "sync": {
       "version": "1.4.1-dev.20261118143201",
       "installs": [
@@ -233,6 +248,17 @@
         "status": "skipped"
       }
     ],
+    "roots": {
+      "roots": [
+        "/Users/me/repos"
+      ]
+    },
+    "setRoots": {
+      "roots": [
+        "/Users/me/repos",
+        "/Users/me/work"
+      ]
+    },
     "shutdown": {
       "ok": true
     }
@@ -303,6 +329,7 @@
       "at": "2026-11-18T14:32:01.000Z",
       "type": "consumer:restored",
       "consumer": "/Users/me/repos/shop",
+      "library": "@acme/ui",
       "ok": true
     },
     {

@@ -1,0 +1,5 @@
+src/content/docs/reference/
+src/content/docs/design/
+.astro/
+dist/
+public/menu/

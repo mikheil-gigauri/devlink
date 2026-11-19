@@ -1,7 +1,10 @@
 import { join } from 'node:path';
 import type { CoreDeps, EventSink, ProcessRunner, RegistryCredentials } from '../../core/ports.ts';
 import { builtInIntegrations } from '../integrations/index.ts';
-import { npm } from '../package-managers/npm.ts';
+import { bun } from '../package-managers/bun.ts';
+import { npm, npmPublisher } from '../package-managers/npm.ts';
+import { pnpm } from '../package-managers/pnpm.ts';
+import { yarn } from '../package-managers/yarn.ts';
 import { JsonStateStore } from './json-state-store.ts';
 import { NodeFileSystem } from './node-file-system.ts';
 import { NodeProcessRunner } from './node-process-runner.ts';
@@ -22,7 +25,8 @@ export function createNodeDeps(options: NodeDepsOptions): CoreDeps {
     clock: { now: () => new Date() },
     state: new JsonStateStore(join(options.home, 'state.json')),
     events: options.events ?? { emit: () => {} },
-    packageManagers: { npm },
+    packageManagers: { npm, pnpm, yarn, bun },
+    publisher: npmPublisher,
     integrations: builtInIntegrations,
     registryUrl: options.registry.url,
     registryCredentials: options.registry.credentials,

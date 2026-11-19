@@ -9,18 +9,32 @@ public struct Failure: Identifiable, Equatable, Sendable {
   /// The captured output, or the daemon's explanation.
   public let detail: String
   public let date: Date
+  /// The app an install failed in, so its row can show the output.
+  public let consumer: String?
 
-  public init(id: UUID = UUID(), title: String, detail: String, date: Date = .now) {
+  public init(id: UUID = UUID(), title: String, detail: String, date: Date = .now, consumer: String? = nil) {
     self.id = id
     self.title = title
     self.detail = detail
     self.date = date
+    self.consumer = consumer
   }
 }
 
 /// Posts failures where the user will see them: a system notification in the app.
 public protocol Notifier: AnyObject {
   func post(_ failure: Failure)
+}
+
+/// A restore to retry once the user agrees: an app, and the one library in it or nil for all.
+public struct RestoreRequest: Equatable, Sendable {
+  public let consumer: String
+  public let library: String?
+
+  public init(consumer: String, library: String? = nil) {
+    self.consumer = consumer
+    self.library = library
+  }
 }
 
 /// A library with the consumers it is linked into.
@@ -52,8 +66,11 @@ public struct LibraryRow: Identifiable, Equatable {
 
   /// Something the user started; while it runs, its control shows progress and cannot be repeated.
   public enum Action: Hashable {
-    case sync(String), watch(String), link(String, String), restore(String)
+    /// `restore(consumer, library)`: one library in an app, or all of them when the library is nil.
+    case sync(String), watch(String), link(String, String), restore(String, String?)
     case linkGroup(String), restoreGroup(String), discover
+    case register(String), unregister(String), saveGroup(String), deleteGroup(String)
+    case roots, stop, installCLI
   }
 
   public internal(set) var connection = Connection.connecting
@@ -64,15 +81,25 @@ public struct LibraryRow: Identifiable, Equatable {
   public internal(set) var failures: [Failure] = []
   public internal(set) var hasUnseenFailure = false
   public internal(set) var consumers: [DiscoveredConsumer] = []
+  /// Apps the user added by hand from outside the project folders, until they are linked.
+  public internal(set) var addedApps: [DiscoveredConsumer] = []
   public internal(set) var inFlight: Set<Action> = []
   /// Why the last action did not work, shown under the controls.
   public internal(set) var actionError: String?
   /// Why starting the daemon did not work.
   public internal(set) var startError: String?
+  /// Starting failed because the CLI is not installed, so the app offers to install it.
+  public internal(set) var cliMissing = false
+  /// The folders searched for projects; nil until the daemon has said.
+  public internal(set) var roots: [String]?
+  /// An app whose restore was refused because its package.json changed since it was linked. The
+  /// user decides whether to restore it anyway.
+  public var driftedRestore: RestoreRequest?
   private(set) var lastEventID: Int?
 
   @ObservationIgnored private let connect: () async -> Lookup
   @ObservationIgnored private let launch: () async throws -> Void
+  @ObservationIgnored private let install: () async throws -> Void
   @ObservationIgnored private let notifier: any Notifier
   @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
   @ObservationIgnored private var api: (any DaemonAPI)?
@@ -88,11 +115,13 @@ public struct LibraryRow: Identifiable, Equatable {
   public init(
     connect: @escaping () async -> Lookup,
     launch: @escaping () async throws -> Void,
+    install: @escaping () async throws -> Void = {},
     notifier: any Notifier,
     sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   ) {
     self.connect = connect
     self.launch = launch
+    self.install = install
     self.notifier = notifier
     self.sleep = sleep
   }
@@ -120,12 +149,31 @@ public struct LibraryRow: Identifiable, Equatable {
   /// Discovered consumers that depend on `library` and are not linked to it yet.
   public func linkCandidates(for library: String) -> [DiscoveredConsumer] {
     let linked = Set(status?.links.filter { $0.library == library }.map(\.consumer) ?? [])
-    return consumers.filter { consumer in
+    let found = consumers + addedApps.filter { added in !consumers.contains { $0.root == added.root } }
+    return found.filter { consumer in
       consumer.libraries.contains { $0.name == library } && !linked.contains(consumer.root)
     }
   }
 
   public func isBusy(_ action: Action) -> Bool { inFlight.contains(action) }
+
+  /// The latest failed install into `consumer` this session, with its output.
+  public func installFailure(in consumer: String) -> Failure? {
+    failures.first { $0.consumer == consumer }
+  }
+
+  /// Every project devlink knows of: linked ones and those found in the project folders, by path.
+  public var knownProjects: [String] {
+    var paths = Set(consumers.map(\.root))
+    paths.formUnion(status?.links.map(\.consumer) ?? [])
+    paths.formUnion(status?.groups.flatMap(\.consumers) ?? [])
+    return paths.sorted { projectName($0).localizedStandardCompare(projectName($1)) == .orderedAscending }
+  }
+
+  /// Needs the user's first steps: no project folders chosen, or no library added.
+  public var needsSetup: Bool {
+    connection == .online && (status?.libraries.isEmpty ?? false)
+  }
 
   // MARK: Connection
 
@@ -142,7 +190,7 @@ public struct LibraryRow: Identifiable, Equatable {
         api = nil
         if connection == .starting, let deadline = startDeadline, ContinuousClock.now < deadline { break }
         if connection == .starting {
-          startError = "devlink did not start within 30 seconds. Its log may say why."
+          startError = "devlink did not start within 30 seconds. Open Log to see why."
         }
         connection = .offline
       case .incompatible(let health):
@@ -162,16 +210,44 @@ public struct LibraryRow: Identifiable, Equatable {
     do {
       try await launch()
       startDeadline = .now + Self.startTimeout
+      cliMissing = false
       nudged = true
     } catch {
+      cliMissing = (error as? DaemonLauncher.Failure) == .cliNotFound
       startError = error.localizedDescription
       connection = .offline
     }
   }
 
+  /// Installs the CLI with npm at the user's request, then starts the daemon with it.
+  public func installCLI() async {
+    guard !inFlight.contains(.installCLI) else { return }
+    inFlight.insert(.installCLI)
+    startError = nil
+    do {
+      try await install()
+      cliMissing = false
+      inFlight.remove(.installCLI)
+      await startDaemon()
+    } catch {
+      startError = error.localizedDescription
+      inFlight.remove(.installCLI)
+    }
+  }
+
+  /// Stops the daemon. The app keeps running and offers to start it again.
+  public func stopDaemon() async {
+    await perform(.stop) { _ = try await $0.shutdown() }
+  }
+
   /// The user opened the menu, so any failure has now been seen.
   public func menuOpened() {
     hasUnseenFailure = false
+  }
+
+  /// The user has read why the last action failed.
+  public func dismissActionError() {
+    actionError = nil
   }
 
   /// The user dismissed the failures they have read.
@@ -186,6 +262,7 @@ public struct LibraryRow: Identifiable, Equatable {
     let events = api.events(after: lastEventID)
     // Online once there is something to show, so the menu never flashes an empty daemon.
     await refresh()
+    if roots == nil { roots = try? await api.roots() }
     connection = .online
     startError = nil
     startDeadline = nil
@@ -220,9 +297,9 @@ public struct LibraryRow: Identifiable, Equatable {
     case .installStarted(let library, let consumer, _):
       activity = "Installing \(library) into \(projectName(consumer))…"
     case .installFailed(let library, let consumer, _, let output):
-      fail("Install of \(library) into \(projectName(consumer)) failed", output)
-    case .consumerRestored(let consumer, _):
-      activity = "Restored \(projectName(consumer))"
+      fail("Install of \(library) into \(projectName(consumer)) failed", output, consumer: consumer)
+    case .consumerRestored(let consumer, let library, _):
+      activity = library.map { "Restored \($0) in \(projectName(consumer))" } ?? "Restored \(projectName(consumer))"
     case .jobStarted(let job):
       activity = describe(job)
       scheduleRefresh()
@@ -233,15 +310,15 @@ public struct LibraryRow: Identifiable, Equatable {
       if let error, error.code != APIError.Code.buildFailed.rawValue { fail(error.message, error.message) }
       Task { await refresh(clearingActivityWhenIdle: true) }
     case .watchFailed(let library, let message):
-      fail("Stopped watching \(library)", message)
+      fail("Auto-sync of \(library) stopped", message)
       scheduleRefresh()
     case .buildSucceeded, .installSucceeded, .cachesCleared, .libraryChanged, .unknown:
       break
     }
   }
 
-  private func fail(_ title: String, _ detail: String) {
-    let failure = Failure(title: title, detail: detail)
+  private func fail(_ title: String, _ detail: String, consumer: String? = nil) {
+    let failure = Failure(title: title, detail: detail, consumer: consumer)
     failures = Array(([failure] + failures).prefix(20))
     hasUnseenFailure = true
     notifier.post(failure)
@@ -283,13 +360,59 @@ public struct LibraryRow: Identifiable, Equatable {
     await perform(.link(library, consumer)) { _ = try await $0.link(library: library, consumer: consumer) }
   }
 
-  public func restore(_ consumer: String) async {
-    await perform(.restore(consumer)) { api in
-      let result = try await api.restore(consumer: consumer)
-      if !result.ok {
-        self.fail("Restored \(projectName(consumer)), but the clean install failed", result.output ?? "")
+  /// Puts an app back as it was before linking. When its package.json changed since, asks first
+  /// (through `driftedRestore`) instead of overwriting the change.
+  /// With `library`, only that library goes back to its release and the app's other links stay.
+  public func restore(_ consumer: String, library: String? = nil, force: Bool = false) async {
+    if force { driftedRestore = nil }
+    await perform(.restore(consumer, library)) { api in
+      do {
+        let result = try await api.restore(consumer: consumer, library: library, force: force)
+        if !result.ok {
+          self.fail("Restored \(projectName(consumer)), but the clean install failed", result.output ?? "")
+        }
+      } catch let error as APIError where error.code == .manifestDrifted && !force {
+        self.driftedRestore = RestoreRequest(consumer: consumer, library: library)
       }
     }
+  }
+
+  // MARK: Libraries
+
+  /// What adding `root` as a library would do. Throws when it is not a package.
+  public func inspect(_ root: String) async throws -> LibraryPreview {
+    guard let api else { throw APIError.unavailable("it is not running") }
+    return try await api.inspect(root: root)
+  }
+
+  /// Adds a library, or changes how a registered one is built. Throws so the form can say why.
+  public func register(_ root: String, publishDir: String?, build: BuildCommand?) async throws {
+    try await run(.register(root)) { _ = try await $0.register(root: root, publishDir: publishDir, build: build) }
+    // New dependencies may now count as consumers.
+    await discoverConsumers()
+  }
+
+  /// Stops managing a library. The daemon refuses while apps are still linked to it.
+  public func unregister(_ library: String) async {
+    await perform(.unregister(library)) { _ = try await $0.unregister(library: library) }
+  }
+
+  // MARK: Groups
+
+  public func saveGroup(_ name: String, consumers: [String]) async throws {
+    try await run(.saveGroup(name)) { _ = try await $0.saveGroup(name, consumers: consumers) }
+  }
+
+  public func deleteGroup(_ name: String) async {
+    await perform(.deleteGroup(name)) { _ = try await $0.deleteGroup(name) }
+  }
+
+  // MARK: Project folders
+
+  /// Replaces the folders searched for projects, then looks for projects in them.
+  public func setRoots(_ next: [String]) async throws {
+    try await run(.roots) { api in self.roots = try await api.setRoots(next) }
+    await discoverConsumers()
   }
 
   public func linkGroup(_ group: String, library: String) async {
@@ -316,18 +439,32 @@ public struct LibraryRow: Identifiable, Equatable {
     }
   }
 
+  /// Runs an action, reporting a failure under the controls.
   private func perform(_ action: Action, _ body: (any DaemonAPI) async throws -> Void) async {
-    guard let api, !inFlight.contains(action) else { return }
-    inFlight.insert(action)
-    actionError = nil
+    // Its controls only show while connected; one that slipped through as it went away does nothing.
+    guard api != nil else { return }
     do {
-      try await body(api)
+      try await run(action, body)
     } catch let error as APIError where error.code == .buildFailed {
       // Its build:failed event has already reported it, with the output.
     } catch {
       actionError = error.localizedDescription
     }
-    inFlight.remove(action)
+  }
+
+  /// Runs an action once at a time, showing it as busy, and lets its caller handle a failure.
+  private func run(_ action: Action, _ body: (any DaemonAPI) async throws -> Void) async throws {
+    guard let api else { throw APIError.unavailable("it is not running") }
+    guard !inFlight.contains(action) else { return }
+    inFlight.insert(action)
+    actionError = nil
+    defer { inFlight.remove(action) }
+    do {
+      try await body(api)
+    } catch {
+      await refresh()
+      throw error
+    }
     await refresh()
   }
 

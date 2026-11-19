@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { CommandSpec } from '../../core/model.ts';
-import type { CommandResult, ProcessRunner } from '../../core/ports.ts';
+import type { CommandResult, ProcessRunner, RunSpec } from '../../core/ports.ts';
 
 /** Output beyond this is dropped from the front: the end of a failed npm run holds the error. */
 const MAX_OUTPUT = 1_000_000;
@@ -52,14 +51,14 @@ export class NodeProcessRunner implements ProcessRunner {
     this.#signal = options.signal;
   }
 
-  run(spec: CommandSpec): Promise<CommandResult> {
+  run(spec: RunSpec): Promise<CommandResult> {
     if (this.#signal?.aborted) {
       return Promise.resolve({ exitCode: 130, stdout: '', stderr: 'devlink: cancelled before it started\n' });
     }
     return new Promise((resolve, reject) => {
       const child = spawn(spec.command, [...spec.args], {
         cwd: spec.cwd,
-        env: this.#env,
+        env: spec.env === undefined ? this.#env : { ...this.#env, ...spec.env },
         shell: false,
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],

@@ -2,6 +2,7 @@ import { DevlinkError } from '../core/errors.ts';
 import type { LibraryRecord, LinkRecord } from '../core/model.ts';
 import type { CoreDeps } from '../core/ports.ts';
 import { detectLibraryBuild } from '../core/project/detect-library-build.ts';
+import { readManifest } from '../core/project/manifest.ts';
 import { coherenceWarnings } from '../core/status/coherence.ts';
 import { discoverConsumers } from '../core/use-cases/discover-consumers.ts';
 import {
@@ -41,6 +42,8 @@ export interface DaemonServiceOptions {
   readonly health: () => Health;
   /** Folders searched for consumers, read per request so a changed config applies at once. */
   readonly roots: () => readonly string[] | Promise<readonly string[]>;
+  /** Replaces the folders searched for consumers in config.json. */
+  readonly saveRoots: (roots: readonly string[]) => Promise<void>;
   readonly watcher: LibraryWatcher;
   readonly guard: CommitGuard;
   /** Called after a `shutdown` request has been answered. */
@@ -149,6 +152,23 @@ export class DaemonService {
           return { ok: true };
         }),
 
+      inspect: async ({ root }) => {
+        const libraryRoot = joinPath(root);
+        const { manifest } = await readManifest(deps.fs, libraryRoot);
+        const detected = await detectLibraryBuild(deps.fs, libraryRoot);
+        const known = (await deps.state.load()).libraries.find((entry) => entry.root === libraryRoot);
+        const build = known ? known.build : detected.build;
+        return {
+          name: String(manifest.name ?? ''),
+          version: String(manifest.version ?? ''),
+          root: libraryRoot,
+          detected: detected.kind,
+          publishDir: known?.publishDir ?? detected.publishDir,
+          ...(build && { build: { command: build.command, args: build.args } }),
+          registered: known !== undefined,
+        };
+      },
+
       sync: ({ library }) =>
         job(
           `sync ${library}`,
@@ -188,9 +208,9 @@ export class DaemonService {
           };
         }),
 
-      restore: ({ consumer, force }) =>
-        job(`restore ${consumer}`, async () => {
-          return this.#restoring(() => restoreConsumer(deps, { consumer, force }));
+      restore: ({ consumer, library, force }) =>
+        job(library ? `restore ${library} in ${consumer}` : `restore ${consumer}`, async () => {
+          return this.#restoring(() => restoreConsumer(deps, { consumer, library, force }));
         }),
 
       saveGroup: (input) => job(`save group ${input.name}`, () => saveGroup(deps, input)),
@@ -234,6 +254,14 @@ export class DaemonService {
         job(`restore group ${input.group}`, async () => {
           return this.#restoring(() => restoreGroup(deps, input));
         }),
+
+      roots: async () => ({ roots: await this.#options.roots() }),
+
+      setRoots: async (input) => {
+        const roots = [...new Set(input.roots.map((root) => joinPath(root)))];
+        await this.#options.saveRoots(roots);
+        return { roots };
+      },
 
       shutdown: async () => {
         setTimeout(() => this.#options.onShutdown(), 0);

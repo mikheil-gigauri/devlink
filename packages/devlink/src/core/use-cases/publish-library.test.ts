@@ -151,6 +151,33 @@ describe('publishLibrary', () => {
     });
   });
 
+  it('publishes with npm whichever package manager the library itself uses', async () => {
+    // The staged folder is a plain package, and npm ships with every Node that runs devlink.
+    const { deps, fs, process } = createScenario({ state: withBuild });
+    await fs.writeText(`${LIB}/pnpm-lock.yaml`, "lockfileVersion: '9.0'\n");
+
+    await publishLibrary(deps, { library: '@acme/ui' });
+
+    expect(process.lines().at(-1)).toMatch(/^npm publish /);
+  });
+
+  it.each(['workspace:^', 'catalog:'])(
+    'refuses a manifest that still has %s ranges, which only its own workspace can resolve',
+    async (range) => {
+      const { deps, fs, process } = createScenario({ state: withBuild });
+      await fs.writeText(
+        `${LIB}/dist/ui/package.json`,
+        JSON.stringify({ name: '@acme/ui', version: '1.4.0', dependencies: { '@acme/tokens': range } }),
+      );
+
+      await expect(publishLibrary(deps, { library: '@acme/ui' })).rejects.toMatchObject({
+        code: 'invalid-manifest',
+        message: expect.stringContaining('@acme/tokens'),
+      });
+      expect(process.lines().some((line) => line.startsWith('npm publish'))).toBe(false);
+    },
+  );
+
   it('rejects build output whose package.json is missing', async () => {
     const { deps, fs } = createScenario({ state: withBuild });
     await fs.remove(`${LIB}/dist`);

@@ -15,7 +15,8 @@ public struct ServerEvent: Decodable, Sendable, Equatable {
     case installSucceeded(library: String, consumer: String, version: String)
     case installFailed(library: String, consumer: String, version: String, output: String)
     case cachesCleared(consumer: String, paths: [String])
-    case consumerRestored(consumer: String, ok: Bool)
+    /// `library` is set when only that library was restored and the app's other links were kept.
+    case consumerRestored(consumer: String, library: String?, ok: Bool)
     case jobQueued(Job)
     case jobStarted(Job)
     case jobFinished(Job, error: JobError?)
@@ -99,7 +100,9 @@ public struct ServerEvent: Decodable, Sendable, Equatable {
       case "caches:cleared":
         .cachesCleared(consumer: try string(.consumer), paths: try c.decode([String].self, forKey: .paths))
       case "consumer:restored":
-        .consumerRestored(consumer: try string(.consumer), ok: try c.decode(Bool.self, forKey: .ok))
+        .consumerRestored(
+          consumer: try string(.consumer), library: try c.decodeIfPresent(String.self, forKey: .library),
+          ok: try c.decode(Bool.self, forKey: .ok))
       case "job:queued": .jobQueued(try c.decode(Job.self, forKey: .job))
       case "job:started": .jobStarted(try c.decode(Job.self, forKey: .job))
       case "job:finished":

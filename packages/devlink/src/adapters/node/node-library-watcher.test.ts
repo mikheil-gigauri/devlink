@@ -1,11 +1,12 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { watch as fsWatch } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join, relative } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTempDir } from '../../testing/temp-dir.ts';
-import { NodeLibraryWatcher } from './node-library-watcher.ts';
+import { NodeLibraryWatcher, type WatchStrategy } from './node-library-watcher.ts';
 
-describe('NodeLibraryWatcher', () => {
+describe.each<WatchStrategy>(['recursive', 'walk'])('NodeLibraryWatcher (%s)', (strategy) => {
   let root: string;
   let cleanup: () => Promise<void>;
   let stop: (() => void) | undefined;
@@ -24,7 +25,7 @@ describe('NodeLibraryWatcher', () => {
 
   const watch = (at = root, onError: (error: Error) => void = () => {}) => {
     let changes = 0;
-    const watcher = new NodeLibraryWatcher({ debounceMs: 80 });
+    const watcher = new NodeLibraryWatcher({ debounceMs: 80, strategy });
     stop = watcher.watch(
       { name: 'lib', root: at, publishDir: join(at, 'dist/ui') },
       () => {
@@ -77,5 +78,83 @@ describe('NodeLibraryWatcher', () => {
     await sleep(400);
 
     expect(changes()).toBe(0);
+  });
+});
+
+/**
+ * Linux's recursive watch puts an inotify watch on every folder, node_modules included, before
+ * devlink can filter anything, which exhausts the limit on large repositories. The walk strategy
+ * watches folder by folder and never enters an ignored one.
+ */
+describe('NodeLibraryWatcher (walk)', () => {
+  let root: string;
+  let cleanup: () => Promise<void>;
+  let stop: (() => void) | undefined;
+  let watched: string[];
+
+  beforeEach(async () => {
+    ({ path: root, cleanup } = await createTempDir());
+    for (const dir of ['src/button', 'node_modules/dep/lib', 'dist/ui', '.git/objects']) {
+      await mkdir(join(root, dir), { recursive: true });
+    }
+    await sleep(100);
+    watched = [];
+  });
+  afterEach(async () => {
+    stop?.();
+    await cleanup();
+  });
+
+  const watch = (onError: (error: Error) => void = () => {}) => {
+    let changes = 0;
+    const watcher = new NodeLibraryWatcher({
+      debounceMs: 80,
+      strategy: 'walk',
+      fsWatch: ((path: string, listener: Parameters<typeof fsWatch>[1]) => {
+        watched.push(relative(root, path));
+        return fsWatch(path, listener as never);
+      }) as typeof fsWatch,
+    });
+    stop = watcher.watch(
+      { name: 'lib', root, publishDir: join(root, 'dist/ui') },
+      () => {
+        changes += 1;
+      },
+      onError,
+    );
+    return () => changes;
+  };
+
+  it('opens watchers only on folders that can hold sources', async () => {
+    watch();
+    await sleep(100);
+
+    expect([...watched].sort()).toEqual(['', 'src', 'src/button']);
+  });
+
+  it('watches a folder created after the watch began', async () => {
+    const changes = watch();
+    await mkdir(join(root, 'src/forms'));
+    await sleep(300);
+    const afterMkdir = changes();
+
+    await writeFile(join(root, 'src/forms/input.ts'), 'x');
+    await sleep(300);
+
+    expect(changes()).toBe(afterMkdir + 1);
+  });
+
+  it('keeps watching the rest when a folder is deleted', async () => {
+    const errors: Error[] = [];
+    const changes = watch((error) => errors.push(error));
+    await rm(join(root, 'src/button'), { recursive: true });
+    await sleep(300);
+    const afterDelete = changes();
+
+    await writeFile(join(root, 'src/index.ts'), 'x');
+    await sleep(300);
+
+    expect(changes()).toBe(afterDelete + 1);
+    expect(errors).toEqual([]);
   });
 });

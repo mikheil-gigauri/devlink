@@ -71,6 +71,23 @@
         }
       }
     },
+    "inspect": {
+      "method": "POST",
+      "path": "/v1/inspect",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "root"
+        ],
+        "properties": {
+          "root": {
+            "type": "string",
+            "pattern": "^/"
+          }
+        }
+      }
+    },
     "sync": {
       "method": "POST",
       "path": "/v1/sync",
@@ -163,6 +180,10 @@
             "type": "string",
             "pattern": "^/"
           },
+          "library": {
+            "type": "string",
+            "minLength": 1
+          },
           "force": {
             "type": "boolean"
           }
@@ -249,6 +270,36 @@
           },
           "force": {
             "type": "boolean"
+          }
+        }
+      }
+    },
+    "roots": {
+      "method": "POST",
+      "path": "/v1/roots",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      }
+    },
+    "setRoots": {
+      "method": "POST",
+      "path": "/v1/setRoots",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "roots"
+        ],
+        "properties": {
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^/"
+            }
           }
         }
       }

@@ -5,6 +5,7 @@ import type {
   DevlinkEvent,
   EventSink,
   ProcessRunner,
+  RunSpec,
   StateStore,
 } from '../core/ports.ts';
 
@@ -21,7 +22,7 @@ type Responder = (spec: CommandSpec) => CommandResult | Promise<CommandResult>;
  * test can override a default. Unmatched commands succeed with empty output.
  */
 export class FakeProcessRunner implements ProcessRunner {
-  readonly calls: CommandSpec[] = [];
+  readonly calls: RunSpec[] = [];
   readonly #responders: { readonly prefix: string; readonly respond: Responder }[] = [];
 
   /** Answers commands whose command line starts with `prefix`. */
@@ -35,7 +36,7 @@ export class FakeProcessRunner implements ProcessRunner {
     return this.calls.filter((call) => cwd === undefined || call.cwd === cwd).map(commandLine);
   }
 
-  async run(spec: CommandSpec): Promise<CommandResult> {
+  async run(spec: RunSpec): Promise<CommandResult> {
     this.calls.push(spec);
     const line = commandLine(spec);
     const responder = this.#responders.find(({ prefix }) => line.startsWith(prefix));

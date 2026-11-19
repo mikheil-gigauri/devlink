@@ -57,6 +57,13 @@ export function adapterFor(
         { project: project.root, lockfiles: detection.lockfiles },
       );
     }
+    if (detection.reason === 'binary-lockfile') {
+      throw new DevlinkError(
+        'unsupported-package-manager',
+        `${project.root} has a binary ${detection.lockfile}, which devlink cannot restore. Switch to the text lockfile with \`bun install --save-text-lockfile\`.`,
+        { project: project.root, packageManager: 'bun' },
+      );
+    }
     throw new DevlinkError(
       'unsupported-package-manager',
       `${project.root} uses ${detection.value}, which devlink does not support`,

@@ -12,7 +12,7 @@ the TypeScript API, how the app finds, trusts and starts the daemon, and what it
 ## Decision
 
 **A Swift package, no Xcode project.** `apps/menubar` is a SwiftPM package (Swift 6 language mode,
-strict concurrency, macOS 14 and later as ADR 0010 says) with three targets:
+strict concurrency, macOS 14 and later as ADR 0010 says; macOS 26 since the amendment below) with three targets:
 
 - `DevlinkAPI`: the API models, the HTTP and server-sent-events client, and finding and starting the
   daemon. No SwiftUI.
@@ -66,3 +66,39 @@ compare against committed PNGs with a small tolerance; `SNAPSHOT_RECORD=1` rewri
   re-record, which is a reviewed diff of images.
 - Starting the daemon from the app depends on the user's shell profile finding `devlink`. When it does
   not, the app says so and shows the command to run.
+
+## Amendment · 2026-11-19 (an app that needs no terminal)
+
+The menu could only operate what the CLI had set up: libraries were added and project folders chosen
+in a terminal. The app now does all of it.
+
+- **A window as well as the menu.** The menu stays the place for the everyday controls. A `Window` scene
+  (a `NavigationSplitView` of libraries and groups) holds what needs room: adding a library, its build
+  settings, linking into any folder, creating and editing groups, removing. A `Settings` scene holds the
+  project folders, the service (start, stop, log) and Open at Login. While a window is open the app is
+  a regular app, in the Dock and the app switcher; with none open it lives only in the menu bar. The
+  window opens by itself on the first launch only, with a three-step start.
+- **Three operations added to the API.** `inspect` previews what registering a folder would do (name,
+  version, detected build and publish folder) without registering it, so the form can show and correct
+  it first. `roots` and `setRoots` read and replace the project folders in `config.json`, which the CLI
+  sets with `devlink init`. API version stays 1: these are additions.
+- **Restoring an app whose `package.json` changed asks first.** A `manifest-drifted` refusal becomes a
+  question with Restore Anyway (`force`), instead of an error.
+- **The CLI can be installed from the app.** When no shell finds `devlink`, the app offers to run
+  `npm install --global devlink`. `$DEVLINK_CLI` names another command to start the daemon with, which
+  is how a checkout's build is tested.
+- **macOS 26 and later.** The window and its toolbar use the system's Liquid Glass chrome (sidebar,
+  toolbar, `.glassProminent` for each page's primary action) with no custom glass. Supporting older
+  systems would have meant gating each of those; the app's users are developers on current macOS.
+- **Apps are first-class in the window.** The sidebar lists apps as well as libraries and groups: every
+  app that is linked, or that the daemon's `discover` found using a registered library. To add an app
+  from outside the project folders, the app reads that folder's `package.json` itself (read-only: its
+  dependencies and lockfile) to see which registered libraries it uses; nothing is sent to the daemon
+  until the user links one, and `link` still checks the dependency. Such an app is kept for the
+  session; once linked it is part of the daemon's state like any other.
+- **Words the user can act on.** "Watch" became **Auto-sync**, a labelled switch rather than an eye
+  icon, because the icon did not say what it did. The API keeps `watch`, since it names the mechanism.
+- **The brand.** The app icon (Icon Composer, `Resources/AppIcon.icon`) is a teal package with a
+  magenta "dev" tag on a charcoal tile, like the system's developer tools. The same two colours mark
+  a release and a dev build in the window, and the menu bar icon is the package outline, with the tag
+  for idle, a dashed box while syncing and an exclamation mark when something failed.

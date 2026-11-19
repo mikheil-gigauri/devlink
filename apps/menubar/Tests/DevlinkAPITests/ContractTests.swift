@@ -29,6 +29,7 @@ import Testing
       let status: Status
       let register: RegisterResult
       let unregister: Done
+      let inspect: LibraryPreview
       let sync: SyncResult
       let watch: Library
       let discover: [DiscoveredConsumer]
@@ -38,6 +39,8 @@ import Testing
       let deleteGroup: Done
       let linkGroup: [GroupMemberOutcome]
       let restoreGroup: [GroupMemberOutcome]
+      let roots: Roots
+      let setRoots: Roots
       let shutdown: Done
     }
   }
@@ -83,6 +86,9 @@ import Testing
     #expect(fixtures.outputs.link.guardOutcome == .installed)
     #expect(fixtures.outputs.restore == RestoreResult(ok: false, output: "npm error network request failed"))
     #expect(fixtures.outputs.linkGroup.map(\.status) == [.done, .failed])
+    #expect(fixtures.outputs.inspect.build?.args == ["build", "ui"])
+    #expect(fixtures.outputs.inspect.registered == false)
+    #expect(fixtures.outputs.setRoots.roots.count == 2)
     #expect(fixtures.errorBody.error.code == .manifestDrifted)
   }
 

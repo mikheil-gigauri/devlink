@@ -1,7 +1,7 @@
 import DevlinkAPI
 import SwiftUI
 
-/// What the menu asks of the app around it: windows, the log, login, quitting.
+/// What the menu asks of the app around it: the log, login, quitting.
 public struct MenuActions {
   public var openLog: () -> Void
   public var showFailures: (Failure.ID?) -> Void
@@ -20,36 +20,49 @@ public struct MenuActions {
   }
 }
 
-/// The menu bar window (ADR 0013): the daemon's libraries, links and groups, with the controls for a
-/// full cycle — start, watch, sync, link, restore — and the failures worth reading.
+/// The menu bar window (ADR 0013): what devlink is doing at a glance, with the everyday controls —
+/// watch, sync, link, restore. Adding and changing things happens in the devlink window, one click away.
 public struct MenuContent: View {
   let model: MenuModel
+  let navigation: AppNavigation
   let actions: MenuActions
+  @Environment(\.openWindow) private var openWindow
 
-  public init(model: MenuModel, actions: MenuActions) {
+  public init(model: MenuModel, navigation: AppNavigation = AppNavigation(), actions: MenuActions) {
     self.model = model
+    self.navigation = navigation
     self.actions = actions
   }
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      Header(model: model)
+      Header(model: model) { show(nil) }
       Divider()
       switch model.connection {
       case .online:
-        OnlineContent(model: model, actions: actions)
+        OnlineContent(model: model, actions: actions, show: show)
       case .offline, .starting:
-        OfflineView(model: model, actions: actions)
+        ServiceUnavailableView(model: model, actions: actions, compact: true)
       case .connecting:
         ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(28)
       case .incompatible(let daemonVersion):
         IncompatibleView(daemonVersion: daemonVersion)
       }
       Divider()
-      Footer(model: model, actions: actions)
+      Footer(model: model, actions: actions) {
+        navigation.wantsNewLibrary = true
+        show(nil)
+      }
     }
-    .frame(width: 360)
+    .frame(width: 340)
     .onAppear { model.menuOpened() }
+  }
+
+  /// Opens the devlink window, at `item` when given.
+  private func show(_ item: SidebarItem?) {
+    if let item { navigation.selection = item }
+    openWindow(id: mainWindowID)
+    NSApp.activate()
   }
 }
 
@@ -57,27 +70,40 @@ public struct MenuContent: View {
 
 private struct Header: View {
   let model: MenuModel
+  let openWindow: () -> Void
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline) {
-      Text("devlink").font(.headline)
+    HStack(spacing: 8) {
+      Circle().fill(dot).frame(width: 8, height: 8).accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 0) {
+        Text("devlink").font(.headline)
+        Text(subtitle).font(.caption).foregroundStyle(.secondary)
+      }
       Spacer()
-      Text(subtitle).font(.caption).foregroundStyle(.secondary)
+      Button("Open", action: openWindow)
+        .controlSize(.small)
+        .help("Open the devlink window to add libraries, link apps and manage groups")
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
   }
 
+  private var dot: Color {
+    switch model.connection {
+    case .online: .green
+    case .connecting, .starting: .yellow
+    case .offline: .secondary
+    case .incompatible: .orange
+    }
+  }
+
   private var subtitle: String {
     switch model.connection {
-    case .online:
-      guard let daemon = model.status?.daemon else { return "Running" }
-      let port = URL(string: daemon.registryUrl)?.port.map { " · registry :\($0)" } ?? ""
-      return "v\(daemon.version)\(port)"
-    case .connecting: return "Looking for devlink…"
-    case .starting: return "Starting…"
-    case .offline: return "Not running"
-    case .incompatible: return "Needs an update"
+    case .online: model.status.map { "Running, version \($0.daemon.version)" } ?? "Running"
+    case .connecting: "Looking for devlink…"
+    case .starting: "Starting…"
+    case .offline: "Not running"
+    case .incompatible: "Needs an update"
     }
   }
 }
@@ -85,26 +111,38 @@ private struct Header: View {
 private struct Footer: View {
   let model: MenuModel
   let actions: MenuActions
+  let addLibrary: () -> Void
+  @Environment(\.openSettings) private var openSettings
 
   var body: some View {
     HStack(spacing: 8) {
       if let activity = model.activity {
         ProgressView().controlSize(.mini)
-        Text(activity).lineLimit(1).truncationMode(.middle)
-      } else {
-        Text(model.connection == .online ? "Idle" : " ").foregroundStyle(.secondary)
+        Text(activity).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+      } else if model.connection == .online {
+        Button("Add Library…", systemImage: "plus", action: addLibrary)
+          .buttonStyle(.borderless)
       }
       Spacer(minLength: 8)
       Menu {
-        Button("Open Daemon Log", action: actions.openLog)
+        Button("Settings…") {
+          openSettings()
+          NSApp.activate()
+        }
+        .keyboardShortcut(",")
+        Button("Open Log", action: actions.openLog)
         if !model.failures.isEmpty {
           Button("Show Failures…") { actions.showFailures(nil) }
         }
         if let openAtLogin = actions.openAtLogin {
           Toggle("Open at Login", isOn: openAtLogin)
         }
+        if model.connection == .online {
+          Divider()
+          Button("Stop devlink") { Task { await model.stopDaemon() } }
+        }
         Divider()
-        Button("Quit devlink Menu", action: actions.quit).keyboardShortcut("q")
+        Button("Quit", action: actions.quit).keyboardShortcut("q")
       } label: {
         Image(systemName: "ellipsis.circle")
       }
@@ -113,72 +151,9 @@ private struct Footer: View {
       .fixedSize()
       .accessibilityLabel("More")
     }
-    .font(.caption)
+    .font(.callout)
     .padding(.horizontal, 14)
     .padding(.vertical, 8)
-  }
-}
-
-// MARK: Offline
-
-private struct OfflineView: View {
-  let model: MenuModel
-  let actions: MenuActions
-
-  var body: some View {
-    VStack(spacing: 10) {
-      Image(systemName: "link")
-        .font(.system(size: 28, weight: .light))
-        .foregroundStyle(.tertiary)
-      Text("devlink is not running").font(.headline)
-      Text("Start it to publish your libraries and install them into your projects.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-      if model.connection == .starting {
-        ProgressView("Starting…").controlSize(.small).padding(.top, 4)
-      } else {
-        Button("Start devlink") { Task { await model.startDaemon() } }
-          .buttonStyle(.borderedProminent)
-          .padding(.top, 4)
-      }
-      if let error = model.startError {
-        Text(error)
-          .font(.caption)
-          .foregroundStyle(.red)
-          .multilineTextAlignment(.center)
-          .textSelection(.enabled)
-        Button("Open Daemon Log", action: actions.openLog).buttonStyle(.link).font(.caption)
-      } else {
-        Text("Or run `devlink daemon start` in a terminal.")
-          .font(.caption)
-          .foregroundStyle(.tertiary)
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .padding(.horizontal, 24)
-    .padding(.vertical, 20)
-  }
-}
-
-private struct IncompatibleView: View {
-  let daemonVersion: String
-
-  var body: some View {
-    VStack(spacing: 8) {
-      Image(systemName: "exclamationmark.triangle")
-        .font(.system(size: 26, weight: .light))
-        .foregroundStyle(.orange)
-      Text("This app and devlink \(daemonVersion) do not match").font(.headline)
-        .multilineTextAlignment(.center)
-      Text("They speak different versions of devlink's API. Update the one that is older.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-    }
-    .frame(maxWidth: .infinity)
-    .padding(.horizontal, 24)
-    .padding(.vertical, 20)
   }
 }
 
@@ -187,74 +162,105 @@ private struct IncompatibleView: View {
 private struct OnlineContent: View {
   let model: MenuModel
   let actions: MenuActions
+  let show: (SidebarItem?) -> Void
 
   var body: some View {
     // As tall as its content, scrolling past what fits under the menu bar.
     ScrollView { sections }
       .scrollBounceBehavior(.basedOnSize)
-      .frame(maxHeight: 520)
+      .frame(maxHeight: 540)
       .fixedSize(horizontal: false, vertical: true)
-    .task {
-      // The Link menus offer projects that use each library; finding them reads the disk once.
-      if model.consumers.isEmpty { await model.discoverConsumers() }
-    }
+      .task {
+        // The Link menus offer projects that use each library; finding them reads the disk once.
+        if model.consumers.isEmpty { await model.discoverConsumers() }
+      }
   }
 
   private var sections: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 14) {
       if let failure = model.failures.first {
         FailureBanner(failure: failure, more: model.failures.count - 1, model: model, actions: actions)
       }
+      if let request = model.driftedRestore {
+        DriftedRestoreBanner(request: request, model: model)
+      }
       if let error = model.actionError {
-        Label(error, systemImage: "exclamationmark.circle")
-          .font(.caption)
-          .foregroundStyle(.red)
-          .textSelection(.enabled)
+        ErrorBanner(message: error) { model.dismissActionError() }
       }
       if model.libraries.isEmpty {
-        EmptyLibraries()
+        GetStarted(model: model) { show(nil) }
       } else {
-        Section(title: "Libraries") {
-          ForEach(model.libraries) { row in LibraryRowView(row: row, model: model) }
+        MenuSection(title: "Libraries") {
+          ForEach(model.libraries) { row in
+            LibraryRowView(row: row, model: model) { show(.library(row.library.name)) }
+          }
         }
       }
       if let groups = model.status?.groups, !groups.isEmpty {
-        Section(title: "Groups") {
-          ForEach(groups) { group in GroupRowView(group: group, model: model) }
+        MenuSection(title: "Groups") {
+          ForEach(groups) { group in
+            GroupRowView(group: group, model: model) { show(.group(group.name)) }
+          }
         }
       }
       if let warnings = model.status?.warnings, !warnings.isEmpty {
         ForEach(Array(warnings.enumerated()), id: \.offset) { _, warning in WarningRow(warning: warning) }
       }
     }
-    .padding(.horizontal, 14)
+    .padding(.horizontal, 10)
     .padding(.vertical, 12)
   }
 }
 
-private struct Section<Content: View>: View {
+private struct MenuSection<Content: View>: View {
   let title: String
   @ViewBuilder let content: Content
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title.uppercased())
-        .font(.caption2.weight(.semibold))
+    VStack(alignment: .leading, spacing: 2) {
+      Text(title)
+        .font(.subheadline.weight(.semibold))
         .foregroundStyle(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.bottom, 2)
       content
     }
   }
 }
 
-private struct EmptyLibraries: View {
+/// A row that highlights under the pointer, like a menu item.
+private struct HoverHighlight: ViewModifier {
+  @State private var hovering = false
+
+  func body(content: Content) -> some View {
+    content
+      .padding(.horizontal, 6)
+      .padding(.vertical, 4)
+      .background(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 8))
+      .onHover { hovering = $0 }
+  }
+}
+
+private struct GetStarted: View {
+  let model: MenuModel
+  let openWindow: () -> Void
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text("No libraries yet").font(.headline)
-      Text("Run `devlink add` in a library's folder to publish it from here.")
+    VStack(spacing: 10) {
+      Tile(symbol: "shippingbox", tint: .teal, size: 44)
+      Text("Test your library in your apps").font(.headline)
+      Text("Add a library you are working on, and devlink installs each change into the apps that use it.")
         .font(.callout)
         .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+      Button("Get Started", action: openWindow)
+        .buttonStyle(.borderedProminent)
+        .padding(.top, 2)
     }
-    .padding(.vertical, 8)
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 12)
+    .padding(.horizontal, 16)
   }
 }
 
@@ -281,7 +287,7 @@ private struct FailureBanner: View {
       Spacer(minLength: 0)
     }
     .padding(10)
-    .background(.red.opacity(0.08), in: .rect(cornerRadius: 8))
+    .background(.red.opacity(0.1), in: .rect(cornerRadius: 10))
   }
 
   private var firstLine: String {
@@ -289,71 +295,88 @@ private struct FailureBanner: View {
   }
 }
 
-private struct LibraryRowView: View {
-  let row: LibraryRow
+/// Restoring was refused because the app's package.json changed since it was linked.
+struct DriftedRestoreBanner: View {
+  let request: RestoreRequest
   let model: MenuModel
-  @Environment(\.timeZone) private var timeZone
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 8) {
-        VStack(alignment: .leading, spacing: 1) {
-          Text(row.library.name).font(.body.weight(.medium)).lineLimit(1)
-          Text(published).font(.caption).foregroundStyle(.secondary)
+      Label {
+        Text("\(projectName(request.consumer))'s package.json changed after it was linked. Restoring puts back the version from before linking, and drops those changes.")
+      } icon: {
+        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+      }
+      .font(.callout)
+      .fixedSize(horizontal: false, vertical: true)
+      HStack {
+        Spacer()
+        Button("Cancel") { model.driftedRestore = nil }
+        Button("Restore Anyway") {
+          Task { await model.restore(request.consumer, library: request.library, force: true) }
         }
-        Spacer(minLength: 8)
-        Toggle("Watch", isOn: watch)
+      }
+      .controlSize(.small)
+    }
+    .padding(10)
+    .background(.orange.opacity(0.1), in: .rect(cornerRadius: 10))
+  }
+}
+
+private struct LibraryRowView: View {
+  let row: LibraryRow
+  let model: MenuModel
+  let open: () -> Void
+  @Environment(\.timeZone) private var timeZone
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 8) {
+        Button(action: open) {
+          VStack(alignment: .leading, spacing: 1) {
+            Text(row.library.name).font(.body.weight(.medium)).lineLimit(1)
+            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help("Show \(name) in the devlink window")
+        Toggle("Auto-sync \(name)", isOn: watch)
           .toggleStyle(.switch)
           .controlSize(.mini)
           .labelsHidden()
           .disabled(model.isBusy(.watch(name)))
-          .help(row.library.isWatched ? "Watching for changes" : "Watch for changes")
+          .help(row.library.isWatched ? "Auto-sync is on: every change you save is synced" : "Auto-sync: sync every change you save")
         IconButton(
-          symbol: "arrow.triangle.2.circlepath", label: "Sync \(name)", busy: model.isBusy(.sync(name))
+          symbol: "arrow.triangle.2.circlepath", label: "Sync \(name) now", busy: model.isBusy(.sync(name))
         ) { Task { await model.sync(name) } }
-        LinkMenu(library: name, model: model)
       }
+      .modifier(HoverHighlight())
       ForEach(row.links) { link in LinkRowView(link: link, model: model) }
+      Menu {
+        LinkMenuItems(library: name, model: model)
+      } label: {
+        Label("Link to App", systemImage: "plus").font(.caption)
+      }
+      .menuStyle(.button)
+      .buttonStyle(.borderless)
+      .menuIndicator(.hidden)
+      .controlSize(.small)
+      .fixedSize()
+      .padding(.leading, 20)
+      .padding(.vertical, 2)
     }
   }
 
   private var name: String { row.library.name }
 
-  private var published: String {
-    guard let version = row.library.lastPublishedVersion else { return "Not published yet" }
-    return DevVersion.describe(version, timeZone: timeZone) + (row.library.isWatched ? " · watching" : "")
+  private var subtitle: String {
+    row.library.published(timeZone: timeZone) + (row.library.isWatched ? " · Auto-sync on" : "")
   }
 
   private var watch: Binding<Bool> {
     Binding(get: { row.library.isWatched }, set: { enabled in Task { await model.setWatch(name, enabled: enabled) } })
-  }
-}
-
-private struct LinkMenu: View {
-  let library: String
-  let model: MenuModel
-
-  var body: some View {
-    Menu {
-      let candidates = model.linkCandidates(for: library)
-      if candidates.isEmpty {
-        Text(model.isBusy(.discover) ? "Looking for projects…" : "No other projects use \(library)")
-      }
-      ForEach(candidates) { consumer in
-        Button(consumer.name ?? projectName(consumer.root)) {
-          Task { await model.link(library, into: consumer.root) }
-        }
-      }
-      Divider()
-      Button("Look Again") { Task { await model.discoverConsumers() } }
-    } label: {
-      Image(systemName: "link.badge.plus")
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .fixedSize()
-    .help("Link \(library) into a project")
-    .accessibilityLabel("Link \(library) into a project")
   }
 }
 
@@ -364,64 +387,52 @@ private struct LinkRowView: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      Image(systemName: symbol)
+      Image(systemName: link.symbol)
         .font(.caption)
-        .foregroundStyle(tint)
-        .frame(width: 14)
+        .foregroundStyle(link.tint)
+        .frame(width: 16)
       Text(projectName(link.consumer)).lineLimit(1)
-      Text(detail).font(.caption).foregroundStyle(link.status == .failed ? .red : .secondary).lineLimit(1)
       Spacer(minLength: 8)
+      Text(link.detail(timeZone: timeZone))
+        .font(.caption)
+        .foregroundStyle(link.status == .failed ? .red : .secondary)
+        .lineLimit(1)
       IconButton(
-        symbol: "arrow.uturn.backward", label: "Restore \(projectName(link.consumer))",
-        busy: model.isBusy(.restore(link.consumer))
-      ) { Task { await model.restore(link.consumer) } }
+        symbol: "arrow.uturn.backward",
+        label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
+        busy: model.isBusy(.restore(link.consumer, link.library))
+      ) { Task { await model.restore(link.consumer, library: link.library) } }
     }
-    .padding(.leading, 10)
-    .help(link.consumer)
-  }
-
-  private var symbol: String {
-    switch link.status {
-    case .installed: "checkmark.circle.fill"
-    case .pending: "clock"
-    case .failed: "xmark.octagon.fill"
-    }
-  }
-
-  private var tint: Color {
-    switch link.status {
-    case .installed: .green
-    case .pending: .secondary
-    case .failed: .red
-    }
-  }
-
-  private var detail: String {
-    switch link.status {
-    case .failed: "Install failed"
-    case .pending: "Sync to install"
-    case .installed: link.installedVersion.map { DevVersion.describe($0, timeZone: timeZone) } ?? "Installed"
-    }
+    .padding(.leading, 14)
+    .modifier(HoverHighlight())
+    .help(abbreviatedPath(link.consumer))
   }
 }
 
 private struct GroupRowView: View {
   let group: DevlinkAPI.Group
   let model: MenuModel
+  let open: () -> Void
 
   var body: some View {
     HStack(spacing: 8) {
-      VStack(alignment: .leading, spacing: 1) {
-        Text(group.name).font(.body.weight(.medium))
-        Text(group.consumers.map(projectName).joined(separator: ", "))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+      Button(action: open) {
+        VStack(alignment: .leading, spacing: 1) {
+          Text(group.name).font(.body.weight(.medium))
+          Text(group.consumers.map(projectName).joined(separator: ", "))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
       }
-      Spacer(minLength: 8)
+      .buttonStyle(.plain)
       Menu {
-        ForEach(model.status?.libraries ?? []) { library in
-          Button(library.name) { Task { await model.linkGroup(group.name, library: library.name) } }
+        Section("Link into every app in \(group.name)") {
+          ForEach(model.status?.libraries ?? []) { library in
+            Button(library.name) { Task { await model.linkGroup(group.name, library: library.name) } }
+          }
         }
       } label: {
         if model.isBusy(.linkGroup(group.name)) {
@@ -433,13 +444,14 @@ private struct GroupRowView: View {
       .menuStyle(.borderlessButton)
       .menuIndicator(.hidden)
       .fixedSize()
-      .help("Link a library into every project in \(group.name)")
+      .help("Link a library into every app in \(group.name)")
       .accessibilityLabel("Link a library into \(group.name)")
       IconButton(
-        symbol: "arrow.uturn.backward", label: "Restore every project in \(group.name)",
+        symbol: "arrow.uturn.backward", label: "Put every app in \(group.name) back on released versions",
         busy: model.isBusy(.restoreGroup(group.name))
       ) { Task { await model.restoreGroup(group.name) } }
     }
+    .modifier(HoverHighlight())
   }
 }
 
@@ -449,36 +461,95 @@ private struct WarningRow: View {
 
   var body: some View {
     Label {
-      Text("\(warning.group) has \(warning.library) at different versions: ")
-        + Text(warning.versions.map { "\(projectName($0.consumer)) \(DevVersion.describe($0.version, timeZone: timeZone))" }
-          .joined(separator: ", "))
+      Text("\(warning.group) has \(warning.library) at different versions: \(versions)")
     } icon: {
       Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
     }
     .font(.caption)
     .foregroundStyle(.secondary)
+    .padding(.horizontal, 6)
+  }
+
+  private var versions: String {
+    warning.versions
+      .map { "\(projectName($0.consumer)) \(DevVersion.describe($0.version, timeZone: timeZone))" }
+      .joined(separator: ", ")
   }
 }
 
-/// A borderless symbol button that shows a spinner while its action runs.
-private struct IconButton: View {
-  let symbol: String
-  let label: String
-  let busy: Bool
-  let action: () -> Void
+// MARK: Not running
+
+/// devlink's service is not running: start it, or install the CLI it runs from.
+struct ServiceUnavailableView: View {
+  let model: MenuModel
+  let actions: MenuActions
+  var compact = false
 
   var body: some View {
-    Button(action: action) {
-      ZStack {
-        Image(systemName: symbol).opacity(busy ? 0 : 1)
-        if busy { ProgressView().controlSize(.mini) }
+    VStack(spacing: 10) {
+      Image(systemName: model.cliMissing ? "arrow.down.circle" : "power")
+        .font(.system(size: compact ? 28 : 40, weight: .light))
+        .foregroundStyle(.tertiary)
+      Text(model.cliMissing ? "Install devlink" : "devlink is not running").font(compact ? .headline : .title2.bold())
+      Text(explanation)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+      if model.connection == .starting {
+        ProgressView("Starting…").controlSize(.small).padding(.top, 4)
+      } else if model.isBusy(.installCLI) {
+        ProgressView("Installing with npm…").controlSize(.small).padding(.top, 4)
+      } else if model.cliMissing {
+        Button("Install devlink") { Task { await model.installCLI() } }
+          .buttonStyle(.borderedProminent)
+          .padding(.top, 4)
+        Text("Runs npm install --global devlink").font(.caption).foregroundStyle(.tertiary)
+      } else {
+        Button("Start devlink") { Task { await model.startDaemon() } }
+          .buttonStyle(.borderedProminent)
+          .padding(.top, 4)
       }
-      .frame(width: 18, height: 18)
-      .contentShape(.rect)
+      if let error = model.startError, !model.cliMissing {
+        Text(error)
+          .font(.caption)
+          .foregroundStyle(.red)
+          .multilineTextAlignment(.center)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+        Button("Open Log", action: actions.openLog).buttonStyle(.link).font(.caption)
+      }
     }
-    .buttonStyle(.borderless)
-    .disabled(busy)
-    .help(label)
-    .accessibilityLabel(label)
+    .frame(maxWidth: compact ? .infinity : 380)
+    .padding(.horizontal, 24)
+    .padding(.vertical, 20)
+  }
+
+  private var explanation: String {
+    if model.cliMissing {
+      return "The app runs devlink's command-line tool in the background. It needs Node.js and npm."
+    }
+    return "Start it to publish your libraries and install them into your apps."
+  }
+}
+
+struct IncompatibleView: View {
+  let daemonVersion: String
+
+  var body: some View {
+    VStack(spacing: 8) {
+      Image(systemName: "exclamationmark.triangle")
+        .font(.system(size: 26, weight: .light))
+        .foregroundStyle(.orange)
+      Text("This app and devlink \(daemonVersion) do not match").font(.headline)
+        .multilineTextAlignment(.center)
+      Text("They speak different versions of devlink's API. Update the one that is older.")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.horizontal, 24)
+    .padding(.vertical, 20)
   }
 }

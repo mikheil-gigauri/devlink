@@ -6,8 +6,8 @@ public let supportedAPIVersion = 1
 /// Every operation the daemon serves as `POST /v1/<name>`. The contract test checks this against the
 /// daemon's exported schema, so the two cannot drift apart.
 public enum OperationName: String, CaseIterable, Sendable {
-  case status, register, unregister, sync, watch, discover, link, restore
-  case saveGroup, deleteGroup, linkGroup, restoreGroup, shutdown
+  case status, register, unregister, inspect, sync, watch, discover, link, restore
+  case saveGroup, deleteGroup, linkGroup, restoreGroup, roots, setRoots, shutdown
 }
 
 public struct Health: Codable, Sendable, Equatable {
@@ -176,9 +176,84 @@ public struct Status: Codable, Sendable, Equatable {
   }
 }
 
+/// How a library is built: a command run in its folder.
+public struct BuildCommand: Codable, Sendable, Equatable {
+  public let command: String
+  public let args: [String]
+
+  public init(command: String, args: [String]) {
+    self.command = command
+    self.args = args
+  }
+
+  /// The command as one line, the way it would be typed.
+  public var line: String { ([command] + args).map { $0.contains(" ") ? "\"\($0)\"" : $0 }.joined(separator: " ") }
+
+  /// Splits a typed line into a command and its arguments, honouring double quotes. Nil when empty.
+  public init?(line: String) {
+    var words: [String] = []
+    var word = ""
+    var quoted = false
+    var started = false
+    for character in line {
+      if character == "\"" {
+        quoted.toggle()
+        started = true
+      } else if character.isWhitespace, !quoted {
+        if started { words.append(word) }
+        word = ""
+        started = false
+      } else {
+        word.append(character)
+        started = true
+      }
+    }
+    if started { words.append(word) }
+    guard let command = words.first else { return nil }
+    self.init(command: command, args: Array(words.dropFirst()))
+  }
+}
+
+/// What adding a folder as a library would do, before it is added.
+public struct LibraryPreview: Codable, Sendable, Equatable {
+  public let name: String
+  public let version: String
+  public let root: String
+  /// "nx", "angular", "npm-script" or "none".
+  public let detected: String
+  public let publishDir: String
+  public let build: BuildCommand?
+  public let registered: Bool
+
+  public init(
+    name: String, version: String, root: String, detected: String, publishDir: String, build: BuildCommand?,
+    registered: Bool
+  ) {
+    self.name = name
+    self.version = version
+    self.root = root
+    self.detected = detected
+    self.publishDir = publishDir
+    self.build = build
+    self.registered = registered
+  }
+}
+
+/// The folders searched for projects.
+public struct Roots: Codable, Sendable, Equatable {
+  public let roots: [String]
+
+  public init(roots: [String]) { self.roots = roots }
+}
+
 public struct RegisterResult: Codable, Sendable, Equatable {
   public let library: Library
   public let detected: String
+
+  public init(library: Library, detected: String) {
+    self.library = library
+    self.detected = detected
+  }
 }
 
 public struct InstallOutcome: Codable, Sendable, Equatable {
@@ -218,6 +293,12 @@ public struct DiscoveredConsumer: Codable, Sendable, Equatable, Identifiable {
     public let name: String
     public let field: String
     public let range: String
+
+    public init(name: String, field: String, range: String) {
+      self.name = name
+      self.field = field
+      self.range = range
+    }
   }
 
   public let root: String
@@ -242,7 +323,12 @@ extension DiscoveredConsumer.Dependency {
 }
 
 extension DiscoveredConsumer.PackageManager {
+  public init(name: String?) {
+    self.init(ok: name != nil, name: name, reason: name == nil ? "No lockfile found" : nil)
+  }
+
   public static let npm = Self(ok: true, name: "npm", reason: nil)
+  public static let pnpm = Self(ok: true, name: "pnpm", reason: nil)
 }
 
 public struct LinkResult: Codable, Sendable, Equatable {
@@ -290,4 +376,6 @@ public struct GroupMemberOutcome: Codable, Sendable, Equatable {
 
 public struct Done: Codable, Sendable, Equatable {
   public let ok: Bool
+
+  public init(ok: Bool = true) { self.ok = ok }
 }

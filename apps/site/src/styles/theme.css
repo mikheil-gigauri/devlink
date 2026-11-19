@@ -1,0 +1,36 @@
+/* devlink's palette: navy ink on cool paper, teal for a release, magenta for a dev build. */
+:root {
+  --dl-dev: #ff5fa8;
+  --dl-release: #3cc9b0;
+  --sl-font: "Schibsted Grotesk Variable", system-ui, sans-serif;
+  --sl-font-mono: "Martian Mono Variable", ui-monospace, monospace;
+  --sl-text-code: 0.8125rem;
+  --sl-color-accent-low: #0f3b37;
+  --sl-color-accent: #2fae97;
+  --sl-color-accent-high: #a9eadc;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #e6edf2;
+  --sl-color-gray-2: #c2cdd7;
+  --sl-color-gray-3: #8e9dac;
+  --sl-color-gray-4: #5d6d7e;
+  --sl-color-gray-5: #34445a;
+  --sl-color-gray-6: #1a2739;
+  --sl-color-black: #0e1726;
+}
+
+:root[data-theme="light"] {
+  --dl-dev: #c2257a;
+  --dl-release: #0f7b6c;
+  --sl-color-accent-low: #cde6e1;
+  --sl-color-accent: #0f7b6c;
+  --sl-color-accent-high: #094a41;
+  --sl-color-white: #14213d;
+  --sl-color-gray-1: #1f2d49;
+  --sl-color-gray-2: #34445d;
+  --sl-color-gray-3: #5b6b7a;
+  --sl-color-gray-4: #8796a3;
+  --sl-color-gray-5: #c9d3da;
+  --sl-color-gray-6: #dde5e9;
+  --sl-color-gray-7: #e6ecee;
+  --sl-color-black: #eef2f3;
+}

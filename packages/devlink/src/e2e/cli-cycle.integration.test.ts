@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DevlinkHome } from '../adapters/node/devlink-home.ts';
 import { NodeProcessRunner } from '../adapters/node/node-process-runner.ts';
-import { npm } from '../adapters/package-managers/npm.ts';
+import { npmPublisher } from '../adapters/package-managers/npm.ts';
 import type { StatusView } from '../daemon/api.ts';
 import { createRegistrySandbox, type RegistrySandbox } from '../testing/registry-sandbox.ts';
 
@@ -91,7 +91,10 @@ describe.skipIf(!process.features.typescript)('a working session through the dev
     await sandbox.run(process.execPath, ['build.mjs'], libRoot);
     const dist = join(libRoot, 'dist');
     for (const [file, content] of Object.entries(
-      npm.publishAuthFiles({ registryUrl: publicRegistry.url, credentials: publicRegistry.credentials }),
+      npmPublisher.publishAuthFiles({
+        registryUrl: publicRegistry.url,
+        credentials: publicRegistry.credentials,
+      }),
     )) {
       await writeFile(join(dist, file), content);
     }

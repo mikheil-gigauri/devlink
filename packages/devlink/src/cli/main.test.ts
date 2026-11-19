@@ -65,7 +65,10 @@ class FakeClient implements ApiClient {
   }
 }
 
-async function devlink(argv: string | string[], options: { client?: FakeClient; cwd?: string } = {}) {
+async function devlink(
+  argv: string | string[],
+  options: { client?: FakeClient; cwd?: string; entry?: string } = {},
+) {
   const client = options.client ?? new FakeClient();
   let stdout = '';
   let stderr = '';
@@ -76,12 +79,36 @@ async function devlink(argv: string | string[], options: { client?: FakeClient; 
     stdout: (text) => (stdout += text),
     stderr: (text) => (stderr += text),
     connect: async () => client,
+    local: {
+      init: async (roots) => ({ home: '/Users/me/.devlink', roots }),
+      daemon: async () => 0,
+      doctor: async () => 0,
+    },
     color: false,
+    ...(options.entry !== undefined && { entry: options.entry }),
   });
   return { code, stdout, stderr, client };
 }
 
 describe('devlink CLI', () => {
+  it('sets up with the parent folder as the place projects live, and says what to do next', async () => {
+    const { code, stdout } = await devlink('init');
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('roots     ~/repos');
+    expect(stdout).toContain('Next: run devlink add in a library');
+    expect(stdout).not.toContain('npx');
+  });
+
+  it('tells someone trying it through npx how to type `devlink` directly', async () => {
+    const entry = '/Users/me/.npm/_npx/0c8a3f/node_modules/devlink/dist/devlink.mjs';
+
+    const { stdout } = await devlink('init', { entry });
+
+    expect(stdout).toContain('Next: run npx devlink add in a library');
+    expect(stdout).toContain('npm install --global devlink');
+  });
+
   it('links consumers given relative to here, into the library this folder belongs to', async () => {
     const client = new FakeClient();
     client.replies.link = {
@@ -240,6 +267,20 @@ describe('devlink CLI', () => {
     expect(code).toBe(1);
     expect(stderr).toContain('devlink: /Users/me/repos/shop/package.json has changes devlink did not make.');
     expect(stderr).toContain('--force');
+  });
+
+  it('restores one library in a project and keeps its other links', async () => {
+    const client = new FakeClient();
+    client.replies.restore = { ok: true };
+
+    const { code, stdout } = await devlink('restore /Users/me/repos/shop --library @acme/ui', { client });
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Restored @acme/ui in ~/repos/shop');
+    expect(client.calls.at(-1)).toEqual({
+      name: 'restore',
+      input: { consumer: '/Users/me/repos/shop', library: '@acme/ui' },
+    });
   });
 
   it('restores the linked project a subfolder belongs to', async () => {

@@ -1,19 +1,12 @@
 import { DevlinkError } from '../errors.ts';
-import type { LibraryRecord } from '../model.ts';
+import type { LibraryRecord, Manifest } from '../model.ts';
+import { DEPENDENCY_FIELDS } from '../model.ts';
 import type { CoreDeps } from '../ports.ts';
-import { loadProject } from '../project/load-project.ts';
 import { formatManifest, readManifest } from '../project/manifest.ts';
+import { isRecord } from '../util/json.ts';
 import { joinPath } from '../util/path.ts';
 import { nextDevVersion } from '../version/dev-version.ts';
-import {
-  adapterFor,
-  commandOutput,
-  DEV_TAG,
-  requireLibrary,
-  runSafely,
-  stagingDir,
-  withLibrary,
-} from './shared.ts';
+import { commandOutput, DEV_TAG, requireLibrary, runSafely, stagingDir, withLibrary } from './shared.ts';
 
 export interface PublishLibraryInput {
   readonly library: string;
@@ -46,7 +39,8 @@ export async function publishLibrary(
     previous: library.lastPublishedVersion,
   });
 
-  const adapter = adapterFor(deps, await loadProject(deps.fs, library.root));
+  refuseWorkspaceRanges(manifest, path);
+
   const staging = stagingDir(deps, library.name);
   try {
     await deps.fs.remove(staging);
@@ -55,7 +49,7 @@ export async function publishLibrary(
       joinPath(staging, 'package.json'),
       formatManifest({ ...manifest, version }, text),
     );
-    const authFiles = adapter.publishAuthFiles({
+    const authFiles = deps.publisher.publishAuthFiles({
       registryUrl: deps.registryUrl,
       credentials: deps.registryCredentials,
     });
@@ -65,7 +59,7 @@ export async function publishLibrary(
 
     const result = await runSafely(
       deps,
-      adapter.publish({ cwd: staging, registryUrl: deps.registryUrl, tag: DEV_TAG }),
+      deps.publisher.publish({ cwd: staging, registryUrl: deps.registryUrl, tag: DEV_TAG }),
     );
     if (result.exitCode !== 0) {
       const output = commandOutput(result);
@@ -85,6 +79,29 @@ export async function publishLibrary(
   );
   deps.events.emit({ type: 'publish:succeeded', library: library.name, version });
   return { version };
+}
+
+/**
+ * `workspace:` and `catalog:` ranges mean something only inside the library's own pnpm, Yarn or Bun
+ * workspace, which rewrites them when it publishes. A staged copy has no workspace around it, so
+ * they would reach consumers as-is and fail their installs.
+ */
+function refuseWorkspaceRanges(manifest: Manifest, path: string): void {
+  const unresolved = DEPENDENCY_FIELDS.flatMap((field) => {
+    const entries = manifest[field];
+    return isRecord(entries)
+      ? Object.entries(entries).filter(
+          ([, range]) => typeof range === 'string' && /^(workspace|catalog):/.test(range),
+        )
+      : [];
+  });
+  if (unresolved.length === 0) return;
+  const list = unresolved.map(([name, range]) => `${name} (${String(range)})`).join(', ');
+  throw new DevlinkError(
+    'invalid-manifest',
+    `${path} depends on ${list}, which only the library's workspace can resolve. Publish a build output whose package.json has real versions, and point devlink at it with \`devlink add --publish-dir\`.`,
+    { path },
+  );
 }
 
 async function build(deps: CoreDeps, library: LibraryRecord): Promise<void> {

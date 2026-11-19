@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: release
+
+permissions: {}
+
+jobs:
+  npm:
+    name: npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release pull request, tags and GitHub releases
+      pull-requests: write
+      id-token: write # npm provenance
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      # With changesets on main: opens or updates the release pull request. Once that is merged:
+      # publishes to npm with provenance, tags devlink@<version> and creates the GitHub release.
+      - id: changesets
+        uses: changesets/action@v2
+        with:
+          version-script: npm run version-packages
+          publish-script: npm run release
+          commit-message: "chore: release"
+          pr-title: Release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+      - id: version
+        if: steps.changesets.outputs.published == 'true'
+        run: echo "version=$(node -p "require('./packages/devlink/package.json').version")" >> "$GITHUB_OUTPUT"
+
+  menubar:
+    name: Menu bar app
+    needs: npm
+    if: needs.npm.outputs.published == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: write # attach the app to the GitHub release
+    env:
+      VERSION: ${{ needs.npm.outputs.version }}
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: devlink@${{ env.VERSION }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Use the newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+      - name: Check signing is set up
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "::warning::No Developer ID certificate in the repository secrets, so no app is released. See CONTRIBUTING.md#releasing."
+            echo "SIGN=false" >> "$GITHUB_ENV"
+          else
+            echo "SIGN=true" >> "$GITHUB_ENV"
+          fi
+      - name: Import the Developer ID certificate
+        if: env.SIGN == 'true'
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+      - name: Build, sign and notarize Devlink.app
+        if: env.SIGN == 'true'
+        env:
+          DEVLINK_UNIVERSAL: "1"
+          DEVLINK_SIGN_IDENTITY: Developer ID Application
+        run: |
+          apps/menubar/scripts/bundle.sh
+          output="$(apps/menubar/scripts/notarize.sh)"
+          echo "ZIP=$(echo "$output" | tail -2 | head -1)" >> "$GITHUB_ENV"
+          echo "SHA256=$(echo "$output" | tail -1)" >> "$GITHUB_ENV"
+      - name: Attach it to the GitHub release
+        if: env.SIGN == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "devlink@$VERSION" "$ZIP" --clobber
+      - name: Update the Homebrew cask
+        if: env.SIGN == 'true' && env.HOMEBREW_TAP_TOKEN != ''
+        run: |
+          git clone "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/mikheil-gigauri/homebrew-devlink.git" tap
+          mkdir -p tap/Casks
+          apps/menubar/scripts/cask.sh "$VERSION" "$SHA256" > tap/Casks/devlink.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/devlink.rb
+          git commit -m "devlink $VERSION"
+          git push

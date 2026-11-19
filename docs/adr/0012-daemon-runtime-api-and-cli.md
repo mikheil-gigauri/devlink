@@ -85,3 +85,11 @@ detection.
 - Reading npmrc tokens means parsing npm's config format. Only `_authToken` and `_auth` lines keyed by
   registry URL are supported, with `${ENV}` expansion (plus `username` and `_password`); anything else, including a
   malformed password, falls back to an unauthenticated uplink and `doctor` says so.
+
+## Amendment · 2026-11-19 (M5, Linux watcher)
+
+`NodeLibraryWatcher` has two strategies. `recursive` is Node's recursive `fs.watch`, kept on macOS, where
+FSEvents makes one watch cheap whatever the tree's size. `walk`, the default on Linux, opens one
+non-recursive watch per folder and never enters ignored folders such as `node_modules` or `dist`, so
+inotify watches scale with the source tree only. It adds watches for folders created while watching and
+closes them for folders deleted. Both strategies run the same tests.

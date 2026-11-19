@@ -1,0 +1,825 @@
+---
+// The landing page (ADR 0011). Everything else on the site is Starlight; this page is its own layout so
+// the hero can show what devlink does instead of describing it.
+import '@fontsource-variable/schibsted-grotesk';
+import '@fontsource-variable/martian-mono';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const repo = 'https://github.com/mikheil-gigauri/devlink';
+const docs = (path: string) => `${base}${path}/`;
+const apps = ['shop', 'admin', 'checkout'];
+
+const steps = [
+  {
+    title: 'Link',
+    command: 'devlink link ../shop',
+    text: 'devlink saves the app’s package.json and lockfile, and adds a git hook that keeps dev builds out of commits.',
+  },
+  {
+    title: 'Edit',
+    command: 'devlink watch',
+    text: 'Work on the library as usual. Every save starts a build.',
+  },
+  {
+    title: 'Sync',
+    command: '1.4.1-dev.20261119143201',
+    text: 'The build is published under a version that never existed before, installed by the app’s own package manager, and the framework caches that would hide it are cleared.',
+  },
+  {
+    title: 'Restore',
+    command: 'devlink restore ../shop',
+    text: 'package.json and the lockfile go back byte for byte, the app reinstalls from them, and the hook is removed.',
+  },
+];
+
+const comparison: [string, string, string, string][] = [
+  ['Installed like a release', 'From a registry', 'A symlink', 'A file: dependency'],
+  ['One copy of Angular or React', 'Yes', 'No', 'Yes'],
+  ['A new version for every change', 'Yes', 'No', 'No'],
+  ['Framework caches cleared', 'Yes', 'No', 'No'],
+  ['Puts the app back exactly', 'Byte for byte', 'By hand', 'The manifest'],
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>devlink: test library changes in your real apps</title>
+    <meta
+      name="description"
+      content="devlink publishes every library change as a new dev version to a registry on your machine, installs it into the apps you choose, and puts them back exactly as they were."
+    />
+    <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
+    <script is:inline>
+      // Follow the theme chosen in the docs, else the system's.
+      try {
+        const chosen = localStorage.getItem('starlight-theme');
+        document.documentElement.dataset.theme =
+          chosen === 'light' || chosen === 'dark'
+            ? chosen
+            : matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+      } catch {
+        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="bar">
+      <a class="mark" href={base} aria-label="devlink home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"
+          ><circle cx="9" cy="16" r="4" class="mark-release"></circle><path d="M13 16h6"></path><circle
+            cx="23"
+            cy="16"
+            r="4"
+            class="mark-dev"></circle></svg
+        >
+        devlink
+      </a>
+      <nav aria-label="Site">
+        <a href={docs('guides/getting-started')}>Docs</a>
+        <a href={docs('reference/cli')}>CLI</a>
+        <a href={repo}>GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="pitch">
+          <h1>Your library’s next release, running in your app today.</h1>
+          <p class="lede">
+            devlink publishes each change you save as a new dev version to a registry on your machine, installs it
+            into the apps you choose with their own package manager, and puts every app back exactly as it was when
+            you are done.
+          </p>
+          <div class="command" data-copy="npx devlink init">
+            <code><span class="prompt" aria-hidden="true">$</span> npx devlink init</code>
+            <button type="button" class="copy">Copy</button>
+            <span class="copied" role="status"></span>
+          </div>
+          <p class="next">
+            Then <a href={docs('guides/getting-started')}>follow the getting started guide</a>. Works with npm, pnpm,
+            Yarn and Bun, on macOS and Linux.
+          </p>
+        </div>
+
+        <figure class="flow" data-state="release" aria-labelledby="flow-log">
+          <div class="library">
+            <span class="name">@acme/ui</span>
+            <span class="library-version">1.4.0</span>
+          </div>
+          <ol class="apps">
+            {
+              apps.map((app, index) => (
+                <li style={`--i: ${index}`}>
+                  <span class="wire" />
+                  <code class="version">1.4.0</code>
+                  <span class="app">{app}</span>
+                </li>
+              ))
+            }
+          </ol>
+          <div class="controls">
+            <button type="button" class="edit">Edit the library</button>
+            <button type="button" class="restore" disabled>Restore</button>
+          </div>
+          <figcaption id="flow-log" aria-live="polite">Three apps on the 1.4.0 release.</figcaption>
+        </figure>
+      </section>
+
+      <section class="cycle" aria-labelledby="cycle-title">
+        <h2 id="cycle-title">From a saved file to every app that uses it</h2>
+        <ol>
+          {
+            steps.map((step, index) => (
+              <li>
+                <span class="number" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <h3>{step.title}</h3>
+                <code>{step.command}</code>
+                <p>{step.text}</p>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
+
+      <section class="menu" aria-labelledby="menu-title">
+        <div class="menu-text">
+          <h2 id="menu-title">Or from the menu bar</h2>
+          <p>
+            On macOS, devlink’s menu shows every library, the apps it is linked to and the version each one has. Turn
+            watching on, link another app, restore one, or read why an install failed, without a terminal.
+          </p>
+          <div class="command" data-copy="brew install --cask mikheil-gigauri/devlink/devlink">
+            <code><span class="prompt" aria-hidden="true">$</span> brew install --cask mikheil-gigauri/devlink/devlink</code>
+            <button type="button" class="copy">Copy</button>
+            <span class="copied" role="status"></span>
+          </div>
+        </div>
+        <div class="screenshot">
+          <img
+            class="only-light"
+            src={`${base}menu/online.light.png`}
+            width="340"
+            height="490"
+            alt="The devlink menu: a failed install of @acme/ui into admin at the top, then @acme/ui watching with shop and admin linked, @acme/forms not published yet, and a checkout group warning that its apps have different versions."
+          />
+          <img class="only-dark" src={`${base}menu/online.dark.png`} width="340" height="490" alt="" />
+        </div>
+      </section>
+
+      <section class="compare" aria-labelledby="compare-title">
+        <h2 id="compare-title">Why not npm link or yalc?</h2>
+        <p>
+          Both are faster for a quick look. devlink is for when the change has to behave in the app exactly as the
+          release will. <a href={docs('guides/comparison')}>The full comparison</a> covers what each one trades.
+        </p>
+        <div class="table">
+          <table>
+            <thead>
+              <tr>
+                <td></td>
+                <th scope="col">devlink</th>
+                <th scope="col">npm link</th>
+                <th scope="col">yalc</th>
+              </tr>
+            </thead>
+            <tbody>
+              {
+                comparison.map(([row, ...cells]) => (
+                  <tr>
+                    <th scope="row">{row}</th>
+                    {cells.map((cell) => (
+                      <td>{cell}</td>
+                    ))}
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>
+        devlink is open source under the MIT license. Read <a href={docs('design')}>why it works the way it does</a>,{' '}
+        or <a href={repo}>see the code on GitHub</a>.
+      </p>
+    </footer>
+
+    <script>
+      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+      for (const block of document.querySelectorAll<HTMLElement>('.command')) {
+        const button = block.querySelector('button');
+        const status = block.querySelector('.copied');
+        button?.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(block.dataset.copy ?? '');
+            button.textContent = 'Copied';
+            if (status) status.textContent = 'Copied to the clipboard';
+          } catch {
+            button.textContent = 'Select and copy';
+          }
+          setTimeout(() => {
+            button.textContent = 'Copy';
+            if (status) status.textContent = '';
+          }, 2000);
+        });
+      }
+
+      const flow = document.querySelector<HTMLElement>('.flow');
+      if (flow) {
+        const versions = [...flow.querySelectorAll<HTMLElement>('.version')];
+        const libraryVersion = flow.querySelector<HTMLElement>('.library-version');
+        const log = flow.querySelector<HTMLElement>('figcaption');
+        const edit = flow.querySelector<HTMLButtonElement>('.edit');
+        const restore = flow.querySelector<HTMLButtonElement>('.restore');
+        const STEP_MS = 320;
+        let lastStamp = 0;
+        let timers: number[] = [];
+
+        // The same scheme as the real thing: patch bump, then dev and a UTC timestamp (ADR 0004).
+        const devVersion = () => {
+          const now = new Date();
+          const pad = (n: number) => String(n).padStart(2, '0');
+          let stamp = Number(
+            `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}` +
+              `${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}`,
+          );
+          if (stamp <= lastStamp) stamp = lastStamp + 1;
+          lastStamp = stamp;
+          return `1.4.1-dev.${stamp}`;
+        };
+
+        const show = (version: string, state: 'dev' | 'release', message: string) => {
+          timers.forEach(clearTimeout);
+          timers = [];
+          flow.dataset.state = state;
+          if (libraryVersion) libraryVersion.textContent = version;
+          const delay = reduceMotion.matches ? 0 : STEP_MS;
+          versions.forEach((element, index) => {
+            const apply = () => {
+              element.textContent = version;
+              element.classList.remove('arrived');
+              void element.offsetWidth;
+              element.classList.add('arrived');
+            };
+            if (delay === 0) apply();
+            else timers.push(window.setTimeout(apply, delay * (index + 1)));
+          });
+          timers.push(
+            window.setTimeout(
+              () => {
+                if (log) log.textContent = message;
+              },
+              delay * (versions.length + 1),
+            ),
+          );
+        };
+
+        edit?.addEventListener('click', () => {
+          const version = devVersion();
+          show(version, 'dev', `Built, published ${version}, and installed it into shop, admin and checkout.`);
+          if (restore) restore.disabled = false;
+        });
+        restore?.addEventListener('click', () => {
+          show('1.4.0', 'release', 'Restored: every app is back on 1.4.0, with its lockfile as it was.');
+          restore.disabled = true;
+          edit?.focus();
+        });
+      }
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --paper: #eef2f3;
+    --surface: #f8fafb;
+    --ink: #14213d;
+    --muted: #536373;
+    --rule: #c9d3da;
+    --release: #0f7b6c;
+    --dev: #c2257a;
+    --focus: #14213d;
+    --sans: 'Schibsted Grotesk Variable', system-ui, sans-serif;
+    --mono: 'Martian Mono Variable', ui-monospace, monospace;
+    --measure: 36rem;
+    --gutter: clamp(1rem, 4vw, 3rem);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --paper: #0e1726;
+      --surface: #142136;
+      --ink: #e6edf2;
+      --muted: #9aa9b7;
+      --rule: #2b3b52;
+      --release: #3cc9b0;
+      --dev: #ff5fa8;
+      --focus: #e6edf2;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme='dark'] {
+    --paper: #0e1726;
+    --surface: #142136;
+    --ink: #e6edf2;
+    --muted: #9aa9b7;
+    --rule: #2b3b52;
+    --release: #3cc9b0;
+    --dev: #ff5fa8;
+    --focus: #e6edf2;
+    color-scheme: dark;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 1.0625rem/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a {
+    color: inherit;
+    text-decoration-color: var(--release);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.2em;
+  }
+  a:hover {
+    color: var(--release);
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.8125em;
+  }
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  h2 {
+    font-size: clamp(1.625rem, 3vw, 2.25rem);
+    font-weight: 700;
+  }
+  .skip {
+    position: absolute;
+    left: -999px;
+  }
+  .skip:focus {
+    left: var(--gutter);
+    top: 0.5rem;
+    background: var(--surface);
+    padding: 0.5rem 0.75rem;
+  }
+  .only-dark {
+    display: none;
+  }
+  :root[data-theme='dark'] .only-dark {
+    display: block;
+  }
+  :root[data-theme='dark'] .only-light {
+    display: none;
+  }
+
+  .bar,
+  main > section,
+  .foot {
+    width: min(100%, 76rem);
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 1.25rem;
+  }
+  .mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+  .mark svg {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  .mark path {
+    stroke: var(--ink);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+  }
+  .mark-release {
+    fill: var(--release);
+  }
+  .mark-dev {
+    fill: var(--dev);
+  }
+  .bar nav {
+    display: flex;
+    gap: clamp(1rem, 3vw, 2rem);
+  }
+  .bar nav a {
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  /* Hero */
+  .hero {
+    display: grid;
+    gap: clamp(2.5rem, 6vw, 4rem);
+    padding-block: clamp(2.5rem, 8vw, 6rem) clamp(3rem, 8vw, 6rem);
+    align-items: center;
+  }
+  @media (min-width: 62rem) {
+    .hero {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    }
+  }
+  h1 {
+    font-size: clamp(2.375rem, 5.4vw, 4rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+    max-width: 14ch;
+  }
+  .lede {
+    max-width: var(--measure);
+    font-size: 1.1875rem;
+    color: var(--muted);
+    margin: 1.5rem 0 2rem;
+  }
+  .next {
+    color: var(--muted);
+    max-width: var(--measure);
+    font-size: 0.9375rem;
+    margin: 1rem 0 0;
+  }
+
+  .command {
+    display: inline-flex;
+    align-items: center;
+    gap: 1rem;
+    max-width: 100%;
+    padding: 0.75rem 0.75rem 0.75rem 1.125rem;
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: 0.5rem;
+  }
+  .command code {
+    min-width: 0;
+    font-size: 0.9375rem;
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .prompt {
+    color: var(--release);
+    margin-right: 0.25rem;
+  }
+  :root[data-theme='light'] .prompt {
+    color: #5fd3bd;
+  }
+  .copy {
+    flex: none;
+    font: 600 0.8125rem var(--sans);
+    color: inherit;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--paper) 35%, transparent);
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    cursor: pointer;
+  }
+  .copy:hover {
+    border-color: var(--paper);
+  }
+  .command .copy:focus-visible {
+    outline-color: var(--paper);
+  }
+  .copied {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  /* The diagram: one library, three apps, the version on each wire. */
+  .flow {
+    margin: 0;
+    padding: clamp(1.25rem, 3vw, 2rem);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 0.75rem;
+  }
+  .library {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+  }
+  .library .name {
+    font-weight: 700;
+    font-size: 1.375rem;
+    letter-spacing: -0.01em;
+  }
+  .library-version {
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    color: var(--release);
+    transition: color 200ms;
+  }
+  .flow[data-state='dev'] .library-version {
+    color: var(--dev);
+  }
+  .apps {
+    list-style: none;
+    margin: 0.75rem 0 0 0.6rem;
+    padding: 0;
+  }
+  .apps li {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(1.25rem, 1fr) auto 1.25rem 5.5rem;
+    align-items: center;
+    min-height: 3.5rem;
+    padding-left: 0;
+  }
+  /* The trunk: from the library down to each wire. */
+  .apps li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    border-left: 2px solid var(--rule);
+  }
+  .apps li:last-child::before {
+    bottom: 50%;
+  }
+  .wire {
+    grid-column: 1 / 4;
+    grid-row: 1;
+    height: 2px;
+    background: linear-gradient(to right, var(--dev) 50%, var(--release) 50%) 100% 0 / 200% 100% no-repeat;
+    transition: background-position 300ms ease-out calc(var(--i) * 320ms);
+    transform-origin: left;
+    animation: draw 700ms cubic-bezier(0.3, 0.7, 0.2, 1) calc(150ms + var(--i) * 120ms) backwards;
+  }
+  .flow[data-state='dev'] .wire {
+    background-position: 0 0;
+  }
+  .version {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    margin-left: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    background: var(--surface);
+    color: var(--release);
+    border: 1.5px solid currentColor;
+    border-radius: 0.375rem;
+    white-space: nowrap;
+    transition: color 0s calc((var(--i) + 1) * 320ms);
+  }
+  .flow[data-state='dev'] .version {
+    color: var(--dev);
+    transition: color 0s calc((var(--i) + 1) * 320ms);
+  }
+  .version.arrived {
+    animation: arrive 500ms ease-out;
+  }
+  .app {
+    grid-column: 4;
+    grid-row: 1;
+    font-weight: 600;
+    padding-left: 0.75rem;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .controls button {
+    font: 600 0.9375rem var(--sans);
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    border: 1.5px solid var(--ink);
+  }
+  .edit {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .restore {
+    background: transparent;
+    color: var(--ink);
+  }
+  .restore:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .flow figcaption {
+    margin-top: 1rem;
+    min-height: 3.2em;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  @keyframes draw {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  @keyframes arrive {
+    from {
+      box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 25%, transparent);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wire,
+    .version,
+    .flow[data-state='dev'] .version,
+    .library-version {
+      animation: none;
+      transition: none;
+    }
+    .version.arrived {
+      animation: none;
+    }
+  }
+  @media (max-width: 30rem) {
+    .apps li {
+      grid-template-columns: minmax(0.75rem, 1fr) auto 0.75rem 4.75rem;
+    }
+    .version {
+      font-size: 0.6875rem;
+      margin-left: 0.5rem;
+      padding-inline: 0.375rem;
+    }
+    .app {
+      padding-left: 0.5rem;
+    }
+  }
+
+  /* The cycle */
+  .cycle {
+    padding-block: clamp(3rem, 8vw, 5rem);
+    border-top: 1px solid var(--rule);
+  }
+  .cycle ol {
+    list-style: none;
+    margin: 2.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 2.5rem 2rem;
+  }
+  @media (min-width: 48rem) {
+    .cycle ol {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 72rem) {
+    .cycle ol {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .cycle li {
+    display: grid;
+    align-content: start;
+    gap: 0.625rem;
+  }
+  .number {
+    font-size: 3rem;
+    font-weight: 300;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+  .cycle h3 {
+    font-size: 1.375rem;
+  }
+  .cycle li code {
+    justify-self: start;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+  }
+  .cycle li:nth-child(3) code {
+    color: var(--dev);
+  }
+  .cycle p {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  /* Menu bar */
+  .menu {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+    align-items: center;
+    padding-block: clamp(3rem, 8vw, 5rem);
+    border-top: 1px solid var(--rule);
+  }
+  @media (min-width: 56rem) {
+    .menu {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+    }
+  }
+  .menu-text p {
+    max-width: var(--measure);
+    color: var(--muted);
+    margin: 1rem 0 1.75rem;
+  }
+  .screenshot img {
+    width: 100%;
+    max-width: 360px;
+    height: auto;
+    border-radius: 0.75rem;
+    border: 1px solid var(--rule);
+    box-shadow: 0 1.5rem 3rem -1.5rem color-mix(in srgb, var(--ink) 35%, transparent);
+  }
+
+  /* Comparison */
+  .compare {
+    padding-block: clamp(3rem, 8vw, 5rem);
+    border-top: 1px solid var(--rule);
+  }
+  .compare > p {
+    max-width: var(--measure);
+    color: var(--muted);
+    margin: 1rem 0 2rem;
+  }
+  .table {
+    overflow-x: auto;
+  }
+  table {
+    border-collapse: collapse;
+    min-width: 34rem;
+    width: 100%;
+    max-width: 52rem;
+    font-size: 0.9375rem;
+  }
+  th,
+  td {
+    text-align: left;
+    padding: 0.75rem 1rem 0.75rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  thead th {
+    font-weight: 700;
+  }
+  thead th:first-of-type,
+  tbody td:first-of-type {
+    color: var(--release);
+  }
+  tbody th {
+    font-weight: 500;
+  }
+  tbody td {
+    color: var(--muted);
+  }
+  tbody td:first-of-type {
+    font-weight: 600;
+  }
+
+  .foot {
+    padding-block: 2rem 3rem;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+</style>

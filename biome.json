@@ -6,7 +6,14 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/package-lock.json", "!packages/devlink/api"]
+    "includes": [
+      "**",
+      "!**/package-lock.json",
+      "!packages/devlink/api",
+      "!.changeset",
+      "!apps/site/src/content",
+      "!apps/menubar/Resources/AppIcon.icon"
+    ]
   },
   "formatter": {
     "indentStyle": "space",
@@ -36,6 +43,14 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.astro"],
+      "linter": {
+        "rules": {
+          "correctness": { "noUnusedVariables": "off", "noUnusedImports": "off" }
+        }
+      }
+    },
     {
       "includes": ["packages/devlink/src/core/**"],
       "linter": {

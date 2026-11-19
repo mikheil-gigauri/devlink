@@ -5,10 +5,13 @@ import { cachePathsFor } from '../project/cache-paths.ts';
 import { loadProject } from '../project/load-project.ts';
 import { isRecord, stableStringify, tryParseJson } from '../util/json.ts';
 import { joinPath } from '../util/path.ts';
-import { commandOutput, runSafely, snapshotDir } from './shared.ts';
+import { installLink } from './install-link.ts';
+import { commandOutput, requireLibrary, runSafely, snapshotDir } from './shared.ts';
 
 export interface RestoreConsumerInput {
   readonly consumer: string;
+  /** Restore only this library and keep the consumer's other links. Default: every library. */
+  readonly library?: string | undefined;
   /** Restore even if the manifest has changes devlink did not make. */
   readonly force?: boolean | undefined;
 }
@@ -22,6 +25,11 @@ export type RestoreResult = { readonly ok: true } | { readonly ok: false; readon
  * Files are restored first and unconditionally, so even if the clean install fails the repository is
  * already correct and the user only has to rerun the install. Only package.json is checked for user
  * changes; lockfile changes made while linked are reverted by design (see ADR 0005).
+ *
+ * With `library`, only that library goes back to its release. The consumer is restored as above,
+ * then the dev builds of its other linked libraries are installed again at the versions they had, and
+ * the snapshot is kept for them. One snapshot per consumer keeps the lockfile exact for the library
+ * restored, at the cost of a second install.
  */
 export async function restoreConsumer(deps: CoreDeps, input: RestoreConsumerInput): Promise<RestoreResult> {
   const consumer = joinPath(input.consumer);
@@ -43,9 +51,15 @@ export async function restoreConsumer(deps: CoreDeps, input: RestoreConsumerInpu
   }
 
   const state = await deps.state.load();
-  const linkedLibraries = state.links
-    .filter((link) => link.consumer === consumer)
-    .map((link) => link.library);
+  const links = state.links.filter((link) => link.consumer === consumer);
+  const linkedLibraries = links.map((link) => link.library);
+  if (input.library !== undefined && !linkedLibraries.includes(input.library)) {
+    throw new DevlinkError('invalid-request', `${input.library} is not linked into ${consumer}`, {
+      consumer,
+      library: input.library,
+    });
+  }
+  const kept = input.library === undefined ? [] : links.filter((link) => link.library !== input.library);
 
   if (!input.force) {
     const current = (await deps.fs.readText(joinPath(consumer, 'package.json'))) ?? '';
@@ -71,19 +85,52 @@ export async function restoreConsumer(deps: CoreDeps, input: RestoreConsumerInpu
     deps,
     adapter.cleanInstall({ cwd: consumer, hasLockfile: meta.lockfiles.length > 0 }),
   );
+  // Some managers (Yarn Berry) write a lockfile on every install; one the consumer never had goes.
+  for (const lockfile of adapter.lockfiles) {
+    if (!meta.lockfiles.includes(lockfile)) await deps.fs.remove(joinPath(consumer, lockfile));
+  }
 
   const project = await loadProject(deps.fs, consumer, deps.integrations);
   const caches = cachePathsFor(project, deps.integrations);
   for (const path of caches) await deps.fs.remove(joinPath(consumer, path));
   if (caches.length > 0) deps.events.emit({ type: 'caches:cleared', consumer, paths: caches });
 
+  const ok = result.exitCode === 0;
+  if (input.library !== undefined && kept.length > 0) {
+    await relinkOthers(deps, consumer, input.library, ok);
+    deps.events.emit({ type: 'consumer:restored', consumer, library: input.library, ok });
+    return ok ? { ok } : { ok, output: commandOutput(result) };
+  }
+
   const latest = await deps.state.load();
   await deps.state.save({ ...latest, links: latest.links.filter((link) => link.consumer !== consumer) });
   await deps.fs.remove(dir);
 
-  const ok = result.exitCode === 0;
   deps.events.emit({ type: 'consumer:restored', consumer, ok });
   return ok ? { ok } : { ok, output: commandOutput(result) };
+}
+
+/**
+ * After a whole-consumer restore made for one library: drops that library's link and puts the other
+ * libraries' dev builds back. Their links are pending until reinstalled, since the files now hold the
+ * releases; when the clean install failed they stay pending, for the next sync.
+ */
+async function relinkOthers(deps: CoreDeps, consumer: string, restored: string, installed: boolean) {
+  const state = await deps.state.load();
+  const others = state.links.filter((link) => link.consumer === consumer && link.library !== restored);
+  await deps.state.save({
+    ...state,
+    links: [
+      ...state.links.filter((link) => link.consumer !== consumer),
+      ...others.map(({ installedVersion: _, ...link }) => ({ ...link, status: 'pending' as const })),
+    ],
+  });
+  if (!installed) return;
+  for (const link of others) {
+    if (link.installedVersion === undefined) continue;
+    const library = requireLibrary(state, link.library);
+    await installLink(deps, { library, consumer, version: link.installedVersion });
+  }
 }
 
 /**

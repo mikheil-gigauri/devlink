@@ -49,18 +49,31 @@ function setup(state: DevlinkState = registered) {
   const watcher = new FakeWatcher();
   const guard = new FakeGuard();
   let shutdowns = 0;
+  let roots: readonly string[] = ['/repos'];
   const service = new DaemonService({
     deps: { ...scenario.deps, events: hub },
     hub,
     health: () => health,
-    roots: () => ['/repos'],
+    roots: () => roots,
+    saveRoots: async (next) => {
+      roots = next;
+    },
     watcher,
     guard,
     onShutdown: () => {
       shutdowns += 1;
     },
   });
-  return { ...scenario, service, hub, events, watcher, guard, shutdowns: () => shutdowns };
+  return {
+    ...scenario,
+    service,
+    hub,
+    events,
+    watcher,
+    guard,
+    shutdowns: () => shutdowns,
+    roots: () => roots,
+  };
 }
 
 const types = (events: readonly ServerEvent[]) => events.map((event) => event.type);
@@ -127,6 +140,50 @@ describe('DaemonService', () => {
 
     expect(again.detected).toBe('given');
     expect(again.library).toMatchObject({ publishDir: `${LIB}/out`, build: { ...build, cwd: LIB } });
+  });
+
+  it('previews what adding a library would do, without registering it', async () => {
+    const { service, store } = setup({ libraries: [], links: [], groups: [] });
+
+    const preview = await service.call('inspect', { root: `${LIB}/` });
+
+    expect(preview).toEqual({
+      name: '@acme/ui',
+      version: '1.4.0',
+      root: LIB,
+      detected: 'npm-script',
+      publishDir: LIB,
+      build: { command: 'npm', args: ['run', 'build'] },
+      registered: false,
+    });
+    expect((await store.load()).libraries).toEqual([]);
+  });
+
+  it('previews a registered library with the build settings it already has', async () => {
+    const { service } = setup();
+
+    const preview = await service.call('inspect', { root: LIB });
+
+    expect(preview).toMatchObject({ registered: true, publishDir: `${LIB}/dist/ui` });
+    expect(preview.build).toBeUndefined();
+  });
+
+  it('says why a folder cannot be added as a library', async () => {
+    const { service } = setup();
+
+    await expect(service.call('inspect', { root: '/repos/nothing' })).rejects.toMatchObject({
+      code: 'invalid-manifest',
+    });
+  });
+
+  it('reads and replaces the folders searched for projects', async () => {
+    const { service, roots } = setup();
+
+    expect(await service.call('roots', {})).toEqual({ roots: ['/repos'] });
+    const saved = await service.call('setRoots', { roots: ['/code/b', '/code/a/', '/code/b'] });
+
+    expect(saved).toEqual({ roots: ['/code/b', '/code/a'] });
+    expect(roots()).toEqual(['/code/b', '/code/a']);
   });
 
   it('installs the commit guard when linking, and records it', async () => {
