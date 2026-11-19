@@ -16,13 +16,17 @@ import Testing
   func makeModel(
     lookup: @escaping @MainActor () -> MenuModel.Lookup? = { nil },
     launch: @escaping @MainActor () async throws -> Void = {},
-    install: @escaping @MainActor () async throws -> Void = {}
+    install: @escaping @MainActor () async throws -> Void = {},
+    appVersion: String? = nil,
+    update: (@MainActor () async throws -> Void)? = nil
   ) -> MenuModel {
     let daemon = daemon
     return MenuModel(
       connect: { lookup() ?? .running(daemon, health) },
       launch: launch,
       install: install,
+      appVersion: appVersion,
+      update: update,
       notifier: notifier,
       sleep: { _ in try await Task.sleep(for: .milliseconds(2)) }
     )
@@ -98,6 +102,61 @@ import Testing
 
     await eventually { model.connection == .online }
     #expect(!model.cliMissing)
+  }
+
+  @Test func offersToUpdateDryfitOnlyWhenItIsOlderThanTheApp() async {
+    // The fake daemon runs 0.1.0.
+    for (appVersion, canUpdate, offered) in [
+      ("0.3.0", true, "0.1.0"), ("0.1.0", true, nil), ("0.0.9", true, nil), ("0.3.0", false, nil),
+      (nil, true, nil),
+    ] as [(String?, Bool, String?)] {
+      let model = canUpdate ? makeModel(appVersion: appVersion, update: {}) : makeModel(appVersion: appVersion)
+      let task = await started(model)
+      #expect(model.outdatedVersion == offered, "app \(appVersion ?? "nil"), update \(canUpdate)")
+      task.cancel()
+    }
+  }
+
+  @Test func updatesDryfitWhenAsked() async {
+    let updated = Switch()
+    let model = makeModel(appVersion: "0.3.0", update: { updated.on = true })
+    let task = await started(model)
+    defer { task.cancel() }
+
+    await model.updateCLI()
+
+    #expect(updated.on)
+    #expect(!model.isBusy(.updateCLI))
+    #expect(model.updateError == nil)
+  }
+
+  @Test func explainsWhyUpdatingDryfitFailed() async {
+    let model = makeModel(
+      appVersion: "0.3.0", update: { throw DaemonLauncher.Failure.failed(output: "npm error code E403") })
+    let task = await started(model)
+    defer { task.cancel() }
+
+    await model.updateCLI()
+
+    #expect(model.updateError == "npm error code E403")
+    #expect(!model.isBusy(.updateCLI))
+  }
+
+  @Test func tellsWhichSideOfAnAPIMismatchIsOlder() async {
+    let older = Health(
+      name: "dryfit", version: "0.0.5", apiVersion: 0, pid: 42, registryUrl: health.registryUrl,
+      startedAt: health.startedAt)
+    let newer = Health(
+      name: "dryfit", version: "1.0.0", apiVersion: 2, pid: 42, registryUrl: health.registryUrl,
+      startedAt: health.startedAt)
+    for (running, dryfitIsOlder) in [(older, true), (newer, false)] {
+      let model = makeModel(lookup: { .incompatible(running) }, appVersion: "0.3.0", update: {})
+      let task = Task { await model.run() }
+      await eventually { model.connection == .incompatible(daemonVersion: running.version) }
+      #expect((model.outdatedVersion != nil) == dryfitIsOlder)
+      #expect(model.appIsOlder == !dryfitIsOlder)
+      task.cancel()
+    }
   }
 
   @Test func readsTheProjectFoldersOnConnecting_andReplacesThem() async {

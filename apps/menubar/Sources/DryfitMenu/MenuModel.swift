@@ -70,7 +70,7 @@ public struct LibraryRow: Identifiable, Equatable {
     case sync(String), watch(String), link(String, String), restore(String, String?)
     case linkGroup(String), restoreGroup(String), discover
     case register(String), unregister(String), saveGroup(String), deleteGroup(String)
-    case roots, stop, installCLI
+    case roots, stop, installCLI, updateCLI
   }
 
   public internal(set) var connection = Connection.connecting
@@ -90,6 +90,10 @@ public struct LibraryRow: Identifiable, Equatable {
   public internal(set) var startError: String?
   /// Starting failed because the CLI is not installed, so the app offers to install it.
   public internal(set) var cliMissing = false
+  /// Why updating dryfit did not work.
+  public internal(set) var updateError: String?
+  /// This app's version, to tell whether dryfit is older; nil outside a built app.
+  public let appVersion: String?
   /// The folders searched for projects; nil until the daemon has said.
   public internal(set) var roots: [String]?
   /// An app whose restore was refused because its package.json changed since it was linked. The
@@ -100,6 +104,8 @@ public struct LibraryRow: Identifiable, Equatable {
   @ObservationIgnored private let connect: () async -> Lookup
   @ObservationIgnored private let launch: () async throws -> Void
   @ObservationIgnored private let install: () async throws -> Void
+  /// Updates the CLI and restarts the daemon with it; nil when the app cannot (a checkout's CLI).
+  @ObservationIgnored private let update: (() async throws -> Void)?
   @ObservationIgnored private let notifier: any Notifier
   /// Tests' clock; nil sleeps for real.
   @ObservationIgnored private let sleep: (@Sendable (Duration) async throws -> Void)?
@@ -118,6 +124,8 @@ public struct LibraryRow: Identifiable, Equatable {
     connect: @escaping () async -> Lookup,
     launch: @escaping () async throws -> Void,
     install: @escaping () async throws -> Void = {},
+    appVersion: String? = nil,
+    update: (() async throws -> Void)? = nil,
     notifier: any Notifier,
     // No closure literal as the default: Swift 6.2 on macOS 26 aborts in swift_task_dealloc when a
     // default async closure from this MainActor-by-default module is called ("freed pointer was not
@@ -127,6 +135,8 @@ public struct LibraryRow: Identifiable, Equatable {
     self.connect = connect
     self.launch = launch
     self.install = install
+    self.appVersion = appVersion
+    self.update = update
     self.notifier = notifier
     self.sleep = sleep
   }
@@ -161,6 +171,29 @@ public struct LibraryRow: Identifiable, Equatable {
   }
 
   public func isBusy(_ action: Action) -> Bool { inFlight.contains(action) }
+
+  /// The running dryfit's version when it is older than this app and the app can update it, else
+  /// nil. The app updates itself, but the CLI it runs comes from npm and stays where it was.
+  public var outdatedVersion: String? {
+    guard update != nil, let appVersion, let running = runningVersion,
+      ReleaseVersion.isOlder(running, than: appVersion)
+    else { return nil }
+    return running
+  }
+
+  /// Whether this app is older than the dryfit it found, so the app, not dryfit, needs updating.
+  public var appIsOlder: Bool {
+    guard let appVersion, let running = runningVersion else { return false }
+    return ReleaseVersion.isOlder(appVersion, than: running)
+  }
+
+  private var runningVersion: String? {
+    switch connection {
+    case .online: status?.daemon.version
+    case .incompatible(let daemonVersion): daemonVersion
+    default: nil
+    }
+  }
 
   /// The latest failed install into `consumer` this session, with its output.
   public func installFailure(in consumer: String) -> Failure? {
@@ -237,6 +270,20 @@ public struct LibraryRow: Identifiable, Equatable {
     } catch {
       startError = error.localizedDescription
       inFlight.remove(.installCLI)
+    }
+  }
+
+  /// Updates dryfit with npm at the user's request and restarts it on the new version. The
+  /// connection loop finds the restarted daemon by itself, as after any restart.
+  public func updateCLI() async {
+    guard let update, !inFlight.contains(.updateCLI) else { return }
+    inFlight.insert(.updateCLI)
+    updateError = nil
+    defer { inFlight.remove(.updateCLI) }
+    do {
+      try await update()
+    } catch {
+      updateError = error.localizedDescription
     }
   }
 

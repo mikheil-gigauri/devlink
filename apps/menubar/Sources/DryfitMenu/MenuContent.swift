@@ -45,6 +45,10 @@ public struct MenuContent: View {
     VStack(alignment: .leading, spacing: 0) {
       Header(model: model) { show(nil) }
       Divider()
+      if model.connection == .online, let outdated = model.outdatedVersion {
+        OutdatedBanner(model: model, version: outdated)
+        Divider()
+      }
       switch model.connection {
       case .online:
         OnlineContent(model: model, actions: actions, show: show)
@@ -53,7 +57,7 @@ public struct MenuContent: View {
       case .connecting:
         ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(28)
       case .incompatible(let daemonVersion):
-        IncompatibleView(daemonVersion: daemonVersion)
+        IncompatibleView(model: model, actions: actions, daemonVersion: daemonVersion)
       }
       Divider()
       Footer(model: model, actions: actions) {
@@ -544,6 +548,8 @@ struct ServiceUnavailableView: View {
 }
 
 struct IncompatibleView: View {
+  let model: MenuModel
+  let actions: MenuActions
   let daemonVersion: String
 
   var body: some View {
@@ -553,13 +559,85 @@ struct IncompatibleView: View {
         .foregroundStyle(.orange)
       Text("This app and dryfit \(daemonVersion) do not match").font(.headline)
         .multilineTextAlignment(.center)
-      Text("They speak different versions of dryfit's API. Update the one that is older.")
+      Text(explanation)
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+      if model.outdatedVersion != nil {
+        UpdateDryfitControl(model: model, prominent: true).padding(.top, 4)
+      } else if model.appIsOlder, let checkForUpdates = actions.checkForUpdates {
+        Button("Check for Updates…", action: checkForUpdates)
+          .buttonStyle(.borderedProminent)
+          .padding(.top, 4)
+      }
     }
     .frame(maxWidth: .infinity)
     .padding(.horizontal, 24)
     .padding(.vertical, 20)
+  }
+
+  private var explanation: String {
+    if model.outdatedVersion != nil {
+      return "They speak different versions of dryfit's API. dryfit is the older one."
+    }
+    if model.appIsOlder { return "They speak different versions of dryfit's API. This app is the older one." }
+    return "They speak different versions of dryfit's API. Update the one that is older."
+  }
+}
+
+/// Above the menu while dryfit runs an older version than this app: the app updated itself, but the
+/// CLI it runs comes from npm.
+private struct OutdatedBanner: View {
+  let model: MenuModel
+  let version: String
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: "arrow.up.circle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("dryfit \(version) is older than this app").font(.callout.weight(.medium))
+        Text("Update it to \(model.appVersion ?? "the newest version") to get what is new.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      Spacer(minLength: 8)
+      UpdateDryfitControl(model: model, prominent: false)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 8)
+  }
+}
+
+/// Updates dryfit with npm and restarts it, showing progress and, when it fails, why.
+struct UpdateDryfitControl: View {
+  let model: MenuModel
+  let prominent: Bool
+
+  var body: some View {
+    VStack(alignment: prominent ? .center : .trailing, spacing: 4) {
+      if model.isBusy(.updateCLI) {
+        ProgressView(prominent ? "Updating with npm…" : "").controlSize(.small)
+      } else if prominent {
+        Button("Update dryfit") { Task { await model.updateCLI() } }
+          .buttonStyle(.borderedProminent)
+        Text("Runs npm install --global @dryfit/cli@latest, then restarts dryfit")
+          .font(.caption)
+          .foregroundStyle(.tertiary)
+          .multilineTextAlignment(.center)
+      } else {
+        Button("Update") { Task { await model.updateCLI() } }
+          .controlSize(.small)
+          .help("Runs npm install --global @dryfit/cli@latest, then restarts dryfit")
+      }
+      if let error = model.updateError {
+        Text(error)
+          .font(.caption)
+          .foregroundStyle(.red)
+          .multilineTextAlignment(prominent ? .center : .trailing)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
   }
 }
