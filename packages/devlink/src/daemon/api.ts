@@ -100,6 +100,35 @@ export type ApiErrorCode =
   | 'payload-too-large'
   | 'internal';
 
+/** Every error code, at run time, for the contract export; `satisfies` keeps it complete. */
+const ERROR_CODES = {
+  'invalid-manifest': true,
+  'library-not-found': true,
+  'not-a-consumer': true,
+  'package-manager-undetected': true,
+  'unsupported-package-manager': true,
+  'build-failed': true,
+  'publish-failed': true,
+  'snapshot-missing': true,
+  'manifest-drifted': true,
+  'state-corrupt': true,
+  'registry-failed': true,
+  'library-linked': true,
+  'group-not-found': true,
+  'invalid-group': true,
+  'invalid-request': true,
+  'daemon-stopping': true,
+  'invalid-config': true,
+  'daemon-failed': true,
+  unauthorized: true,
+  forbidden: true,
+  'not-found': true,
+  'payload-too-large': true,
+  internal: true,
+} as const satisfies Record<ApiErrorCode, true>;
+
+export const API_ERROR_CODES = Object.keys(ERROR_CODES) as ApiErrorCode[];
+
 export interface ApiErrorBody {
   readonly error: {
     readonly code: ApiErrorCode;

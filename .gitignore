@@ -7,3 +7,5 @@ coverage/
 .swiftpm/
 DerivedData/
 .astro/
+apps/menubar/build/
+*.actual.png

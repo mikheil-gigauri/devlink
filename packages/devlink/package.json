@@ -20,7 +20,8 @@
     "test:integration": "vitest run --project integration",
     "test:all": "vitest run",
     "test:watch": "vitest --project unit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "api:export": "node scripts/export-api.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

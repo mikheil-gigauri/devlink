@@ -131,6 +131,30 @@ notifications on failure.
 **Exit:** a full cycle can be driven from the menu bar alone; view-model tests and light/dark snapshots
 pass.
 
+**Status:** built; the exit check's last part, clicking through the cycle by hand, has not happened yet.
+Decisions are in ADR 0013. `apps/menubar` is a Swift package (`DevlinkAPI`, `DevlinkMenu`, the `Devlink`
+app), tested with Swift Testing: 45 tests, five of them light/dark snapshot pairs. `npm run menubar:e2e` drives
+the menu's model, which every control calls, through a full cycle against a real daemon in a throwaway
+sandbox in about three seconds: start devlink from the menu, discover, link, sync, watch, an edit reaching
+the consumer, restore.
+
+- The API contract is generated: `npm run api:export` writes `packages/devlink/api/schema.json` and
+  `fixtures.json` from the TypeScript types. The TypeScript test fails when they are stale, and the Swift
+  tests decode every fixture and check operations, error codes and event types against the schema.
+- The app finds the daemon through `daemon.json`, trusts it only when health confirms the pid, refuses
+  another API version, and starts it only when asked: the launchd agent if installed, otherwise
+  `devlink daemon start` in a login shell, then an interactive one for nvm users.
+- It follows the daemon from launch and resumes the event stream after the last event id, so failures
+  are noticed with the menu closed. Builds, installs, publishes and watches that fail become
+  notifications in `Devlink.app`, and a click opens the failure window with the full output.
+- `apps/menubar/scripts/bundle.sh` builds `Devlink.app` (menu bar only, signed ad hoc). It installs
+  nothing; Open at Login registers the app only when turned on.
+- Known limits:
+  - Snapshots are rendered by AppKit on the author's macOS 27; another macOS version may draw controls
+    differently, and the references then need recording again (`SNAPSHOT_RECORD=1`).
+  - The menu bar extra was not clicked through by an automated tool, which could not see an
+    `LSUIElement` app; the end-to-end test covers everything below the buttons.
+
 ## M5 · Open-source launch
 
 pnpm, Yarn and Bun adapters passing the contract suite. Website with landing page and docs (ADR 0011).

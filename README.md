@@ -54,6 +54,18 @@ npm run lint
 
 Requires Node 22.12 or newer.
 
+The menu bar app in `apps/menubar` needs Xcode 26 or newer. Run it through `xcrun` so the Xcode toolchain is
+used, not another `swift` on your PATH:
+
+```bash
+npm run menubar:test     # view-model, API-contract and light/dark snapshot tests
+npm run menubar:e2e      # the menu's full cycle against a real daemon, in a throwaway sandbox
+npm run menubar:bundle   # builds apps/menubar/build/Devlink.app
+```
+
+After changing the daemon's API, run `npm run api:export -w devlink` so both sides share the new
+contract. `SNAPSHOT_RECORD=1 npm run menubar:test` records the snapshots again after a deliberate UI change.
+
 ## License
 
 MIT
