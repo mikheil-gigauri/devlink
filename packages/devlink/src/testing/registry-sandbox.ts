@@ -12,7 +12,12 @@ export interface RegistrySandbox {
   /** Runs commands with isolated package manager caches and empty user configs, ignoring the machine's own. */
   readonly runner: NodeProcessRunner;
   /** Runs a command and throws with its output when it fails. */
-  run(command: string, args: readonly string[], cwd: string): Promise<CommandResult>;
+  run(
+    command: string,
+    args: readonly string[],
+    cwd: string,
+    env?: Readonly<Record<string, string>>,
+  ): Promise<CommandResult>;
   /** Writes a package folder: a package.json plus any extra files. */
   writePackage(dir: string, manifest: object, files?: Readonly<Record<string, string>>): Promise<string>;
   /** Starts another registry in this sandbox, e.g. one standing in for the public npm registry. */
@@ -81,8 +86,8 @@ export async function createRegistrySandbox(
     registry,
     runner,
     startRegistry,
-    async run(command, args, cwd) {
-      const result = await runner.run({ command, args, cwd });
+    async run(command, args, cwd, env) {
+      const result = await runner.run({ command, args, cwd, ...(env && { env }) });
       if (result.exitCode !== 0) {
         throw new Error(`${command} ${args.join(' ')} failed in ${cwd}:\n${result.stderr || result.stdout}`);
       }

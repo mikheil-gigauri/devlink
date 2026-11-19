@@ -21,5 +21,6 @@ describePackageManagerContract(yarn, {
         '',
       ].join('\n'),
     ),
-  install: { command: 'yarn', args: ['install'] },
+  // Creating the lockfile is the point of this install; Yarn refuses to whenever CI is set.
+  install: { command: 'yarn', args: ['install'], env: { YARN_ENABLE_IMMUTABLE_INSTALLS: 'false' } },
 });

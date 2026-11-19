@@ -9,11 +9,30 @@ cli="$here/../../packages/devlink/dist/devlink.mjs"
 
 sandbox="$(mktemp -d "${TMPDIR%/}/devlink-e2e.XXXXXX")"
 export DEVLINK_HOME="$sandbox/home"
+touch "$sandbox/started"
 finish() {
   status=$?
   if [ $status -ne 0 ] && [ -f "$DEVLINK_HOME/logs/daemon.log" ]; then
     echo "--- daemon log (last 40 lines) ---" >&2
     tail -40 "$DEVLINK_HOME/logs/daemon.log" >&2
+  fi
+  # A crash in the test process leaves only "signal code N" above; macOS's report has the stack.
+  if [ $status -ne 0 ]; then
+    find "$HOME/Library/Logs/DiagnosticReports" -name '*.ips' -newer "$sandbox/started" 2>/dev/null |
+      while read -r report; do
+        echo "--- crash report: $report ---" >&2
+        python3 -c '
+import json, sys
+text = open(sys.argv[1]).read()
+body = json.loads(text[text.index("\n") + 1:])
+images = body.get("usedImages", [])
+thread = body["threads"][body.get("faultingThread", 0)]
+for frame in thread.get("frames", [])[:40]:
+    image = images[frame["imageIndex"]].get("name", "?") if frame.get("imageIndex", -1) < len(images) else "?"
+    symbol = frame.get("symbol") or hex(frame.get("imageOffset", 0))
+    print(f"{image:32} {symbol}")
+' "$report" >&2 || head -c 4000 "$report" >&2
+      done
   fi
   node "$cli" daemon stop >/dev/null 2>&1 || true
   rm -rf "$sandbox"

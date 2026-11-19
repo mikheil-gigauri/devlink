@@ -22,6 +22,7 @@ interface Project {
   readonly name: string;
   readonly config: (registryUrl: string) => Readonly<Record<string, string>>;
   readonly install: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 const npmrc = (registryUrl: string) => ({ '.npmrc': `@fixture:registry=${registryUrl}\n` });
@@ -43,6 +44,8 @@ const PROJECTS: readonly Project[] = [
       ].join('\n'),
     }),
     install: ['yarn', 'install'],
+    // Creating the lockfile is the point of this install; Yarn refuses to whenever CI is set.
+    env: { YARN_ENABLE_IMMUTABLE_INSTALLS: 'false' },
   },
   { name: 'bun', config: npmrc, install: ['bun', 'install'] },
 ];
@@ -112,7 +115,7 @@ describe('one library linked into npm, pnpm, Yarn and Bun projects', () => {
         project.config(publicRegistry.url),
       );
       const [command = '', ...args] = project.install;
-      await sandbox.run(command, args, dir);
+      await sandbox.run(command, args, dir, project.env);
       consumers.set(project.name, dir);
       originals.set(dir, await rootFiles(dir));
     }
