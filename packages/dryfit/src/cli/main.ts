@@ -1,10 +1,11 @@
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { type ParseArgsConfig, parseArgs } from 'node:util';
 import { DryfitError } from '../core/errors.ts';
 import type { LibraryRecord } from '../core/model.ts';
 import type { OperationOutputs, StatusView } from '../daemon/api.ts';
 import type { HubEvent } from '../daemon/event-hub.ts';
 import { VERSION } from '../version.ts';
+import type { SkillChange } from './agent-skill.ts';
 import { type ApiClient, ApiError } from './client.ts';
 import { Output, renderEvent } from './output.ts';
 
@@ -16,6 +17,9 @@ export interface LocalControl {
   init(roots: readonly string[]): Promise<{ readonly home: string; readonly roots: readonly string[] }>;
   daemon(action: 'start' | 'stop' | 'restart' | 'status' | 'run' | 'install' | 'uninstall'): Promise<number>;
   doctor(out: Output, json: boolean): Promise<number>;
+  /** The agent skill, and installing or removing it in a skills folder. */
+  skill(): Promise<string>;
+  agent(action: 'install' | 'uninstall', skillsDir: string): Promise<SkillChange>;
 }
 
 export interface RunContext {
@@ -96,7 +100,15 @@ Daemon
   daemon install|uninstall      Start dryfit at login (launchd)
   doctor                        Check that everything is in order
 
-Every command accepts --json.
+Agents
+  agent install                 Teach Claude Code to use dryfit (~/.claude/skills)
+      --project                 Install into this project's .claude/skills instead
+      --dir <dir>               Install into another skills folder
+  agent uninstall               Remove the skill again (same options)
+  agent show                    Print the skill, for agents that read instructions elsewhere
+
+Every command accepts --json, and then reports errors as JSON on stderr too.
+Exit codes: 0 done, 1 failed, 2 used wrongly, 130 interrupted.
 `;
 
 /** Runs one CLI invocation and returns its exit code. */
@@ -115,6 +127,8 @@ export async function run(argv: readonly string[], ctx: RunContext): Promise<num
   }
   const command = COMMANDS[name];
   if (!command) {
+    if (rest.includes('--json'))
+      return printError(err, { code: 'usage', message: `Unknown command: ${name}` }, 2);
     err.line(`Unknown command: ${name}\n`);
     err.line(USAGE.trimEnd());
     return 2;
@@ -129,7 +143,9 @@ export async function run(argv: readonly string[], ctx: RunContext): Promise<num
       options: { json: { type: 'boolean' }, ...command.options },
     });
   } catch (error) {
-    err.line(`dryfit ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    const message = `dryfit ${name}: ${error instanceof Error ? error.message : String(error)}`;
+    if (rest.includes('--json')) return printError(err, { code: 'usage', message }, 2);
+    err.line(message);
     return 2;
   }
 
@@ -137,8 +153,46 @@ export async function run(argv: readonly string[], ctx: RunContext): Promise<num
   try {
     return await command.run({ positionals: parsed.positionals, values: parsed.values, ctx, out, err, json });
   } catch (error) {
-    return reportError(err, error);
+    return json ? reportJsonError(err, error) : reportError(err, error);
   }
+}
+
+/** An error as an agent or script reads it: `{ error: { code, message, hint?, output? }, exitCode }`. */
+function printError(
+  err: Output,
+  error: { code: string; message: string; hint?: string; output?: string },
+  exitCode: number,
+): number {
+  err.line(JSON.stringify({ error, exitCode }));
+  return exitCode;
+}
+
+function reportJsonError(err: Output, error: unknown): number {
+  if (error instanceof CliError)
+    return printError(
+      err,
+      { code: error.exitCode === 2 ? 'usage' : 'failed', message: error.message },
+      error.exitCode,
+    );
+  if (error instanceof ApiError || error instanceof DryfitError) {
+    const output = error.details.output;
+    const hint = HINTS[error.code];
+    return printError(
+      err,
+      {
+        code: error.code,
+        message: error.message,
+        ...(hint !== undefined && { hint }),
+        ...(typeof output === 'string' && output.length > 0 && { output }),
+      },
+      1,
+    );
+  }
+  return printError(
+    err,
+    { code: 'unexpected', message: error instanceof Error ? error.message : String(error) },
+    1,
+  );
 }
 
 function reportError(err: Output, error: unknown): number {
@@ -551,6 +605,42 @@ const COMMANDS: Record<string, Command> = {
   doctor: {
     async run({ ctx, out, json }) {
       return requireLocal(ctx).doctor(out, json);
+    },
+  },
+
+  agent: {
+    options: { project: { type: 'boolean' }, dir: { type: 'string' } },
+    async run({ positionals, values, ctx, out, json }) {
+      const action = positionals[0];
+      const local = requireLocal(ctx);
+      if (action === 'show') {
+        const skill = await local.skill();
+        if (json) return printJson(out, { skill });
+        out.line(skill.trimEnd());
+        return 0;
+      }
+      if (action !== 'install' && action !== 'uninstall')
+        throw new CliError(`Unknown agent action: ${action ?? '(none)'}. Use install, uninstall or show.`, 2);
+
+      const dir = string(values.dir);
+      const skillsDir =
+        dir !== undefined
+          ? absolute(ctx, dir)
+          : values.project === true
+            ? join(ctx.cwd, '.claude', 'skills')
+            : join(ctx.env.CLAUDE_CONFIG_DIR ?? join(ctx.home, '.claude'), 'skills');
+      const result = await local.agent(action, skillsDir);
+      if (json) return printJson(out, { action, ...result });
+      if (action === 'install') {
+        out.ok(
+          result.changed
+            ? `Installed the dryfit skill: ${out.path(result.path)}`
+            : `The dryfit skill is already up to date: ${out.path(result.path)}`,
+        );
+        out.line('Claude Code picks it up in new sessions. Ask it to try your library in one of your apps.');
+      } else if (result.changed) out.ok(`Removed the dryfit skill from ${out.path(result.path)}`);
+      else out.line(`There is no dryfit skill at ${out.path(result.path)}`);
+      return 0;
     },
   },
 };

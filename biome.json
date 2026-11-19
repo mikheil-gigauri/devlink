@@ -12,6 +12,7 @@
       "!packages/dryfit/api",
       "!.changeset",
       "!apps/site/src/content",
+      "!packages/dryfit/skill",
       "!apps/menubar/Resources/AppIcon.icon"
     ]
   },

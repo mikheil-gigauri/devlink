@@ -29,7 +29,8 @@
     "dryfit": "dist/dryfit.mjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "skill"
   ],
   "engines": {
     "node": ">=22.12"

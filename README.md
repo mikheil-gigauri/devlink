@@ -25,6 +25,7 @@ npx @dryfit/cli restore ../shop ../admin  # back to exactly what you had
 Once you use it daily, `npm install --global @dryfit/cli` puts `dryfit` on your PATH, and
 `dryfit daemon install` starts it at login. `dryfit status` shows what is linked and running,
 `dryfit doctor` checks the setup, and every command takes `--json` for scripts and agents.
+`dryfit agent install` teaches Claude Code to use dryfit, so you can ask it to try your library in an app.
 
 Consumers that run together, such as a federation host and its remotes, can be saved as a group
 (`dryfit group save checkout ../shell ../cart`), linked and restored together (`--group checkout`), and

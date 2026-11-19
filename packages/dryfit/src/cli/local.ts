@@ -12,6 +12,7 @@ import { hasGuard } from '../core/guard/commit-guard.ts';
 import { snapshotDir } from '../core/use-cases/shared.ts';
 import type { Health, StatusView } from '../daemon/api.ts';
 import { startDaemon } from '../daemon/daemon.ts';
+import { installSkill, readSkill, uninstallSkill } from './agent-skill.ts';
 import { DaemonClient } from './client.ts';
 import { LAUNCH_AGENT_LABEL, launchAgentPlist } from './launchd.ts';
 import type { LocalControl } from './main.ts';
@@ -54,6 +55,14 @@ export class LocalMachine implements LocalControl {
     await this.#home.writeConfig({ ...config, roots });
     await this.#home.ensureToken();
     return { home: this.#home.root, roots };
+  }
+
+  skill(): Promise<string> {
+    return readSkill();
+  }
+
+  agent(action: 'install' | 'uninstall', skillsDir: string) {
+    return action === 'install' ? installSkill(skillsDir) : uninstallSkill(skillsDir);
   }
 
   /** A client for a daemon of this version, starting or restarting one as needed. */

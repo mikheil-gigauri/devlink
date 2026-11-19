@@ -67,14 +67,20 @@ class FakeClient implements ApiClient {
 
 async function dryfit(
   argv: string | string[],
-  options: { client?: FakeClient; cwd?: string; entry?: string } = {},
+  options: {
+    client?: FakeClient;
+    cwd?: string;
+    entry?: string;
+    env?: NodeJS.ProcessEnv;
+    agentCalls?: { action: string; skillsDir: string }[];
+  } = {},
 ) {
   const client = options.client ?? new FakeClient();
   let stdout = '';
   let stderr = '';
   const code = await run(typeof argv === 'string' ? argv.split(' ').filter(Boolean) : argv, {
     cwd: options.cwd ?? '/Users/me/repos/ui-lib',
-    env: { HOME: '/Users/me' },
+    env: options.env ?? { HOME: '/Users/me' },
     home: '/Users/me',
     stdout: (text) => (stdout += text),
     stderr: (text) => (stderr += text),
@@ -83,6 +89,11 @@ async function dryfit(
       init: async (roots) => ({ home: '/Users/me/.dryfit', roots }),
       daemon: async () => 0,
       doctor: async () => 0,
+      skill: async () => '---\nname: dryfit\n---\n\n# dryfit\n',
+      agent: async (action, skillsDir) => {
+        options.agentCalls?.push({ action, skillsDir });
+        return { path: `${skillsDir}/dryfit/SKILL.md`, changed: true };
+      },
     },
     color: false,
     ...(options.entry !== undefined && { entry: options.entry }),
@@ -361,5 +372,62 @@ describe('dryfit CLI', () => {
     expect(code).toBe(2);
     expect(stderr).toContain('Unknown command: frobnicate');
     expect(stderr).toContain('Usage: dryfit <command>');
+  });
+
+  it('reports errors as JSON on stderr under --json, with the code and hint an agent needs', async () => {
+    const client = new FakeClient();
+    client.replies.unregister = new ApiError('library-linked', '@acme/ui is still linked into shop.');
+
+    const { code, stdout, stderr } = await dryfit('remove @acme/ui --json', { client });
+
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(JSON.parse(stderr)).toEqual({
+      error: {
+        code: 'library-linked',
+        message: '@acme/ui is still linked into shop.',
+        hint: 'Run `dryfit restore` for those consumers first.',
+      },
+      exitCode: 1,
+    });
+  });
+
+  it('reports wrong usage as JSON under --json, and exits 2', async () => {
+    const unknown = await dryfit('frobnicate --json');
+    const badOption = await dryfit('link --frob --json');
+    const missing = await dryfit('remove --json');
+
+    for (const { code, stderr } of [unknown, badOption, missing]) {
+      expect(code).toBe(2);
+      expect(JSON.parse(stderr)).toMatchObject({ error: { code: 'usage' }, exitCode: 2 });
+    }
+    expect(JSON.parse(unknown.stderr).error.message).toBe('Unknown command: frobnicate');
+  });
+
+  it('installs the agent skill where Claude Code looks, or where it is told to', async () => {
+    const agentCalls: { action: string; skillsDir: string }[] = [];
+
+    const { code, stdout } = await dryfit('agent install', { agentCalls });
+    await dryfit('agent install --project', { agentCalls, cwd: '/Users/me/repos/shop' });
+    await dryfit('agent install --dir ../skills', { agentCalls, cwd: '/Users/me/repos/shop' });
+    await dryfit('agent uninstall', { agentCalls, env: { CLAUDE_CONFIG_DIR: '/Users/me/.config/claude' } });
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Installed the dryfit skill: ~/.claude/skills/dryfit/SKILL.md');
+    expect(agentCalls).toEqual([
+      { action: 'install', skillsDir: '/Users/me/.claude/skills' },
+      { action: 'install', skillsDir: '/Users/me/repos/shop/.claude/skills' },
+      { action: 'install', skillsDir: '/Users/me/repos/skills' },
+      { action: 'uninstall', skillsDir: '/Users/me/.config/claude/skills' },
+    ]);
+  });
+
+  it('prints the agent skill, and refuses an agent action it does not know', async () => {
+    const shown = await dryfit('agent show');
+    const unknown = await dryfit('agent teach');
+
+    expect(shown.stdout).toContain('name: dryfit');
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Use install, uninstall or show');
   });
 });

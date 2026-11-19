@@ -52,4 +52,4 @@ The CLI and the menu bar app are both clients of one background service, which o
 watchers and the links. That is why `dryfit watch --detach` keeps working after you close the terminal,
 and why the menu bar shows installs you started from the CLI.
 
-The [design decisions](/dryfit/design/) explain each of these choices and what they cost.
+The [design decisions](https://github.com/mikheil-gigauri/dryfit/tree/main/docs/adr) in the repository explain each of these choices and what they cost.

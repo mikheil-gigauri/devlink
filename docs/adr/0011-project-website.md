@@ -34,3 +34,10 @@ Astro with Starlight, in `apps/site`, deployed to GitHub Pages from CI.
 - Astro 7 needs Node 22.23.4 or newer, above dryfit's own floor of 22.12, so CI builds the site only on
   its Node 24 legs. The site declares `cookie@2` itself because Verdaccio's Express hoists `cookie@0.7`
   to the root, where Astro's prerender bundle would otherwise resolve it.
+
+## Amendment · 2026-11-20
+
+- The site no longer publishes the ADRs. They explain the design to contributors, not how to use dryfit,
+  and they crowded the docs' sidebar next to the guides. They stay in `docs/adr`, where GitHub renders
+  them, and the landing page and "How it works" link there. `generate.ts` now writes the CLI reference
+  and the menu bar screenshots only.
