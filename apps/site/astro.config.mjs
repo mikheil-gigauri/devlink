@@ -14,10 +14,11 @@ export default defineConfig({
       description:
         'Test unreleased npm libraries inside real consumer apps, installed the way they will be released.',
       favicon: '/favicon.svg',
+      logo: { light: './src/assets/mark-light.svg', dark: './src/assets/mark-dark.svg' },
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/apps/site/` },
       customCss: [
-        '@fontsource-variable/schibsted-grotesk',
+        '@fontsource-variable/bricolage-grotesque/standard.css',
         '@fontsource-variable/martian-mono',
         './src/styles/theme.css',
       ],

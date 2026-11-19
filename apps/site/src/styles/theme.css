@@ -1,21 +1,24 @@
-/* dryfit's palette: navy ink on cool paper, teal for a release, magenta for a dev build. */
+/*
+ * The docs in the landing page's colors (see src/pages/index.astro): a blueprint in the dark theme,
+ * drafting film in the light one. Teal is the accent, as it marks a release everywhere else.
+ */
 :root {
-  --dl-dev: #ff5fa8;
+  --dl-dev: #ff6fb2;
   --dl-release: #3cc9b0;
-  --sl-font: "Schibsted Grotesk Variable", system-ui, sans-serif;
+  --sl-font: "Bricolage Grotesque Variable", system-ui, sans-serif;
   --sl-font-mono: "Martian Mono Variable", ui-monospace, monospace;
   --sl-text-code: 0.8125rem;
-  --sl-color-accent-low: #0f3b37;
-  --sl-color-accent: #2fae97;
-  --sl-color-accent-high: #a9eadc;
-  --sl-color-white: #ffffff;
-  --sl-color-gray-1: #e6edf2;
-  --sl-color-gray-2: #c2cdd7;
-  --sl-color-gray-3: #8e9dac;
-  --sl-color-gray-4: #5d6d7e;
-  --sl-color-gray-5: #34445a;
-  --sl-color-gray-6: #1a2739;
-  --sl-color-black: #0e1726;
+  --sl-color-accent-low: #11403d;
+  --sl-color-accent: #3cc9b0;
+  --sl-color-accent-high: #b3efe3;
+  --sl-color-white: #f7fafc;
+  --sl-color-gray-1: #e3edf4;
+  --sl-color-gray-2: #c6d4df;
+  --sl-color-gray-3: #93a8ba;
+  --sl-color-gray-4: #5a7790;
+  --sl-color-gray-5: #21405a;
+  --sl-color-gray-6: #10263a;
+  --sl-color-black: #0c1d2c;
 }
 
 :root[data-theme="light"] {
@@ -24,13 +27,33 @@
   --sl-color-accent-low: #cde6e1;
   --sl-color-accent: #0f7b6c;
   --sl-color-accent-high: #094a41;
-  --sl-color-white: #14213d;
-  --sl-color-gray-1: #1f2d49;
-  --sl-color-gray-2: #34445d;
-  --sl-color-gray-3: #5b6b7a;
-  --sl-color-gray-4: #8796a3;
-  --sl-color-gray-5: #c9d3da;
-  --sl-color-gray-6: #dde5e9;
-  --sl-color-gray-7: #e6ecee;
-  --sl-color-black: #eef2f3;
+  --sl-color-white: #17202b;
+  --sl-color-gray-1: #222d3a;
+  --sl-color-gray-2: #3a4654;
+  --sl-color-gray-3: #5c6977;
+  --sl-color-gray-4: #8a96a3;
+  --sl-color-gray-5: #d5dee5;
+  --sl-color-gray-6: #e6ecf0;
+  --sl-color-gray-7: #eef2f5;
+  --sl-color-black: #f4f7f9;
+}
+
+/* Condensed headings, like the lettering on the landing page's drawing. */
+.sl-markdown-content :is(h1, h2),
+h1#_top,
+.site-title {
+  font-weight: 700;
+  font-stretch: 80%;
+  letter-spacing: -0.005em;
+}
+h1#_top {
+  font-size: clamp(2.25rem, 5vw, 3.25rem);
+  line-height: 1;
+}
+.sl-markdown-content h2 {
+  font-size: 1.875rem;
+  line-height: 1.1;
+}
+.site-title {
+  font-size: 1.375rem;
 }
