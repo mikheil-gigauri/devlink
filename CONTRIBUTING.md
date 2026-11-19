@@ -58,6 +58,19 @@ Publishing needs no npm token: the `@dryfit/cli` package trusts this workflow th
 publishing (on npmjs.com, the package's Settings → Trusted publishing: user `mikheil-gigauri`, repository
 `dryfit`, workflow `release.yml`, with `npm publish` allowed). npm adds the provenance itself.
 
+The release pull request is pushed as a GitHub App, because GitHub runs no workflows for what the
+workflow's own `GITHUB_TOKEN` pushes, so the pull request would get no CI. To set it up once:
+
+1. Create a GitHub App under your account (Settings → Developer settings → GitHub Apps → New GitHub App).
+   Any name and homepage; turn the webhook off. Repository permissions: Contents and Pull requests,
+   both "Read and write". "Only on this account".
+2. Install it on the `dryfit` repository only.
+3. In the repository's Settings → Secrets and variables → Actions, add the App's Client ID as the
+   variable `RELEASE_APP_CLIENT_ID`, and a private key generated on the App's page as the secret
+   `RELEASE_APP_PRIVATE_KEY` (the whole `.pem` file).
+
+Without them the release still works, with a warning, but its pull request gets no CI.
+
 Every release attaches `Dryfit.dmg`, a universal build of the menu bar app, the same app as
 `Dryfit-<version>.zip`, and `appcast.xml`, the feed installed apps check to update themselves with
 [Sparkle](https://sparkle-project.org). The feed is signed with an EdDSA key whose public half is
