@@ -1,7 +1,7 @@
 import DryfitAPI
 import SwiftUI
 
-/// dryfit's settings: where to look for apps, the background service, and opening at login.
+/// dryfit's settings: where to look for apps, the background service, opening at login, and updates.
 public struct SettingsView: View {
   let model: MenuModel
   let actions: MenuActions
@@ -69,6 +69,22 @@ public struct SettingsView: View {
       if let openAtLogin = actions.openAtLogin {
         Section("General") {
           Toggle("Open at login", isOn: openAtLogin)
+        }
+      }
+
+      if let checkForUpdates = actions.checkForUpdates {
+        Section {
+          if let installAutomatically = actions.installUpdatesAutomatically {
+            Toggle("Install updates automatically", isOn: installAutomatically)
+          }
+          HStack {
+            Spacer()
+            Button("Check Now", action: checkForUpdates)
+          }
+        } header: {
+          Text("Updates")
+        } footer: {
+          Text("dryfit looks for a new version once a day and, when installing automatically, replaces itself while you are not using it.")
         }
       }
     }

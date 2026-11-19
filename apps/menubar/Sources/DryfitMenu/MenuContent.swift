@@ -1,22 +1,29 @@
 import DryfitAPI
 import SwiftUI
 
-/// What the menu asks of the app around it: the log, login, quitting.
+/// What the menu asks of the app around it: the log, login, updates, quitting.
 public struct MenuActions {
   public var openLog: () -> Void
   public var showFailures: (Failure.ID?) -> Void
   public var quit: () -> Void
   /// Nil when the app cannot be a login item (run outside its bundle).
   public var openAtLogin: Binding<Bool>?
+  /// Nil when the app does not update itself (run outside its bundle, or built without an update key).
+  public var checkForUpdates: (() -> Void)?
+  /// Whether updates install by themselves; nil when the app does not update itself.
+  public var installUpdatesAutomatically: Binding<Bool>?
 
   public init(
     openLog: @escaping () -> Void = {}, showFailures: @escaping (Failure.ID?) -> Void = { _ in },
-    quit: @escaping () -> Void = {}, openAtLogin: Binding<Bool>? = nil
+    quit: @escaping () -> Void = {}, openAtLogin: Binding<Bool>? = nil,
+    checkForUpdates: (() -> Void)? = nil, installUpdatesAutomatically: Binding<Bool>? = nil
   ) {
     self.openLog = openLog
     self.showFailures = showFailures
     self.quit = quit
     self.openAtLogin = openAtLogin
+    self.checkForUpdates = checkForUpdates
+    self.installUpdatesAutomatically = installUpdatesAutomatically
   }
 }
 
@@ -136,6 +143,9 @@ private struct Footer: View {
         }
         if let openAtLogin = actions.openAtLogin {
           Toggle("Open at Login", isOn: openAtLogin)
+        }
+        if let checkForUpdates = actions.checkForUpdates {
+          Button("Check for Updates…", action: checkForUpdates)
         }
         if model.connection == .online {
           Divider()

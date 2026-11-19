@@ -75,6 +75,7 @@ jobs:
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           if [ -z "$MACOS_CERTIFICATE" ]; then
             echo "::warning::No Developer ID certificate in the repository secrets, so the app is released signed ad hoc and not notarized. See CONTRIBUTING.md#releasing."
@@ -83,6 +84,12 @@ jobs:
             echo "sign=true" >> "$GITHUB_OUTPUT"
           fi
           echo "cask=$([ -n "$MACOS_CERTIFICATE" ] && [ -n "$HOMEBREW_TAP_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "::warning::No SPARKLE_PRIVATE_KEY in the repository secrets, so this release publishes no update feed and installed apps do not update to it. See CONTRIBUTING.md#releasing."
+            echo "appcast=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "appcast=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Import the Developer ID certificate
         if: steps.secrets.outputs.sign == 'true'
         env:
@@ -115,21 +122,35 @@ jobs:
           echo "zip=$(echo "$output" | tail -2 | head -1)" >> "$GITHUB_OUTPUT"
           echo "sha256=$(echo "$output" | tail -1)" >> "$GITHUB_OUTPUT"
       - name: Build Dryfit.app, signed ad hoc
+        id: adhoc
         if: steps.secrets.outputs.sign != 'true'
         env:
           DRYFIT_UNIVERSAL: "1"
-        run: apps/menubar/scripts/bundle.sh
+        run: |
+          apps/menubar/scripts/bundle.sh
+          zip="apps/menubar/build/Dryfit-$VERSION.zip"
+          ditto -c -k --keepParent apps/menubar/build/Dryfit.app "$zip"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
       - name: Pack it into Dryfit.dmg
         id: dmg
         env:
           DRYFIT_SIGN_IDENTITY: ${{ steps.secrets.outputs.sign == 'true' && 'Developer ID Application' || '' }}
         run: echo "path=$(apps/menubar/scripts/dmg.sh)" >> "$GITHUB_OUTPUT"
-      - name: Attach it to the GitHub release
+      # The feed installed apps check: it names the zip and carries its EdDSA signature.
+      - name: Write the update feed
+        id: appcast
+        if: steps.secrets.outputs.appcast == 'true'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          ZIP: ${{ steps.notarized.outputs.zip || steps.adhoc.outputs.zip }}
+        run: echo "path=$(apps/menubar/scripts/appcast.sh "$ZIP")" >> "$GITHUB_OUTPUT"
+      - name: Attach them to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           DMG: ${{ steps.dmg.outputs.path }}
-          ZIP: ${{ steps.notarized.outputs.zip }}
-        run: gh release upload "@dryfit/cli@$VERSION" "$DMG" ${ZIP:+"$ZIP"} --clobber
+          ZIP: ${{ steps.notarized.outputs.zip || steps.adhoc.outputs.zip }}
+          APPCAST: ${{ steps.appcast.outputs.path }}
+        run: gh release upload "@dryfit/cli@$VERSION" "$DMG" "$ZIP" ${APPCAST:+"$APPCAST"} --clobber
       - name: Update the Homebrew cask
         if: steps.secrets.outputs.cask == 'true'
         env:

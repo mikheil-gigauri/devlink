@@ -58,8 +58,23 @@ Publishing needs no npm token: the `@dryfit/cli` package trusts this workflow th
 publishing (on npmjs.com, the package's Settings → Trusted publishing: user `mikheil-gigauri`, repository
 `dryfit`, workflow `release.yml`, with `npm publish` allowed). npm adds the provenance itself.
 
-Every release attaches `Dryfit.dmg`, a universal build of the menu bar app. Signing and notarizing it
-needs these secrets:
+Every release attaches `Dryfit.dmg`, a universal build of the menu bar app, the same app as
+`Dryfit-<version>.zip`, and `appcast.xml`, the feed installed apps check to update themselves with
+[Sparkle](https://sparkle-project.org). The feed is signed with an EdDSA key whose public half is
+`apps/menubar/Resources/SparklePublicKey`; a build without that file does not update itself. The key
+exists: its private half is the `SPARKLE_PRIVATE_KEY` secret, and the maintainer's login keychain holds it
+as the Sparkle key of account `dryfit`. After any `npm run menubar:bundle` has fetched Sparkle's tools,
+`generate_keys --account dryfit -p` prints the public key, and to set the secret again:
+
+```bash
+apps/menubar/.build/artifacts/sparkle/Sparkle/bin/generate_keys --account dryfit -x sparkle.key
+gh secret set SPARKLE_PRIVATE_KEY < sparkle.key && rm sparkle.key
+```
+
+Losing the private key means installed apps can never update again, so keep the keychain item (or a copy
+in a password manager). Without the secret, releases publish no feed and say so with a warning.
+
+Signing and notarizing the app needs these secrets:
 
 | Secret                                            | For                                                                                                                                     |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |

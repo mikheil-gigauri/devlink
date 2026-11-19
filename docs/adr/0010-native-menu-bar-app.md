@@ -32,3 +32,13 @@ Until there is a Developer ID, releases ship the app as `Dryfit.dmg`, signed ad 
 and push no cask. Users confirm it once under Privacy & Security; the menu bar guide says how. With the
 signing secrets set, the same release job signs and notarizes the app and pushes the cask, with no other
 change.
+
+## Amendment · 2026-11-20
+
+The app updates itself with Sparkle 2, linked by the app target only so the menu's code and tests do not
+depend on it. Each release attaches a zip of the app and `appcast.xml`, signed with an EdDSA key held in
+the repository secrets; the app reads the feed from `releases/latest/download/appcast.xml`, so there is no
+server to keep. Updates download in the background and install as soon as the user is not using the app,
+since a menu bar app is rarely quit. Sparkle accepts an update whose EdDSA signature matches and whose
+code signature is valid, so ad hoc builds update too, and the move to a Developer ID is an ordinary
+update. The cask declares `auto_updates`.

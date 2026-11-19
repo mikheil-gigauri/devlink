@@ -49,8 +49,8 @@ It also tells you, in a notification, when an install fails while the menu is cl
 
 ## Settings
 
-**Settings** (⌘,) holds the folders dryfit searches for apps, dryfit's service with its log, and
-**Open at login**.
+**Settings** (⌘,) holds the folders dryfit searches for apps, dryfit's service with its log,
+**Open at login**, and updates.
 
 ## Install
 
@@ -59,8 +59,8 @@ open it and drag **Dryfit** to **Applications**.
 
 The app is not notarized by Apple yet, so the first time you open it macOS says it cannot check it and
 offers only **Done** and **Move to Trash**. Choose **Done**, open **System Settings → Privacy & Security**,
-and under Security choose **Open Anyway** for Dryfit. macOS remembers the choice; updates need it again.
-To do the same from a terminal:
+and under Security choose **Open Anyway** for Dryfit. macOS remembers the choice, and the updates the
+app installs itself do not ask again. To do the same from a terminal:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Dryfit.app
@@ -68,3 +68,13 @@ xattr -dr com.apple.quarantine /Applications/Dryfit.app
 
 The app runs dryfit's command-line tool in the background. If it is not installed, the app offers to
 install it with npm (`npm install --global @dryfit/cli`), which needs Node.js.
+
+## Updates
+
+Install the app once; it keeps itself up to date. Once a day it looks for a new version, downloads it in
+the background, and replaces and reopens itself the next time you are not using it. Your libraries, apps
+and links are untouched: they live in dryfit's service, which keeps running.
+
+To choose when, turn off **Install updates automatically** in Settings: the app then asks before
+installing. **Check for Updates…** in the menu's **⋯** looks right away. Versions from before 0.3.0 do not
+update themselves; download the newest once more.
