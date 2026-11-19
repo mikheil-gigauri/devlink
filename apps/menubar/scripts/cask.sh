@@ -9,7 +9,7 @@ cask "devlink" do
   version "$version"
   sha256 "$sha256"
 
-  url "https://github.com/mikheil-gigauri/devlink/releases/download/%40gigauri96%2Fdevlink%40#{version}/Devlink-#{version}.zip"
+  url "https://github.com/mikheil-gigauri/devlink/releases/download/%40gigauri96/devlink%40#{version}/Devlink-#{version}.zip"
   name "devlink"
   desc "Menu bar app for testing unreleased npm libraries in real apps"
   homepage "https://mikheil-gigauri.github.io/devlink/"
