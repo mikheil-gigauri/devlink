@@ -78,6 +78,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       },
       launch: { try await launcher.start() },
       install: { try await launcher.installCLI() },
+      appVersion: Bundle.main.bundleURL.pathExtension == "app"
+        ? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String : nil,
+      // A checkout's CLI ($DRYFIT_CLI) is not npm's to update.
+      update: ProcessInfo.processInfo.environment["DRYFIT_CLI", default: ""].isEmpty
+        ? { try await launcher.updateCLI() } : nil,
       notifier: relay)
     super.init()
     failureWindow = FailureWindow(model: model)

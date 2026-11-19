@@ -49,6 +49,14 @@ public struct SettingsView: View {
 
       Section("dryfit service") {
         LabeledContent("Status", value: status)
+        if let outdated = model.outdatedVersion {
+          HStack {
+            Label("dryfit \(outdated) is older than this app", systemImage: "arrow.up.circle.fill")
+              .foregroundStyle(.orange)
+            Spacer()
+            UpdateDryfitControl(model: model, prominent: false)
+          }
+        }
         if let registry = model.status?.daemon.registryUrl, model.connection == .online {
           LabeledContent("Registry", value: registry)
         }

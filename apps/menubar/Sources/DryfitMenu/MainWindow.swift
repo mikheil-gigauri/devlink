@@ -75,7 +75,8 @@ public struct MainWindow: View {
     case .connecting:
       ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
     case .incompatible(let daemonVersion):
-      IncompatibleView(daemonVersion: daemonVersion).frame(maxWidth: .infinity, maxHeight: .infinity)
+      IncompatibleView(model: model, actions: actions, daemonVersion: daemonVersion)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 }

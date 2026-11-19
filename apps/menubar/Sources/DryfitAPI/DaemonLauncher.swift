@@ -69,6 +69,16 @@ public struct DaemonLauncher: Sendable {
     }
   }
 
+  /// Updates the CLI to the newest release with npm and restarts the daemon on it, at the user's
+  /// request: `npm install --global @dryfit/cli@latest && dryfit daemon restart`.
+  public func updateCLI(environment: [String: String] = ProcessInfo.processInfo.environment) async throws {
+    do {
+      try await runInShell("npm install --global @dryfit/cli@latest && dryfit daemon restart", environment)
+    } catch Failure.cliNotFound {
+      throw Failure.failed(output: "npm or dryfit was not found in your shell. Install Node.js from nodejs.org, then try again.")
+    }
+  }
+
   private func runInShell(_ command: String, _ environment: [String: String]) async throws {
     var result = await run([shell, "-l", "-c", command], environment)
     // nvm and friends are usually set up in .zshrc, which only interactive shells read.

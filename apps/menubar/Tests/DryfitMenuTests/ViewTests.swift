@@ -42,6 +42,21 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     #expect(DevVersion.describe("1.4.0") == "1.4.0")
   }
 
+  @Test func comparesReleaseVersions() {
+    #expect(ReleaseVersion.isOlder("0.1.0", than: "0.3.0"))
+    #expect(ReleaseVersion.isOlder("0.9.0", than: "0.10.0"))
+    #expect(ReleaseVersion.isOlder("1.2.3", than: "2.0.0"))
+    #expect(!ReleaseVersion.isOlder("0.3.0", than: "0.3.0"))
+    #expect(!ReleaseVersion.isOlder("0.10.0", than: "0.9.0"))
+    // A dev build counts as the release it is based on.
+    #expect(!ReleaseVersion.isOlder("0.3.0-dev.20261120101500", than: "0.3.0"))
+    #expect(!ReleaseVersion.isOlder("0.3.0", than: "0.3.0+build.7"))
+    // Anything that is not a release version never asks for an update.
+    #expect(!ReleaseVersion.isOlder("main", than: "0.3.0"))
+    #expect(!ReleaseVersion.isOlder("0.3", than: "0.4.0"))
+    #expect(!ReleaseVersion.isOlder("0.3.0", than: ""))
+  }
+
   @Test func notificationsCarryTheFirstLinesOfOutput() {
     let output = "\n> ng build ui\n\nTS2304: Cannot find name 'Butto'.\n  at button.ts:4\n  at more\n"
     #expect(UserNotifier.summary(of: output) == "> ng build ui\nTS2304: Cannot find name 'Butto'.\nat button.ts:4")
@@ -143,6 +158,16 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     }
     assertSnapshot(
       of: SettingsView(model: online, actions: MenuActions(openAtLogin: .constant(true))), named: "settings")
+  }
+
+  @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func olderDryfit() {
+    let outdated = MenuModel(
+      connect: { .notRunning }, launch: {}, appVersion: "0.3.0", update: {}, notifier: RecordingNotifier())
+    outdated.connection = .online
+    outdated.status = Status(daemon: health, libraries: [ui], links: [
+      Link(library: "@acme/ui", consumer: shop, status: .installed, installedVersion: version, guarded: true)
+    ])
+    assertSnapshot(of: MenuContent(model: outdated, actions: MenuActions()), named: "outdated")
   }
 
   @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func incompatibleDaemon() {
