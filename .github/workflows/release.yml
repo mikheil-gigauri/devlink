@@ -36,6 +36,18 @@ jobs:
         with:
           cache: ""
           registry-url: https://registry.npmjs.org
+      # GitHub runs no workflows for what GITHUB_TOKEN pushes, so the release pull request is pushed as
+      # the release GitHub App instead, and gets CI. Without the App it falls back to GITHUB_TOKEN.
+      - id: app-token
+        if: vars.RELEASE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - if: steps.app-token.outcome != 'success'
+        run: echo "::warning::No release GitHub App configured, so the release pull request gets no CI. See CONTRIBUTING.md#releasing."
       # With changesets on main: opens or updates the release pull request. Once that is merged:
       # publishes to npm, tags @dryfit/cli@<version> and creates the GitHub release. No npm token: npm
       # trusts this workflow (trusted publishing, set on the package's npmjs.com settings) and adds
@@ -43,6 +55,7 @@ jobs:
       - id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           version-script: npm run version-packages
           publish-script: npm run release
           commit-message: "chore: release"
