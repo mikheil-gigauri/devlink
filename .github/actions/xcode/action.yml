@@ -1,0 +1,11 @@
+name: Select the newest Xcode
+description: Points xcode-select at the newest released Xcode on the runner (no betas or release candidates).
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        xcode="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|release_candidate|_rc' | sort -V | tail -1)"
+        sudo xcode-select -s "$xcode"
+        xcodebuild -version

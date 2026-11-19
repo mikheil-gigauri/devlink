@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Keeps the pinned action SHAs (and their version comments) current, in one pull request a week.
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
