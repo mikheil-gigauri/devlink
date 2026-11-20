@@ -48,12 +48,21 @@ export interface StateStore {
   save(state: DryfitState): Promise<void>;
 }
 
-export interface InstallSpec {
-  readonly cwd: string;
-  readonly packageName: string;
+export interface InstallPackage {
+  readonly name: string;
   readonly version: string;
   /** Keeps the package in the manifest field it was already declared in. */
   readonly dependencyField: DependencyField;
+}
+
+/**
+ * Packages installed in one package manager run, so dev builds that pin each other exactly are
+ * resolved together (ADR 0014). When they are declared in different fields, adapters pass no save
+ * flag, and every supported package manager keeps each package where it already is.
+ */
+export interface InstallSpec {
+  readonly cwd: string;
+  readonly packages: readonly InstallPackage[];
   readonly registryUrl: string;
 }
 

@@ -136,11 +136,23 @@
     },
     "sync": {
       "version": "1.4.1-dev.20261118143201",
+      "published": [
+        {
+          "library": "@acme/ui",
+          "version": "1.4.1-dev.20261118143201"
+        }
+      ],
       "installs": [
         {
           "consumer": "/Users/me/repos/shop",
           "ok": true,
           "version": "1.4.1-dev.20261118143201",
+          "libraries": [
+            {
+              "library": "@acme/ui",
+              "version": "1.4.1-dev.20261118143201"
+            }
+          ],
           "clearedCaches": [
             "/Users/me/repos/shop/.angular/cache"
           ]
@@ -149,6 +161,12 @@
           "consumer": "/Users/me/repos/admin",
           "ok": false,
           "version": "1.4.1-dev.20261118143201",
+          "libraries": [
+            {
+              "library": "@acme/ui",
+              "version": "1.4.1-dev.20261118143201"
+            }
+          ],
           "output": "npm error code ERESOLVE"
         }
       ]
@@ -212,6 +230,15 @@
         "installedVersion": "1.4.1-dev.20261118143201",
         "guard": true
       },
+      "links": [
+        {
+          "library": "@acme/ui",
+          "consumer": "/Users/me/repos/shop",
+          "status": "installed",
+          "installedVersion": "1.4.1-dev.20261118143201",
+          "guard": true
+        }
+      ],
       "guard": "installed"
     },
     "restore": {

@@ -48,9 +48,16 @@ describe('syncLibrary', () => {
         consumer: SHOP,
         ok: true,
         version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
         clearedCaches: ['.angular/cache', 'node_modules/.cache/native-federation'],
       },
-      { consumer: ADMIN, ok: true, version: VERSION, clearedCaches: ['node_modules/.vite'] },
+      {
+        consumer: ADMIN,
+        ok: true,
+        version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
+        clearedCaches: ['node_modules/.vite'],
+      },
     ]);
   });
 
@@ -84,8 +91,20 @@ describe('syncLibrary', () => {
     const result = await syncLibrary(deps, { library: '@acme/ui' });
 
     expect(result.installs).toEqual([
-      { consumer: SHOP, ok: false, version: VERSION, output: 'npm error ERESOLVE could not resolve' },
-      { consumer: ADMIN, ok: true, version: VERSION, clearedCaches: ['node_modules/.vite'] },
+      {
+        consumer: SHOP,
+        ok: false,
+        version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
+        output: 'npm error ERESOLVE could not resolve',
+      },
+      {
+        consumer: ADMIN,
+        ok: true,
+        version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
+        clearedCaches: ['node_modules/.vite'],
+      },
     ]);
     expect(store.current.links.map((link) => [link.consumer, link.status, link.message])).toEqual([
       [SHOP, 'failed', 'npm error ERESOLVE could not resolve'],
@@ -128,8 +147,20 @@ describe('syncLibrary', () => {
     const result = await syncLibrary(deps, { library: '@acme/ui' });
 
     expect(result.installs).toEqual([
-      { consumer: SHOP, ok: false, version: VERSION, output: `${SHOP} no longer depends on @acme/ui` },
-      { consumer: ADMIN, ok: true, version: VERSION, clearedCaches: ['node_modules/.vite'] },
+      {
+        consumer: SHOP,
+        ok: false,
+        version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
+        output: `${SHOP} no longer depends on @acme/ui`,
+      },
+      {
+        consumer: ADMIN,
+        ok: true,
+        version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
+        clearedCaches: ['node_modules/.vite'],
+      },
     ]);
     expect(store.current.links.find((link) => link.consumer === SHOP)?.status).toBe('failed');
   });
@@ -137,7 +168,11 @@ describe('syncLibrary', () => {
   it('publishes even when nothing is linked yet', async () => {
     const { deps } = createScenario({ state: linked([]) });
 
-    expect(await syncLibrary(deps, { library: '@acme/ui' })).toEqual({ version: VERSION, installs: [] });
+    expect(await syncLibrary(deps, { library: '@acme/ui' })).toEqual({
+      version: VERSION,
+      published: [{ library: '@acme/ui', version: VERSION }],
+      installs: [],
+    });
   });
 
   it('installs nothing when the publish fails', async () => {

@@ -77,11 +77,12 @@ Linking
   hide [consumer]...            Stop listing these apps (none: show the hidden ones)
   unhide <consumer>...          List these apps again
   link <consumer>...            Install dev builds of a library into consumers
-      --library <name>          Which library (default: the one here, or the only one)
+      --library <name>          Which library (default: the one here, or the only one).
+                                Repeat it to link libraries that pin each other together
       --group <name>            Link every consumer in a saved group
       --no-guard                Do not add the pre-commit guard
   restore [consumer]...         Put consumers back exactly as they were (alias: unlink)
-      --library <name>          Restore only this library and keep the others linked
+      --library <name>          Restore only this library, and those tied to it, keeping the rest
       --group <name>  --all  --force
 
 Working
@@ -307,6 +308,8 @@ async function withProgress<T>(
   }
 }
 
+const aboutAnyLibrary = (event: HubEvent) => 'library' in event;
+
 const aboutLibrary = (library: string) => (event: HubEvent) =>
   'library' in event ? event.library === library : event.type === 'consumer:restored';
 
@@ -460,16 +463,18 @@ const COMMANDS: Record<string, Command> = {
 
   link: {
     options: {
-      library: { type: 'string' },
+      library: { type: 'string', multiple: true },
       group: { type: 'string' },
       'no-guard': { type: 'boolean' },
     },
     async run(input) {
       const { positionals, values, ctx, out, json } = input;
       const client = await ctx.connect();
-      const library = resolveLibrary(await client.call('status', {}), string(values.library), ctx.cwd);
+      const named = [...new Set(strings(values.library))];
+      const [library = resolveLibrary(await client.call('status', {}), undefined, ctx.cwd), ...more] = named;
       const group = string(values.group);
       if (group) {
+        if (more.length > 0) throw new CliError('Link one library at a time into a group.', 2);
         const outcomes = await client.call('linkGroup', { group, library });
         if (json) return printJson(out, outcomes, anyFailed(outcomes));
         for (const outcome of outcomes) {
@@ -490,6 +495,7 @@ const COMMANDS: Record<string, Command> = {
         try {
           result = await client.call('link', {
             library,
+            ...(more.length > 0 && { libraries: more }),
             consumer,
             ...(values['no-guard'] === true && { guard: false }),
           });
@@ -503,17 +509,26 @@ const COMMANDS: Record<string, Command> = {
         }
         results.push(result);
         // Linked, but the install failed: the consumer does not run the library, so this is a failure.
-        if (result.link.status === 'failed') failed = 1;
+        if (result.links.some((link) => link.status === 'failed')) failed = 1;
         if (json) continue;
         const notes = ['snapshot taken'];
         if (result.guard === 'installed') notes.push('commit guard installed');
         if (result.guard === 'not-a-repo') notes.push('not a git repository, so no commit guard');
-        out.ok(`Linked ${library} into ${out.path(consumer)} ${out.dim(`(${notes.join(', ')})`)}`);
-        if (result.link.status === 'failed') {
-          out.fail(`Install into ${out.path(consumer)} failed`);
-          if (result.link.message) out.output(result.link.message);
-        } else if (result.link.installedVersion) {
-          out.line(out.dim(`  running ${result.link.installedVersion}`));
+        const names = [library, ...more].join(', ');
+        out.ok(`Linked ${names} into ${out.path(consumer)} ${out.dim(`(${notes.join(', ')})`)}`);
+        // One install covers every library, so they usually fail with the same output: show it once.
+        const shown = new Set<string>();
+        for (const link of result.links) {
+          const prefix = more.length > 0 ? `${link.library} ` : '';
+          if (link.status === 'failed') {
+            out.fail(
+              `Install ${more.length > 0 ? `of ${link.library} ` : ''}into ${out.path(consumer)} failed`,
+            );
+            if (link.message && !shown.has(link.message)) out.output(link.message);
+            if (link.message) shown.add(link.message);
+          } else if (link.installedVersion) {
+            out.line(out.dim(`  ${prefix}running ${link.installedVersion}`));
+          }
         }
       }
       if (json) return printJson(out, results, failed);
@@ -535,9 +550,8 @@ const COMMANDS: Record<string, Command> = {
       const library = resolveLibrary(await client.call('status', {}), positionals[0], ctx.cwd);
       let result: Awaited<ReturnType<typeof client.call<'sync'>>>;
       try {
-        result = await withProgress(input, client, aboutLibrary(library), () =>
-          client.call('sync', { library }),
-        );
+        // A sync may publish and install the libraries tied to this one too (ADR 0014), so show them all.
+        result = await withProgress(input, client, aboutAnyLibrary, () => client.call('sync', { library }));
       } catch (error) {
         // The build or publish output has already been shown as it happened.
         if (
@@ -746,7 +760,8 @@ function restoreCommand(): Command {
         results.push({ consumer, ...result });
         if (!result.ok) failed = true;
         if (json) continue;
-        const what = library ? `${library} in ${out.path(consumer)}` : out.path(consumer);
+        const restored = result.libraries?.join(', ') ?? library;
+        const what = restored ? `${restored} in ${out.path(consumer)}` : out.path(consumer);
         if (result.ok) out.ok(`Restored ${what}`);
         else {
           out.fail(`Restored the files of ${what}, but the clean install failed:`);

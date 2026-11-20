@@ -77,7 +77,11 @@ publish folder for Nx, Angular CLI and packages with a `build` script; otherwise
 
 ## Other commands
 
-- `dryfit restore --library <name>` restores one library and keeps an app's other links.
+- `dryfit link <app> --library <a> --library <b> --json` links libraries from one workspace that pin each
+  other exactly, installed together. Linked alone they fail with `ERESOLVE`; the failure names the
+  libraries to add.
+- `dryfit restore --library <name>` restores one library, with the linked libraries tied to it, and keeps
+  an app's other links.
 - `dryfit group save <name> <app>...`, then `link --group <name>` and `restore --group <name>`, for apps
   that run together.
 - `dryfit remove <library>` forgets a library; restore its apps first.

@@ -67,6 +67,28 @@ In the menu bar app, **Add Library** shows the detected settings before anything
 command, or choose **Choose…** next to the publish folder. For a library already added, use **Change…** on
 its page.
 
+## Libraries that pin each other
+
+Workspaces with independent releases, such as Nx release, often pin their own packages exactly:
+`ui` peers on `common@"19.24.0"`, and the release tool rewrites that pin when it publishes. Add each of
+them to dryfit, then link the ones an app uses together:
+
+```bash
+dryfit link ../shop --library @acme/common --library @acme/ui
+```
+
+dryfit then treats them as a set:
+
+- Each dev build pins the other added libraries' dev builds, in the copy it publishes. Your files and the
+  build output keep the workspace's own pins.
+- A sync of `common` also publishes the libraries that depend on it, so their pins move with it, and
+  installs every linked library into the app in one run.
+- `dryfit restore ../shop --library @acme/ui` restores `common` with it, since neither works without the
+  other.
+
+Linked on its own, a library whose released siblings pin it exactly either fails to install or leaves
+the app in a state npm refuses to build on. dryfit says which library to link with it.
+
 ## Watching
 
 `dryfit watch` and **Auto-sync** rebuild when a file in the library folder changes. They ignore the publish

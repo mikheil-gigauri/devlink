@@ -2,6 +2,7 @@ import { DryfitError } from '../errors.ts';
 import type { LibraryRecord, Manifest } from '../model.ts';
 import { DEPENDENCY_FIELDS } from '../model.ts';
 import type { CoreDeps } from '../ports.ts';
+import { RUNTIME_DEPENDENCY_FIELDS } from '../project/library-graph.ts';
 import { formatManifest, readManifest } from '../project/manifest.ts';
 import { isRecord } from '../util/json.ts';
 import { joinPath } from '../util/path.ts';
@@ -25,7 +26,8 @@ export async function publishLibrary(
   deps: CoreDeps,
   { library: name }: PublishLibraryInput,
 ): Promise<{ version: string }> {
-  const library = requireLibrary(await deps.state.load(), name);
+  const { libraries } = await deps.state.load();
+  const library = requireLibrary({ libraries }, name);
 
   await build(deps, library);
 
@@ -39,7 +41,8 @@ export async function publishLibrary(
     previous: library.lastPublishedVersion,
   });
 
-  refuseWorkspaceRanges(manifest, path);
+  const pinned = withSiblingPins(manifest, libraries, library.name);
+  refuseWorkspaceRanges(pinned, path);
 
   const staging = stagingDir(deps, library.name);
   try {
@@ -47,7 +50,7 @@ export async function publishLibrary(
     await deps.fs.copyDir(library.publishDir, staging, { exclude: NOT_PUBLISHED });
     await deps.fs.writeText(
       joinPath(staging, 'package.json'),
-      formatManifest(withoutPublishRegistry({ ...manifest, version }), text),
+      formatManifest(withoutPublishRegistry({ ...pinned, version }), text),
     );
     const authFiles = deps.publisher.publishAuthFiles({
       registryUrl: deps.registryUrl,
@@ -84,6 +87,35 @@ export async function publishLibrary(
   );
   deps.events.emit({ type: 'publish:succeeded', library: library.name, version });
   return { version };
+}
+
+/**
+ * Points every runtime dependency on another registered library at that library's latest dev build
+ * (ADR 0014). Workspaces that pin their own packages exactly would otherwise publish dev builds that
+ * demand the siblings' source versions, which neither the app nor the local registry has as dev builds.
+ * Ranges are pinned too: a prerelease satisfies no ordinary range, so the sibling's dev build would be
+ * skipped for a release. Siblings never published keep what the manifest says.
+ */
+function withSiblingPins(manifest: Manifest, libraries: readonly LibraryRecord[], self: string): Manifest {
+  const devVersions = new Map(
+    libraries.flatMap((library) =>
+      library.name !== self && library.lastPublishedVersion !== undefined
+        ? [[library.name, library.lastPublishedVersion] as const]
+        : [],
+    ),
+  );
+  let pinned = manifest;
+  for (const field of RUNTIME_DEPENDENCY_FIELDS) {
+    const entries = manifest[field];
+    if (!isRecord(entries) || !Object.keys(entries).some((name) => devVersions.has(name))) continue;
+    pinned = {
+      ...pinned,
+      [field]: Object.fromEntries(
+        Object.entries(entries).map(([name, range]) => [name, devVersions.get(name) ?? range]),
+      ),
+    };
+  }
+  return pinned;
 }
 
 /**

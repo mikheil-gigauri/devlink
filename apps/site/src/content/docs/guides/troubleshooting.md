@@ -22,6 +22,10 @@ The dev build declares the same peer dependencies as the release, so an install 
 fails for the release too. npm's `ERESOLVE` errors are often fixed by the app's own `.npmrc`
 (`legacy-peer-deps=true`) if that is how the project is meant to install.
 
+When the conflict is between libraries from your own workspace that pin each other exactly, link them
+together instead: `dryfit link <app> --library <a> --library <b>`. The failure message names the ones
+to add. See [Libraries that pin each other](/dryfit/guides/libraries/#libraries-that-pin-each-other).
+
 ## pnpm refuses the dev build
 
 `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` comes from a `pnpm install` run by hand while the app is linked.

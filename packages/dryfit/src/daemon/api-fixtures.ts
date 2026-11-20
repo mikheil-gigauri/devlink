@@ -90,9 +90,22 @@ export const outputs = {
   },
   sync: {
     version: VERSION,
+    published: [{ library: '@acme/ui', version: VERSION }],
     installs: [
-      { consumer: SHOP, ok: true, version: VERSION, clearedCaches: [`${SHOP}/.angular/cache`] },
-      { consumer: ADMIN, ok: false, version: VERSION, output: 'npm error code ERESOLVE' },
+      {
+        consumer: SHOP,
+        ok: true,
+        version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
+        clearedCaches: [`${SHOP}/.angular/cache`],
+      },
+      {
+        consumer: ADMIN,
+        ok: false,
+        version: VERSION,
+        libraries: [{ library: '@acme/ui', version: VERSION }],
+        output: 'npm error code ERESOLVE',
+      },
     ],
   },
   watch: library,
@@ -114,7 +127,7 @@ export const outputs = {
       libraries: [{ name: '@acme/ui', field: 'devDependencies', range: '~1.4.0' }],
     },
   ],
-  link: { link: shopLink, guard: 'installed' },
+  link: { link: shopLink, links: [shopLink], guard: 'installed' },
   restore: { ok: false, output: 'npm error network request failed' },
   saveGroup: group,
   deleteGroup: { ok: true },

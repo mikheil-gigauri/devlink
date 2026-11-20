@@ -229,6 +229,29 @@ describe('DaemonService', () => {
     expect((await store.load()).links[0]?.guard).toBe(true);
   });
 
+  it('links several libraries in one job, guarding every link', async () => {
+    const forms: LibraryRecord = { name: '@acme/forms', root: '/repos/forms', publishDir: '/repos/forms' };
+    const { service, guard, store, fs } = setup({ ...registered, libraries: [library, forms] });
+    await fs.writeText(
+      `${SHOP}/package.json`,
+      JSON.stringify({ name: 'shop', dependencies: { '@acme/ui': '^1.4.0', '@acme/forms': '^2.0.0' } }),
+    );
+
+    const result = await service.call('link', {
+      library: '@acme/ui',
+      libraries: ['@acme/forms'],
+      consumer: SHOP,
+    });
+
+    expect(result.link.library).toBe('@acme/ui');
+    expect(result.links.map((link) => [link.library, link.guard])).toEqual([
+      ['@acme/ui', true],
+      ['@acme/forms', true],
+    ]);
+    expect(guard.installs).toBe(1);
+    expect((await store.load()).links.map((link) => link.guard)).toEqual([true, true]);
+  });
+
   it('leaves the hooks alone when the guard is declined', async () => {
     const { service, guard } = setup();
 

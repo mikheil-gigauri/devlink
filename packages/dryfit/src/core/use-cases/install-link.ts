@@ -1,114 +1,207 @@
 import { DryfitError } from '../errors.ts';
-import type { LibraryRecord, LinkRecord } from '../model.ts';
-import type { CoreDeps, PackageManagerAdapter, ProjectInfo } from '../ports.ts';
+import type { DryfitState, LibraryRecord, LinkRecord, Manifest } from '../model.ts';
+import type { CoreDeps, InstallPackage } from '../ports.ts';
 import { cachePathsFor } from '../project/cache-paths.ts';
+import { connectedTo, loadLibraryGraph } from '../project/library-graph.ts';
 import { loadProject } from '../project/load-project.ts';
-import { type DependencyDeclaration, findDependency } from '../project/manifest.ts';
+import { findDependency } from '../project/manifest.ts';
 import { joinPath } from '../util/path.ts';
 import { adapterFor, commandOutput, failureMessage, runSafely, sameLink, withLink } from './shared.ts';
+
+/** One library's dev build, as installed into a consumer. */
+export interface LibraryVersion {
+  readonly library: string;
+  readonly version: string;
+}
 
 export type InstallOutcome =
   | {
       readonly consumer: string;
       readonly ok: true;
+      /** The version of the first library in `libraries`, the one the install was for. */
       readonly version: string;
+      /** Every dev build installed in the same run (ADR 0014). */
+      readonly libraries: readonly LibraryVersion[];
       readonly clearedCaches: readonly string[];
     }
-  | { readonly consumer: string; readonly ok: false; readonly version: string; readonly output: string };
+  | {
+      readonly consumer: string;
+      readonly ok: false;
+      readonly version: string;
+      readonly libraries: readonly LibraryVersion[];
+      readonly output: string;
+    };
 
-export interface InstallLinkInput {
-  readonly library: LibraryRecord;
+export interface InstallLinksInput {
   readonly consumer: string;
-  readonly version: string;
-}
-
-interface Target {
-  readonly project: ProjectInfo;
-  readonly declaration: DependencyDeclaration;
-  readonly adapter: PackageManagerAdapter;
+  /** Libraries linked into the consumer and the dev versions to install, the main one first. */
+  readonly libraries: readonly { readonly library: LibraryRecord; readonly version: string }[];
 }
 
 /**
- * Installs one dev version into one linked consumer, then clears the caches that would hide it
- * (ADR 0007). Every expected failure is an outcome, not an exception: a consumer that no longer
- * depends on the library, has an unsupported package manager, or whose install fails is marked
- * `failed`, and the others still get installed. The snapshot still allows a restore.
+ * Installs dev versions of several libraries linked into one consumer in a single package manager run,
+ * then clears the caches that would hide them (ADR 0007). One run lets dev builds that pin each other
+ * exactly resolve together (ADR 0014).
+ *
+ * Every expected failure is an outcome, not an exception: a library the consumer no longer depends on
+ * is marked `failed` and left out, and a package manager that is unsupported or fails marks every
+ * library in the run `failed`. The snapshot still allows a restore.
  */
-export async function installLink(
+export async function installLinks(
   deps: CoreDeps,
-  { library, consumer, version }: InstallLinkInput,
-): Promise<{ readonly outcome: InstallOutcome; readonly link: LinkRecord }> {
-  const fail = async (output: string) => {
-    deps.events.emit({ type: 'install:failed', library: library.name, consumer, version, output });
-    const link = await saveLink(deps, {
-      library: library.name,
-      consumer,
-      status: 'failed',
-      message: failureMessage(output),
-    });
-    return { outcome: { consumer, ok: false as const, version, output }, link };
+  { consumer, libraries }: InstallLinksInput,
+): Promise<{ readonly outcome: InstallOutcome; readonly links: readonly LinkRecord[] }> {
+  const versions = libraries.map(({ library, version }) => ({ library: library.name, version }));
+  const [main] = versions;
+  if (main === undefined) throw new DryfitError('invalid-request', `Nothing to install into ${consumer}`, {});
+
+  const failures = new Map<string, string>();
+  const fail = async (output: string, failing: readonly LibraryVersion[] = versions) => {
+    for (const { library, version } of failing) {
+      failures.set(library, output);
+      deps.events.emit({ type: 'install:failed', library, consumer, version, output });
+    }
+    const links = await saveLinks(deps, consumer, versions, failures);
+    return {
+      outcome: { consumer, ok: false as const, version: main.version, libraries: versions, output },
+      links,
+    };
   };
 
-  let target: Target;
+  let project: Awaited<ReturnType<typeof loadProject>>;
+  let adapter: ReturnType<typeof adapterFor>;
   try {
-    target = await resolveTarget(deps, library, consumer);
+    project = await loadProject(deps.fs, consumer, deps.integrations);
+    adapter = adapterFor(deps, project);
   } catch (error) {
     if (error instanceof DryfitError) return fail(error.message);
     throw error;
   }
-  const { project, declaration, adapter } = target;
 
-  deps.events.emit({ type: 'install:started', library: library.name, consumer, version });
+  const packages: InstallPackage[] = [];
+  const gone: LibraryVersion[] = [];
+  for (const entry of versions) {
+    const declaration = findDependency(project.manifest, entry.library);
+    if (declaration)
+      packages.push({ name: entry.library, version: entry.version, dependencyField: declaration.field });
+    else gone.push(entry);
+  }
+  for (const entry of gone) {
+    const output = `${consumer} no longer depends on ${entry.library}`;
+    failures.set(entry.library, output);
+    deps.events.emit({ type: 'install:failed', ...entry, consumer, output });
+  }
+  const installing = versions.filter((entry) => !failures.has(entry.library));
+  if (installing.length === 0) return fail([...failures.values()].join('\n'), []);
+
+  for (const entry of installing) deps.events.emit({ type: 'install:started', ...entry, consumer });
   const result = await runSafely(
     deps,
-    adapter.install({
-      cwd: consumer,
-      packageName: library.name,
-      version,
-      dependencyField: declaration.field,
-      registryUrl: deps.registryUrl,
-    }),
+    adapter.install({ cwd: consumer, packages, registryUrl: deps.registryUrl }),
   );
-  if (result.exitCode !== 0) return fail(commandOutput(result));
+  if (result.exitCode !== 0) {
+    const hint = await unlinkedSiblingsHint(deps, project.manifest, consumer, installing);
+    return fail([commandOutput(result), hint].filter(Boolean).join('\n\n'), installing);
+  }
 
   const clearedCaches = cachePathsFor(project, deps.integrations);
   for (const path of clearedCaches) await deps.fs.remove(joinPath(consumer, path));
 
-  deps.events.emit({ type: 'install:succeeded', library: library.name, consumer, version });
+  for (const entry of installing) deps.events.emit({ type: 'install:succeeded', ...entry, consumer });
   if (clearedCaches.length > 0) deps.events.emit({ type: 'caches:cleared', consumer, paths: clearedCaches });
 
-  const link = await saveLink(deps, {
-    library: library.name,
-    consumer,
-    status: 'installed',
-    installedVersion: version,
-  });
-  return { outcome: { consumer, ok: true, version, clearedCaches }, link };
-}
-
-async function resolveTarget(deps: CoreDeps, library: LibraryRecord, consumer: string): Promise<Target> {
-  const project = await loadProject(deps.fs, consumer, deps.integrations);
-  const declaration = findDependency(project.manifest, library.name);
-  if (!declaration) {
-    throw new DryfitError('not-a-consumer', `${consumer} no longer depends on ${library.name}`, {
-      consumer,
-      library: library.name,
-    });
+  const links = await saveLinks(deps, consumer, versions, failures);
+  if (failures.size > 0) {
+    const output = [...failures.values()].join('\n');
+    return { outcome: { consumer, ok: false, version: main.version, libraries: versions, output }, links };
   }
-  return { project, declaration, adapter: adapterFor(deps, project) };
+  return {
+    outcome: { consumer, ok: true, version: main.version, libraries: versions, clearedCaches },
+    links,
+  };
 }
 
-/** Writes a link against freshly loaded state, so concurrent edits to other records survive. */
-async function saveLink(deps: CoreDeps, link: LinkRecord): Promise<LinkRecord> {
+/**
+ * The dev builds to install when a consumer's set is installed again: every linked library that has
+ * been published, at its latest dev version, with `first` (if linked) leading.
+ */
+export function linkedSet(
+  state: DryfitState,
+  consumer: string,
+  first?: string,
+): { library: LibraryRecord; version: string }[] {
+  const set = state.links.flatMap((link) => {
+    if (link.consumer !== consumer) return [];
+    const library = state.libraries.find((candidate) => candidate.name === link.library);
+    const version = library?.lastPublishedVersion;
+    return library && version !== undefined ? [{ library, version }] : [];
+  });
+  return [
+    ...set.filter((entry) => entry.library.name === first),
+    ...set.filter((entry) => entry.library.name !== first),
+  ];
+}
+
+/**
+ * When an install fails, registered libraries tied to the installed ones that the consumer uses but has
+ * not linked are the usual cause: their releases pin the old versions, or the dev builds pin theirs.
+ */
+async function unlinkedSiblingsHint(
+  deps: CoreDeps,
+  manifest: Manifest,
+  consumer: string,
+  installing: readonly LibraryVersion[],
+): Promise<string | undefined> {
   const state = await deps.state.load();
-  const previous = state.links.find((candidate) => sameLink(candidate, link));
-  // Keep what this function does not own (such as the guard flag); a failure keeps the last good version,
-  // and a success clears the last failure's message.
-  const merged: LinkRecord = {
-    ...previous,
-    ...link,
-    ...(link.status === 'failed' ? { installedVersion: previous?.installedVersion } : { message: undefined }),
-  };
-  await deps.state.save(withLink(state, merged));
-  return merged;
+  const graph = await loadLibraryGraph(deps.fs, state.libraries);
+  const linked = new Set(
+    state.links.filter((link) => link.consumer === consumer).map((link) => link.library),
+  );
+  const names = installing.map((entry) => entry.library);
+  const tied = new Set(names.flatMap((name) => [...connectedTo(graph, name)]));
+  const missing = [...tied].filter((name) => !linked.has(name) && findDependency(manifest, name)).sort();
+  if (missing.length === 0) return undefined;
+  const all = [...new Set([...linked, ...missing])].map((name) => `--library ${name}`).join(' ');
+  return `${consumer} also uses ${missing.join(', ')}, tied to ${names.join(', ')} by their workspace's dependencies but not linked. Libraries that pin each other must be installed together: dryfit link ${consumer} ${all}`;
+}
+
+/**
+ * Writes the links against freshly loaded state, so concurrent edits to other records survive. Keeps
+ * what this function does not own (such as the guard flag); a failure keeps the last good version and
+ * records why, and a success clears the last failure's message.
+ */
+async function saveLinks(
+  deps: CoreDeps,
+  consumer: string,
+  versions: readonly LibraryVersion[],
+  failures: ReadonlyMap<string, string>,
+): Promise<LinkRecord[]> {
+  let state = await deps.state.load();
+  const saved: LinkRecord[] = [];
+  for (const { library, version } of versions) {
+    const previous = state.links.find((candidate) => sameLink(candidate, { library, consumer }));
+    const failure = failures.get(library);
+    const link: LinkRecord =
+      failure === undefined
+        ? {
+            ...previous,
+            library,
+            consumer,
+            status: 'installed',
+            installedVersion: version,
+            message: undefined,
+          }
+        : {
+            ...previous,
+            library,
+            consumer,
+            status: 'failed',
+            installedVersion: previous?.installedVersion,
+            message: failureMessage(failure),
+          };
+    state = withLink(state, link);
+    saved.push(link);
+  }
+  await deps.state.save(state);
+  return saved;
 }

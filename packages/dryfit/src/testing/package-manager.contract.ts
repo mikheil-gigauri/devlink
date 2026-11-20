@@ -3,13 +3,15 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { npm, npmPublisher } from '../adapters/package-managers/npm.ts';
 import { DEV_VERSION_PATTERN } from '../core/guard/commit-guard.ts';
-import type { PackageManagerAdapter, Publisher, RunSpec } from '../core/ports.ts';
+import type { InstallPackage, PackageManagerAdapter, Publisher, RunSpec } from '../core/ports.ts';
 import { createRegistrySandbox, distTags, type RegistrySandbox } from './registry-sandbox.ts';
 
 const LIB = '@fixture/ui';
 const RELEASE = '1.0.0';
 const DEV = '1.0.1-dev.20261118143201';
 const FORMS = '@fixture/forms';
+/** A sibling from the same workspace that peers on the library exactly, release and dev build alike. */
+const PINNED = '@fixture/pinned';
 /** Nothing listens here: a consumer whose own registry for the scope is this can only get a dev build from dryfit. */
 const DEAD_REGISTRY = 'http://127.0.0.1:1/';
 
@@ -74,30 +76,31 @@ export function describePackageManagerContract(adapter: PackageManagerAdapter, s
     const createConsumer = async (
       field: 'dependencies' | 'devDependencies' = 'dependencies',
       otherDependencies: Readonly<Record<string, string>> = {},
+      devDependencies?: Readonly<Record<string, string>>,
     ) => {
       const dir = await sandbox.writePackage(join(sandbox.dir, `consumer-${++consumerCount}`), {
         name: `consumer-${consumerCount}`,
         version: '0.0.0',
         private: true,
         [field]: { [LIB]: `^${RELEASE}`, ...otherDependencies },
+        ...(devDependencies && { devDependencies }),
       });
       await setup.pointScopeAt(dir, sandbox.registry.url);
       await exec({ ...setup.install, cwd: dir });
       return dir;
     };
 
-    /** Installs the dev build the way dryfit does, with the project's own registry for the scope unreachable. */
+    /** Installs dev builds the way dryfit does, with the project's own registry for the scope unreachable. */
     const installDev = async (
       cwd: string,
       dependencyField: 'dependencies' | 'devDependencies' = 'dependencies',
+      others: readonly InstallPackage[] = [],
     ) => {
       await setup.pointScopeAt(cwd, DEAD_REGISTRY);
       await exec(
         adapter.install({
           cwd,
-          packageName: LIB,
-          version: DEV,
-          dependencyField,
+          packages: [{ name: LIB, version: DEV, dependencyField }, ...others],
           registryUrl: sandbox.registry.url,
         }),
       );
@@ -129,6 +132,15 @@ export function describePackageManagerContract(adapter: PackageManagerAdapter, s
       await publish(RELEASE, 'latest', `require(${JSON.stringify(LIB)})`, {
         name: FORMS,
         manifest: { peerDependencies: { [LIB]: `^${RELEASE}` } },
+      });
+      // Pinned exactly, as Nx release writes it; dryfit pins the dev build to the library's (ADR 0014).
+      await publish(RELEASE, 'latest', `require(${JSON.stringify(LIB)})`, {
+        name: PINNED,
+        manifest: { peerDependencies: { [LIB]: RELEASE } },
+      });
+      await publish(DEV, 'dryfit', `require(${JSON.stringify(LIB)})`, {
+        name: PINNED,
+        manifest: { peerDependencies: { [LIB]: DEV } },
       });
     }, 60_000);
     afterAll(() => sandbox?.dispose());
@@ -205,6 +217,21 @@ export function describePackageManagerContract(adapter: PackageManagerAdapter, s
         undefined,
         undefined,
       ]);
+    });
+
+    it('installs dev builds that pin each other exactly in one run, each keeping its own field', async () => {
+      // One at a time, either install conflicts with the other package's exact pin.
+      const consumer = await createConsumer('dependencies', {}, { [PINNED]: RELEASE });
+
+      await installDev(consumer, 'dependencies', [
+        { name: PINNED, version: DEV, dependencyField: 'devDependencies' },
+      ]);
+
+      const after = await manifestOf(consumer);
+      expect(after.dependencies[LIB]).toContain(DEV);
+      expect(after.devDependencies[PINNED]).toContain(DEV);
+      expect(after.dependencies[PINNED]).toBeUndefined();
+      expect(await requireFrom(consumer, PINNED)).toBe('dev build');
     });
 
     it('installs from the manifest when there is no lockfile', async () => {
