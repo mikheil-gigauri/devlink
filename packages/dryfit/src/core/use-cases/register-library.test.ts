@@ -39,7 +39,13 @@ describe('registerLibrary', () => {
     const { deps, store } = createScenario({
       state: {
         libraries: [
-          { name: '@acme/ui', root: LIB, publishDir: LIB, lastPublishedVersion: '1.4.1-dev.20261118143201' },
+          {
+            name: '@acme/ui',
+            root: LIB,
+            publishDir: LIB,
+            lastPublishedVersion: '1.4.1-dev.20261118143201',
+            pinnedSiblings: { '@acme/common': '19.24.1-dev.20261118120000' },
+          },
         ],
         links: [],
         groups: [],
@@ -54,6 +60,7 @@ describe('registerLibrary', () => {
         root: LIB,
         publishDir: `${LIB}/dist/ui`,
         lastPublishedVersion: '1.4.1-dev.20261118143201',
+        pinnedSiblings: { '@acme/common': '19.24.1-dev.20261118120000' },
       },
     ]);
   });

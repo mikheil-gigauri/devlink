@@ -92,8 +92,28 @@ export function staleBuilds(state: DryfitState, graph: LibraryGraph, names: Iter
     const library = state.libraries.find((candidate) => candidate.name === name);
     if (library?.lastPublishedVersion === undefined) return false;
     return [...(graph.get(name) ?? [])].some((sibling) => {
+      // Libraries that depend on each other in a cycle can never all pin the others' latest build:
+      // whichever publishes first pins the other's previous one. That is not stale, or every link
+      // would publish the whole cycle again.
+      if (dependsOn(graph, sibling, name)) return false;
       const version = latest.get(sibling);
       return version !== undefined && library.pinnedSiblings?.[sibling] !== version;
     });
   });
+}
+
+/** Whether `from` depends on `target`, directly or through other libraries. */
+function dependsOn(graph: LibraryGraph, from: string, target: string): boolean {
+  const seen = new Set<string>();
+  const queue = [from];
+  for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+    for (const dependency of graph.get(next) ?? []) {
+      if (dependency === target) return true;
+      if (!seen.has(dependency)) {
+        seen.add(dependency);
+        queue.push(dependency);
+      }
+    }
+  }
+  return false;
 }

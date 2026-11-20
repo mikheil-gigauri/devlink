@@ -49,6 +49,7 @@ const path = (): Schema<string> => ({
   parse(value, at = '') {
     if (typeof value !== 'string') return fail(at, 'expected a string');
     if (!value.startsWith('/')) return fail(at, 'expected an absolute path');
+    if (value.includes('\0')) return fail(at, 'must not contain a NUL character');
     return value;
   },
 });

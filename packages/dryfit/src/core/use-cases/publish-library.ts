@@ -41,7 +41,7 @@ export async function publishLibrary(
     previous: library.lastPublishedVersion,
   });
 
-  const pinned = withSiblingPins(manifest, libraries, library.name);
+  const pinned = withoutWorkspaceDevDependencies(withSiblingPins(manifest, libraries, library.name));
   refuseWorkspaceRanges(pinned, path);
 
   const staging = stagingDir(deps, library.name);
@@ -151,6 +151,23 @@ function withoutPublishRegistry(manifest: Manifest): Manifest {
   return Object.keys(kept).length === 0 ? rest : { ...rest, publishConfig: kept };
 }
 
+const WORKSPACE_RANGE = /^(workspace|catalog):/;
+
+/**
+ * Consumers never install a dependency's devDependencies, so a `workspace:` or `catalog:` one (a
+ * shared lint config, or a sibling also declared as a peer, ADR 0014) is dropped from the staged copy
+ * instead of refusing the publish.
+ */
+function withoutWorkspaceDevDependencies(manifest: Manifest): Manifest {
+  const { devDependencies } = manifest;
+  if (!isRecord(devDependencies)) return manifest;
+  const kept = Object.entries(devDependencies).filter(
+    ([, range]) => !(typeof range === 'string' && WORKSPACE_RANGE.test(range)),
+  );
+  if (kept.length === Object.keys(devDependencies).length) return manifest;
+  return { ...manifest, devDependencies: Object.fromEntries(kept) };
+}
+
 /**
  * `workspace:` and `catalog:` ranges mean something only inside the library's own pnpm, Yarn or Bun
  * workspace, which rewrites them when it publishes. A staged copy has no workspace around it, so
@@ -161,7 +178,7 @@ function refuseWorkspaceRanges(manifest: Manifest, path: string): void {
     const entries = manifest[field];
     return isRecord(entries)
       ? Object.entries(entries).filter(
-          ([, range]) => typeof range === 'string' && /^(workspace|catalog):/.test(range),
+          ([, range]) => typeof range === 'string' && WORKSPACE_RANGE.test(range),
         )
       : [];
   });

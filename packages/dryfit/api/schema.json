@@ -257,6 +257,9 @@
           "library": {
             "type": "string",
             "minLength": 1
+          },
+          "guard": {
+            "type": "boolean"
           }
         }
       }

@@ -11,6 +11,9 @@ inputs:
   registry-url:
     description: The registry to write an .npmrc for, when the job publishes.
     default: ""
+  ignore-scripts:
+    description: '"true" installs without running dependencies'' install scripts, for jobs that hold publishing credentials.'
+    default: "false"
 
 runs:
   using: composite
@@ -22,4 +25,8 @@ runs:
         cache: ${{ inputs.cache }}
         registry-url: ${{ inputs.registry-url }}
     - shell: bash
-      run: npm ci --prefer-offline --no-audit --no-fund
+      env:
+        IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
+      run: |
+        if [ "$IGNORE_SCRIPTS" = true ]; then set -- --ignore-scripts; fi
+        npm ci --prefer-offline --no-audit --no-fund "$@"

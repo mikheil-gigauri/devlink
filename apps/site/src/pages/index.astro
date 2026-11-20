@@ -12,6 +12,11 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 const repo = 'https://github.com/mikheil-gigauri/dryfit';
 const download = `${repo}/releases/latest/download/Dryfit.dmg`;
 const docs = (path: string) => `${base}${path}/`;
+const canonical = new URL(base, Astro.site).href;
+const title = 'dryfit: try your next release in the apps that will install it';
+const description =
+  'dryfit publishes every change you save to a registry on your machine, installs it in the apps you choose, and puts them back exactly as they were.';
+const ogImage = new URL(`${base}menu/online.light.png`, Astro.site).href;
 const apps = ['shop', 'admin', 'checkout'];
 
 const shortfalls = [
@@ -70,11 +75,15 @@ const steps = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>dryfit: try your next release in the apps that will install it</title>
-    <meta
-      name="description"
-      content="dryfit publishes every change you save to a registry on your machine, installs it in the apps you choose, and puts them back exactly as they were."
-    />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href={`${base}favicon.svg?v=2`} type="image/svg+xml" />
     <script is:inline>
       // Follow the theme chosen in the docs, else the system's.
@@ -132,7 +141,7 @@ const steps = [
             <span class="copied" role="status"></span>
           </div>
           <p class="next">
-            Works with npm, pnpm, Yarn and Bun on macOS and Linux.
+            Works with npm, pnpm, Yarn 2+ and Bun on macOS and Linux.
             <a href={docs('guides/getting-started')}>Read the getting started guide</a>
           </p>
         </div>

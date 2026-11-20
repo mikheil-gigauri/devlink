@@ -1,4 +1,4 @@
-import { type Dirent, type FSWatcher, watch } from 'node:fs';
+import { type Dirent, existsSync, type FSWatcher, statSync, watch } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import type { LibraryRecord } from '../../core/model.ts';
@@ -54,13 +54,15 @@ export class NodeLibraryWatcher implements LibraryWatcher {
 
   watch(
     library: Pick<LibraryRecord, 'name' | 'root' | 'publishDir'>,
-    onChange: () => void,
+    onChange: (paths?: readonly string[]) => void,
     onError: (error: Error) => void,
   ): () => void {
     const publishDir = relative(library.root, library.publishDir);
     const ignorePublishDir = publishDir !== '' && !publishDir.startsWith('..');
     let timer: NodeJS.Timeout | undefined;
     let close = () => {};
+    /** The changed paths since the last report; undefined once an event named none. */
+    let pending: Set<string> | undefined = new Set();
 
     /** Whether a path relative to the root can hold the library's sources. */
     const relevant = (filename: string | null) => {
@@ -72,9 +74,21 @@ export class NodeLibraryWatcher implements LibraryWatcher {
         !segments.some((segment) => IGNORED_FOLDERS.has(segment)) && !IGNORED_FILE.test(segments.at(-1) ?? '')
       );
     };
-    const changed = () => {
+    const report = () => {
+      // A deleted or moved library folder ends an FSEvents watch with one last change, not an error.
+      if (!existsSync(library.root)) {
+        fail(new Error(`${library.root} is gone`));
+        return;
+      }
+      const paths = pending === undefined ? undefined : [...pending];
+      pending = new Set();
+      onChange(paths);
+    };
+    const changed = (filename: string | null) => {
+      if (filename === null || filename === '') pending = undefined;
+      else pending?.add(join(library.root, filename));
       clearTimeout(timer);
-      timer = setTimeout(onChange, this.#debounceMs);
+      timer = setTimeout(report, this.#debounceMs);
     };
 
     let ended = false;
@@ -105,11 +119,11 @@ export class NodeLibraryWatcher implements LibraryWatcher {
   #recursive(
     root: string,
     relevant: (filename: string | null) => boolean,
-    changed: () => void,
+    changed: (filename: string | null) => void,
     fail: (error: Error) => void,
   ): () => void {
     const watcher = this.#fsWatch(root, { recursive: true }, (_event, filename) => {
-      if (relevant(filename)) changed();
+      if (relevant(filename)) changed(filename);
     });
     // A deleted or unmounted folder, or running out of file handles, ends the watch.
     watcher.on('error', fail);
@@ -119,11 +133,13 @@ export class NodeLibraryWatcher implements LibraryWatcher {
   #walk(
     root: string,
     relevant: (filename: string | null) => boolean,
-    changed: () => void,
+    changed: (filename: string | null) => void,
     fail: (error: Error) => void,
   ): () => void {
     /** Keyed by folder relative to the root, '' being the root itself. */
     const watchers = new Map<string, FSWatcher>();
+    /** The inode each watched folder had, to tell a folder deleted and created again from the same one. */
+    const inodes = new Map<string, number>();
     let closed = false;
 
     const forget = (folder: string) => {
@@ -131,6 +147,7 @@ export class NodeLibraryWatcher implements LibraryWatcher {
         if (key === folder || key.startsWith(folder + sep)) {
           watcher.close();
           watchers.delete(key);
+          inodes.delete(key);
         }
       }
     };
@@ -141,14 +158,20 @@ export class NodeLibraryWatcher implements LibraryWatcher {
       const watcher = this.#fsWatch(join(root, folder), (_event, filename) => {
         const entry = filename === null ? folder : join(folder, filename);
         if (!relevant(entry)) return;
-        changed();
-        if (filename !== null) void add(entry);
+        changed(filename === null ? null : entry);
+        if (filename === null) return;
+        // inotify reports a deleted folder only as a rename in its parent, never as an error on its
+        // own watch; one created again under the same name must be watched afresh.
+        if (watchers.has(entry) && inodeOf(join(root, entry)) !== inodes.get(entry)) forget(entry);
+        void add(entry);
       });
       watcher.on('error', (error) => {
         if (folder === '') fail(error);
         else forget(folder);
       });
       watchers.set(folder, watcher);
+      const inode = inodeOf(join(root, folder));
+      if (inode !== undefined) inodes.set(folder, inode);
     };
 
     /** Watches the folders below one already watched, listing it after its watch starts so nothing is missed. */
@@ -187,5 +210,13 @@ export class NodeLibraryWatcher implements LibraryWatcher {
       for (const watcher of watchers.values()) watcher.close();
       watchers.clear();
     };
+  }
+}
+
+function inodeOf(path: string): number | undefined {
+  try {
+    return statSync(path).ino;
+  } catch {
+    return undefined;
   }
 }

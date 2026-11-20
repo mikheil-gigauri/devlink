@@ -3,7 +3,12 @@ import type { DryfitState, LibraryRecord } from '../core/model.ts';
 import { ADMIN, createScenario, LIB, SHOP } from '../testing/scenario.ts';
 import type { Health } from './api.ts';
 import { EventHub, type ServerEvent } from './event-hub.ts';
-import { type CommitGuard, DaemonService, type LibraryWatcher } from './service.ts';
+import {
+  type CommitGuard,
+  DaemonService,
+  type DaemonServiceOptions,
+  type LibraryWatcher,
+} from './service.ts';
 
 const library: LibraryRecord = { name: '@acme/ui', root: LIB, publishDir: `${LIB}/dist/ui` };
 const registered: DryfitState = { libraries: [library], links: [], groups: [] };
@@ -17,9 +22,13 @@ const health: Health = {
 };
 
 class FakeWatcher implements LibraryWatcher {
-  readonly watching = new Map<string, () => void>();
+  readonly watching = new Map<string, (paths?: readonly string[]) => void>();
   readonly failures = new Map<string, (error: Error) => void>();
-  watch(watched: LibraryRecord, onChange: () => void, onError: (error: Error) => void) {
+  watch(
+    watched: LibraryRecord,
+    onChange: (paths?: readonly string[]) => void,
+    onError: (error: Error) => void,
+  ) {
     this.watching.set(watched.name, onChange);
     this.failures.set(watched.name, onError);
     return () => this.watching.delete(watched.name);
@@ -39,9 +48,14 @@ class FakeGuard implements CommitGuard {
   async remove(consumer: string) {
     this.installed.delete(consumer);
   }
+  /** Apps in one repository, keyed by app: they share its hook. */
+  readonly repos = new Map<string, string>();
+  async hookPath(consumer: string) {
+    return `${this.repos.get(consumer) ?? consumer}/.git/hooks/pre-commit`;
+  }
 }
 
-function setup(state: DryfitState = registered) {
+function setup(state: DryfitState = registered, extra: Partial<DaemonServiceOptions> = {}) {
   const scenario = createScenario({ state });
   const hub = new EventHub({ now: () => new Date('2026-11-18T10:00:00Z') });
   const events: ServerEvent[] = [];
@@ -68,6 +82,7 @@ function setup(state: DryfitState = registered) {
     onShutdown: () => {
       shutdowns += 1;
     },
+    ...extra,
   });
   return {
     ...scenario,
@@ -293,6 +308,44 @@ describe('DaemonService', () => {
     expect(guard.installed.size).toBe(0);
   });
 
+  it('keeps the guard in a hook another linked app of the same repository still needs', async () => {
+    const { service, guard } = setup();
+    guard.repos.set(SHOP, '/repos').set(ADMIN, '/repos');
+    await service.call('link', { library: '@acme/ui', consumer: SHOP });
+    await service.call('link', { library: '@acme/ui', consumer: ADMIN });
+
+    await service.call('restore', { consumer: SHOP });
+
+    expect(guard.installed.has(SHOP)).toBe(true);
+  });
+
+  it('reports a guard that could not be installed as a warning on a link that succeeded', async () => {
+    const { service, guard, store } = setup();
+    guard.broken.add(SHOP);
+
+    const result = await service.call('link', { library: '@acme/ui', consumer: SHOP });
+
+    expect(result).toMatchObject({
+      guard: 'failed',
+      message: expect.stringContaining('EACCES'),
+      link: { status: 'installed' },
+    });
+    expect((await store.load()).links).toHaveLength(1);
+  });
+
+  it('uses the spelling a link already has for another spelling of the same folder', async () => {
+    const { service, store } = setup(registered, {
+      canonicalPath: (path) => (path === '/links/shop' ? SHOP : path),
+    });
+    await service.call('link', { library: '@acme/ui', consumer: SHOP });
+
+    await service.call('link', { library: '@acme/ui', consumer: '/links/shop' });
+    expect((await store.load()).links).toHaveLength(1);
+
+    expect(await service.call('restore', { consumer: '/links/shop' })).toEqual({ ok: true });
+    expect((await store.load()).links).toEqual([]);
+  });
+
   it('watches a library, syncs when it changes, and remembers the choice', async () => {
     const { service, watcher, store, events } = setup();
     await service.call('link', { library: '@acme/ui', consumer: SHOP });
@@ -305,6 +358,47 @@ describe('DaemonService', () => {
     expect((await store.load()).libraries[0]?.watch).toBe(true);
     expect(types(events)).toContain('library:changed');
     expect(types(events)).toContain('publish:succeeded');
+  });
+
+  it('ignores what its own sync writes inside the library folder, so a sync never triggers the next', async () => {
+    const example = `${LIB}/example`;
+    const inPlace: LibraryRecord = {
+      ...library,
+      publishDir: LIB,
+      build: { command: 'npm', args: ['run', 'build'], cwd: LIB },
+    };
+    const { service, watcher, events, fs } = setup({ ...registered, libraries: [inPlace] });
+    await fs.writeText(
+      `${LIB}/package.json`,
+      JSON.stringify({
+        name: '@acme/ui',
+        version: '1.4.0',
+        main: './lib/index.js',
+        exports: { './styles.css': './src/styles.css' },
+      }),
+    );
+    await fs.writeText(
+      `${example}/package.json`,
+      JSON.stringify({ name: 'example', dependencies: { '@acme/ui': '^1.4.0' } }),
+    );
+    await service.call('link', { library: '@acme/ui', consumer: example });
+    await service.call('watch', { library: '@acme/ui', enabled: true });
+    const settle = async () => {
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      await service.idle();
+    };
+
+    watcher.watching.get('@acme/ui')?.([
+      `${example}/package.json`,
+      `${example}/package-lock.json`,
+      `${LIB}/lib/index.js`,
+    ]);
+    await settle();
+    expect(types(events)).not.toContain('library:changed');
+
+    watcher.watching.get('@acme/ui')?.([`${LIB}/lib/index.js`, `${LIB}/src/styles.css`]);
+    await settle();
+    expect(types(events)).toContain('library:changed');
   });
 
   it('stops watching when asked, and when the library is unregistered', async () => {

@@ -23,10 +23,38 @@ describe('parseNpmrc', () => {
       ]),
     );
   });
+
+  it('unquotes values as npm does, before expanding references', () => {
+    const npmrc = [
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: npmrc syntax, which the parser expands
+      '//a.example/:_authToken="${TOKEN}"',
+      "//b.example/:_authToken='abc'",
+      '//c.example/:_authToken="unterminated',
+    ].join('\n');
+
+    expect(parseNpmrc(npmrc, { TOKEN: 's3cret' })).toEqual(
+      new Map([
+        ['//a.example/:_authToken', 's3cret'],
+        ['//b.example/:_authToken', 'abc'],
+        ['//c.example/:_authToken', '"unterminated'],
+      ]),
+    );
+  });
 });
 
 describe('uplinksFrom', () => {
   const ownRegistry = 'http://127.0.0.1:4874/';
+
+  it('skips a registry URL that does not parse rather than failing to start', () => {
+    const uplinks = uplinksFrom({
+      registry: 'not a url',
+      scoped: { '@x': 'npm.x.example/' },
+      settings: new Map(),
+      ownRegistry,
+    });
+
+    expect(uplinks).toEqual({ 'registry.npmjs.org': { url: 'https://registry.npmjs.org/' } });
+  });
 
   it('proxies the default registry for everything and each scoped registry for its scope', () => {
     const result = uplinksFrom({

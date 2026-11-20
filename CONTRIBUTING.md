@@ -32,8 +32,10 @@ Where things live:
   A new package manager adapter must pass `describePackageManagerContract`.
 - `packages/dryfit/src/daemon` and `src/cli`: the background service, its HTTP API, and the CLI.
 - `apps/menubar`: the macOS menu bar app (Swift). Run its tests with `npm run menubar:test`.
-- `apps/site`: the website. Guides are in `src/content/docs/guides`; the CLI reference and design pages
-  are generated, so edit `USAGE` in `src/cli/main.ts` or `docs/adr` instead.
+- `apps/site`: the website. Guides are in `src/content/docs/guides`; the CLI reference is generated, so
+  edit `USAGE` in `packages/dryfit/src/cli/main.ts` instead.
+- `apps/promo`: the promo video (Remotion). It is not a workspace and has its own lockfile; run
+  `npm ci --prefix apps/promo`, then `npm run studio --prefix apps/promo`.
 - `docs/adr`: one record per design decision. A change to a decision gets an amendment or a new record.
 
 ## Changesets
@@ -51,7 +53,7 @@ one or two sentences for the changelog, in the user's terms. Changes to tests, d
 
 Releases run from `.github/workflows/release.yml` on every push to `main`, once CI (`ci.yml`, which
 it calls) passes for that commit. While changesets are pending,
-it keeps a "Version packages" pull request up to date. Merging that pull request publishes to npm with
+it keeps a "Release" pull request up to date. Merging that pull request publishes to npm with
 provenance, tags `@dryfit/cli@<version>`, and builds the menu bar app.
 
 Publishing needs no npm token: the `@dryfit/cli` package trusts this workflow through npm's trusted

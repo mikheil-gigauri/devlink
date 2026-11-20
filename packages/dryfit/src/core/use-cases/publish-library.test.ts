@@ -28,7 +28,7 @@ describe('publishLibrary', () => {
       `${LIB} npm run build`,
       expect.stringMatching(
         new RegExp(
-          `^${HOME}/staging/acme_ui-[0-9a-f]{8} npm publish --registry=http://127.0.0.1:4873/ --@acme:registry=http://127.0.0.1:4873/ --tag=dryfit`,
+          `^${HOME}/staging/acme_ui-[0-9a-f]{8} npm publish --ignore-scripts --registry=http://127.0.0.1:4873/ --@acme:registry=http://127.0.0.1:4873/ --tag=dryfit`,
         ),
       ),
     ]);
@@ -145,6 +145,16 @@ describe('publishLibrary', () => {
       });
 
       expect(staged.dependencies).toEqual({ '@acme/common': '19.24.1-dev.20261118120000' });
+    });
+
+    it('drops workspace: and catalog: devDependencies, which consumers never install, instead of refusing', async () => {
+      const { staged } = await stagedManifestFor(workspace(), {
+        peerDependencies: { '@acme/common': 'workspace:^' },
+        devDependencies: { '@acme/common': 'workspace:*', eslint: 'catalog:', vitest: '^5.0.0' },
+      });
+
+      expect(staged.peerDependencies).toEqual({ '@acme/common': '19.24.1-dev.20261118120000' });
+      expect(staged.devDependencies).toEqual({ vitest: '^5.0.0' });
     });
 
     it('still refuses a workspace: range on a sibling with no dev build to pin', async () => {

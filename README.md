@@ -37,7 +37,7 @@ drag the app to Applications. It is not notarized yet, so the first time, macOS 
 once, then choose **Open Anyway** in System Settings → Privacy & Security.
 
 The [getting started guide](https://mikheil-gigauri.github.io/dryfit/guides/getting-started/) walks
-through it, and the [design decisions](docs/adr/README.md) explain why it works the way it does.
+through it, and the [design decisions](https://github.com/mikheil-gigauri/dryfit/blob/main/docs/adr/README.md) explain why it works the way it does.
 
 ## Development
 
@@ -64,13 +64,13 @@ The website lives in `apps/site` (Astro and Starlight, Node 22.23.4 or newer):
 
 ```bash
 npm run dev -w @dryfit/site     # http://localhost:4321/dryfit/
-npm run build -w @dryfit/site   # generates the CLI reference and design pages, then builds
+npm run build -w @dryfit/site   # generates the CLI reference and the menu screenshots, then builds
 ```
 
 After changing the daemon's API, run `npm run api:export -w @dryfit/cli` so both sides share the new
 contract. `SNAPSHOT_RECORD=1 npm run menubar:test` records the snapshots again after a deliberate UI change.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how changes and releases work.
+See [CONTRIBUTING.md](https://github.com/mikheil-gigauri/dryfit/blob/main/CONTRIBUTING.md) for how changes and releases work.
 
 ## License
 

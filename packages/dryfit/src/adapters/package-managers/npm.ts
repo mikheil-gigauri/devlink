@@ -49,6 +49,9 @@ export const npmPublisher: Publisher = {
       command: 'npm',
       args: [
         'publish',
+        // dryfit has built the library already. Its own prepublishOnly/prepack/prepare/postpublish
+        // scripts would run again in the staging copy, which has no node_modules, on every save.
+        '--ignore-scripts',
         `--registry=${registryUrl}`,
         ...(scope === undefined ? [] : [`--${scope}:registry=${registryUrl}`]),
         `--tag=${tag}`,

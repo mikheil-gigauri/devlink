@@ -36,3 +36,28 @@ describe('launchAgentPlist', () => {
     expect(plist).toContain('<key>RunAtLoad</key>\n  <true/>');
   });
 });
+
+describe('agentEnvironment', () => {
+  it('keeps proxy, CA and registry settings for the login agent, but no secrets or npm-injected values', async () => {
+    const { agentEnvironment } = await import('./local.ts');
+
+    expect(
+      agentEnvironment({
+        PATH: '/usr/bin',
+        HTTPS_PROXY: 'http://proxy:8080',
+        no_proxy: 'localhost',
+        NODE_EXTRA_CA_CERTS: '/etc/corp.pem',
+        NPM_CONFIG_REGISTRY: 'https://npm.corp.example/',
+        npm_config_registry: 'https://injected.example/',
+        NPM_TOKEN: 'secret',
+        DRYFIT_HOME: '/tmp/dryfit',
+      }),
+    ).toEqual({
+      HTTPS_PROXY: 'http://proxy:8080',
+      no_proxy: 'localhost',
+      NODE_EXTRA_CA_CERTS: '/etc/corp.pem',
+      NPM_CONFIG_REGISTRY: 'https://npm.corp.example/',
+      DRYFIT_HOME: '/tmp/dryfit',
+    });
+  });
+});

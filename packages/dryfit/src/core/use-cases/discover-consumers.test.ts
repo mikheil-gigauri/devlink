@@ -80,6 +80,43 @@ describe('discoverConsumers', () => {
     expect(roots).toEqual([ADMIN, '/repos/blog/packages/widget', SHOP]);
   });
 
+  it('does not offer the packages of a workspace, which install through its root', async () => {
+    const { deps } = createScenario({
+      state: registered,
+      files: {
+        ...scenarioFiles(),
+        '/repos/mono/package.json': json({ name: 'mono', workspaces: ['packages/*'] }),
+        '/repos/mono/packages/widget/package.json': json({
+          name: 'widget',
+          dependencies: { '@acme/ui': '1.4.0' },
+        }),
+      },
+    });
+
+    const roots = (await discoverConsumers(deps, { roots: ['/repos'] })).map((consumer) => consumer.root);
+
+    expect(roots).toEqual([ADMIN, SHOP]);
+  });
+
+  it('skips a folder it may not read, and still lists the apps found elsewhere', async () => {
+    const { deps } = createScenario({ state: registered });
+    const denied = Object.assign(new Error('EPERM: operation not permitted, scandir'), { code: 'EPERM' });
+    const fs = new Proxy(deps.fs, {
+      get: (target, key) => {
+        if (key === 'readDir')
+          return (dir: string) => (dir === ADMIN ? Promise.reject(denied) : target.readDir(dir));
+        const value = Reflect.get(target, key, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+
+    const roots = (await discoverConsumers({ ...deps, fs }, { roots: ['/repos'] })).map(
+      (consumer) => consumer.root,
+    );
+
+    expect(roots).toEqual([SHOP]);
+  });
+
   it('keeps searching below an unreadable package.json', async () => {
     const dependent = json({ name: 'app', dependencies: { '@acme/ui': '1.4.0' } });
     const { deps } = createScenario({

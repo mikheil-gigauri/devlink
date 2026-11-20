@@ -133,6 +133,13 @@ describe('API server', () => {
     expect([garbled.status, huge.status]).toEqual([400, 413]);
   });
 
+  it('refuses a path with a NUL character as a bad request, not an internal error', async () => {
+    const reply = await post('restore', { consumer: '/repos/sh\u0000op' });
+
+    expect(reply.status).toBe(400);
+    expect(reply.json()).toMatchObject({ error: { code: 'invalid-request' } });
+  });
+
   it('passes an expected failure through with its code and details', async () => {
     respond = async () => {
       throw new DryfitError('library-not-found', 'No library named @acme/x is registered', {
@@ -142,7 +149,7 @@ describe('API server', () => {
 
     const reply = await post('sync', { library: '@acme/x' });
 
-    expect(reply.status).toBe(422);
+    expect(reply.status).toBe(404);
     expect(reply.json()).toEqual({
       error: {
         code: 'library-not-found',

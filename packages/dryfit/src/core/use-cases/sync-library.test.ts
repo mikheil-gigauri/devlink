@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ADMIN, createScenario, json, LIB, SHOP } from '../../testing/scenario.ts';
 import type { DryfitState } from '../model.ts';
-import { syncLibrary } from './sync-library.ts';
+import { staleBuilds, syncLibrary } from './sync-library.ts';
 
 const VERSION = '1.4.1-dev.20261118143201';
 
@@ -183,5 +183,36 @@ describe('syncLibrary', () => {
       code: 'publish-failed',
     });
     expect(process.lines(SHOP)).toEqual([]);
+  });
+});
+
+describe('staleBuilds', () => {
+  it('does not call libraries that depend on each other stale for pinning each other one build behind', () => {
+    const graph = new Map([
+      ['@acme/a', new Set(['@acme/b'])],
+      ['@acme/b', new Set(['@acme/a'])],
+    ]);
+    const state = {
+      libraries: [
+        {
+          name: '@acme/a',
+          root: '/a',
+          publishDir: '/a',
+          lastPublishedVersion: 'a2',
+          pinnedSiblings: { '@acme/b': 'b1' },
+        },
+        {
+          name: '@acme/b',
+          root: '/b',
+          publishDir: '/b',
+          lastPublishedVersion: 'b2',
+          pinnedSiblings: { '@acme/a': 'a2' },
+        },
+      ],
+      links: [],
+      groups: [],
+    };
+
+    expect(staleBuilds(state, graph, ['@acme/a', '@acme/b'])).toEqual([]);
   });
 });

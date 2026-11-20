@@ -407,6 +407,54 @@ describe('dryfit CLI', () => {
     expect(JSON.parse(stdout)).toEqual(status());
   });
 
+  it.each(['tsc -p a.json && node copy.js', 'NODE_ENV=production vite build', 'tsc | tee log'])(
+    'refuses shell syntax in --build, which runs without a shell: %s',
+    async (build) => {
+      const client = new FakeClient();
+      const { code, stderr } = await dryfit(['add', '--build', build], { client });
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('npm run <script>');
+      expect(client.calls.some((call) => call.name === 'register')).toBe(false);
+    },
+  );
+
+  it('refuses --group together with apps, and with --library or --all on restore', async () => {
+    for (const argv of [
+      'link --group checkout /Users/me/repos/extra',
+      'restore --group checkout --library @acme/forms',
+      'restore --group checkout --all',
+    ]) {
+      const client = new FakeClient();
+      const { code } = await dryfit(argv, { client, cwd: '/Users/me/repos/ui-lib' });
+      expect(code, argv).toBe(2);
+      expect(
+        client.calls.some((call) => call.name === 'linkGroup' || call.name === 'restoreGroup'),
+        argv,
+      ).toBe(false);
+    }
+  });
+
+  it('passes --no-guard to a group link', async () => {
+    const client = new FakeClient();
+    client.replies.linkGroup = [];
+
+    await dryfit('link --group checkout --no-guard', { client, cwd: '/Users/me/repos/ui-lib' });
+
+    expect(client.calls.find((call) => call.name === 'linkGroup')?.input).toEqual({
+      group: 'checkout',
+      library: '@acme/ui',
+      guard: false,
+    });
+  });
+
+  it('prints only JSON for restore --all --json when nothing is linked', async () => {
+    const { code, stdout } = await dryfit('restore --all --json');
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual([]);
+  });
+
   it('splits --build into a command and arguments for registration', async () => {
     const client = new FakeClient();
     client.replies.register = {

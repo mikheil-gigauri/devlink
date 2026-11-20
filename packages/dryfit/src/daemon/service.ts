@@ -25,14 +25,23 @@ import { JobQueue } from './job-queue.ts';
 
 /** Calls back when a library's sources change. Returns a function that stops watching. */
 export interface LibraryWatcher {
-  /** `onError` reports a watch that has ended on its own (folder gone, out of file handles). */
-  watch(library: LibraryRecord, onChange: () => void, onError: (error: Error) => void): () => void;
+  /**
+   * `onChange` gets the absolute paths that changed, or nothing when the platform did not say which.
+   * `onError` reports a watch that has ended on its own (folder gone, out of file handles).
+   */
+  watch(
+    library: LibraryRecord,
+    onChange: (paths?: readonly string[]) => void,
+    onError: (error: Error) => void,
+  ): () => void;
 }
 
 /** Puts the commit guard into a consumer's pre-commit hook, or takes it out (ADR 0012). */
 export interface CommitGuard {
   install(consumer: string): Promise<'installed' | 'not-a-repo'>;
   remove(consumer: string): Promise<void>;
+  /** The hook file the guard goes into; apps in one repository share it. */
+  hookPath(consumer: string): Promise<string | undefined>;
 }
 
 export interface DaemonServiceOptions {
@@ -49,6 +58,11 @@ export interface DaemonServiceOptions {
   readonly saveHiddenApps: (apps: readonly string[]) => Promise<void>;
   readonly watcher: LibraryWatcher;
   readonly guard: CommitGuard;
+  /**
+   * The one spelling of a folder: symlinks resolved, and on macOS the case it has on disk. Defaults to
+   * the path as given. Two spellings of one app would otherwise get two links and two snapshots.
+   */
+  readonly canonicalPath?: (path: string) => string;
   /** Called after a `shutdown` request has been answered. */
   readonly onShutdown: () => void;
 }
@@ -206,11 +220,21 @@ export class DaemonService {
 
       link: ({ library, libraries = [], consumer, guard = true }) =>
         job(`link ${[library, ...libraries].join(', ')} into ${consumer}`, async () => {
-          const links = await linkLibraries(deps, { libraries: [library, ...libraries], consumer });
+          const links = await linkLibraries(deps, {
+            libraries: [library, ...libraries],
+            consumer: await this.#spelling(consumer),
+          });
           const [link] = links;
           if (!link) throw new DryfitError('invalid-request', `Linking ${library} returned nothing`, {});
           if (!guard) return { link, links, guard: 'declined' as const };
-          const installed = await this.#options.guard.install(link.consumer);
+          let installed: 'installed' | 'not-a-repo';
+          try {
+            installed = await this.#options.guard.install(link.consumer);
+          } catch (error) {
+            // The app is linked by now; a guard that could not go in is a warning, not a failed link.
+            const message = error instanceof Error ? error.message : String(error);
+            return { link, links, guard: 'failed' as const, message };
+          }
           if (installed !== 'installed') return { link, links, guard: installed };
           const guarded = [];
           for (const each of links) guarded.push(await this.#markGuarded(each));
@@ -219,10 +243,17 @@ export class DaemonService {
 
       restore: ({ consumer, library, force }) =>
         job(library ? `restore ${library} in ${consumer}` : `restore ${consumer}`, async () => {
-          return this.#restoring(() => restoreConsumer(deps, { consumer, library, force }));
+          const spelled = await this.#spelling(consumer);
+          return this.#restoring(() => restoreConsumer(deps, { consumer: spelled, library, force }));
         }),
 
-      saveGroup: (input) => job(`save group ${input.name}`, () => saveGroup(deps, input)),
+      saveGroup: (input) =>
+        job(`save group ${input.name}`, async () =>
+          saveGroup(deps, {
+            ...input,
+            consumers: await Promise.all(input.consumers.map((c) => this.#spelling(c))),
+          }),
+        ),
 
       deleteGroup: ({ name }) =>
         job(`delete group ${name}`, async () => {
@@ -230,9 +261,10 @@ export class DaemonService {
           return { ok: true };
         }),
 
-      linkGroup: (input) =>
+      linkGroup: ({ guard = true, ...input }) =>
         job(`link ${input.library} into group ${input.group}`, async () => {
           const outcomes = await linkGroup(deps, input);
+          if (!guard) return outcomes;
           const state = await deps.state.load();
           const reported: GroupMemberOutcome[] = [];
           // One at a time: marking a link as guarded rewrites the state file.
@@ -266,18 +298,20 @@ export class DaemonService {
 
       roots: async () => ({ roots: await this.#options.roots() }),
 
-      setRoots: async (input) => {
-        const roots = [...new Set(input.roots.map((root) => joinPath(root)))];
-        await this.#options.saveRoots(roots);
-        return { roots };
-      },
+      // A job, like hideApps: both rewrite config.json, and one must not undo the other.
+      setRoots: (input) =>
+        job('set project folders', async () => {
+          const roots = [...new Set(input.roots.map((root) => joinPath(root)))];
+          await this.#options.saveRoots(roots);
+          return { roots };
+        }),
 
       hiddenApps: async () => ({ hiddenApps: await this.#options.hiddenApps() }),
 
       // A job, so a link cannot slip in between the check and the save.
       hideApps: ({ consumers, hidden }) =>
         job(`${hidden ? 'hide' : 'show'} ${consumers.join(', ')}`, async () => {
-          const apps = consumers.map((consumer) => joinPath(consumer));
+          const apps = await Promise.all(consumers.map((consumer) => this.#spelling(consumer)));
           const current = await this.#options.hiddenApps();
           if (hidden) {
             const { links } = await deps.state.load();
@@ -322,10 +356,18 @@ export class DaemonService {
     const { name } = library;
     const stop = this.#options.watcher.watch(
       library,
-      () => {
-        this.#options.hub.emit({ type: 'library:changed', library: name });
-        // The outcome reaches clients as job events; nothing is waiting on this promise.
-        this.call('sync', { library: name }).catch(() => {});
+      (paths) => {
+        const sync = () => {
+          this.#options.hub.emit({ type: 'library:changed', library: name });
+          // The outcome reaches clients as job events; nothing is waiting on this promise.
+          this.call('sync', { library: name }).catch(() => {});
+        };
+        if (paths === undefined || paths.length === 0) return sync();
+        // A sync's own writes (an app inside the library folder, build output next to the sources)
+        // would otherwise start the next sync, and that one the next, forever.
+        void this.#writtenByDryfit(name, paths).then((ours) => {
+          if (!ours) sync();
+        });
       },
       (error) => {
         // Say so and record it, rather than showing a library as watched that never syncs again.
@@ -335,6 +377,65 @@ export class DaemonService {
       },
     );
     this.#watching.set(name, stop);
+  }
+
+  /**
+   * Whether every changed path is one dryfit writes while syncing `name`: inside an app linked to it
+   * (install rewrites its package.json and lockfile), or, for a library built in place, inside the
+   * build output its package.json points at.
+   */
+  async #writtenByDryfit(name: string, paths: readonly string[]): Promise<boolean> {
+    try {
+      const state = await this.#deps.state.load();
+      const library = state.libraries.find((entry) => entry.name === name);
+      if (!library) return false;
+      const consumers = [...new Set(state.links.map((link) => link.consumer))];
+      const outputs =
+        library.build && library.publishDir === library.root ? await this.#buildOutputs(library) : [];
+      const written = [...consumers, ...outputs].filter((dir) => isInside(dir, library.root));
+      return paths.every((path) => written.some((dir) => isInside(path, dir)));
+    } catch {
+      return false;
+    }
+  }
+
+  /** The top-level folders a library built in place writes to, from its package.json's entry points. */
+  async #buildOutputs(library: LibraryRecord): Promise<string[]> {
+    const text = await this.#deps.fs.readText(joinPath(library.root, 'package.json'));
+    if (text === undefined) return [];
+    const manifest: unknown = JSON.parse(text);
+    if (typeof manifest !== 'object' || manifest === null) return [];
+    const targets: string[] = [];
+    const collect = (value: unknown): void => {
+      if (typeof value === 'string') targets.push(value);
+      else if (Array.isArray(value)) value.forEach(collect);
+      else if (typeof value === 'object' && value !== null) Object.values(value).forEach(collect);
+    };
+    const fields = manifest as Record<string, unknown>;
+    for (const field of ['main', 'module', 'types', 'typings', 'exports', 'bin']) collect(fields[field]);
+    const folders = targets.flatMap((target) => {
+      const [first, ...rest] = target.replace(/^\.\//, '').split('/');
+      // Only folders: a top-level file may be the source itself. Never the usual source folders,
+      // which entry points sometimes name for raw assets (`./src/styles.css`).
+      return rest.length > 0 && first && !first.startsWith('.') && !SOURCE_FOLDERS.has(first) ? [first] : [];
+    });
+    return [...new Set(folders)].map((folder) => joinPath(library.root, folder));
+  }
+
+  /**
+   * The spelling to use for an app: the one its links or groups already use, when they name the same
+   * folder (its snapshot is filed under that spelling), or else its canonical path.
+   */
+  async #spelling(path: string): Promise<string> {
+    const canonical = this.#options.canonicalPath ?? ((given: string) => given);
+    const wanted = canonical(joinPath(path));
+    const { links, groups } = await this.#deps.state.load();
+    const known = new Set([
+      ...links.map((link) => link.consumer),
+      ...groups.flatMap((group) => group.consumers),
+    ]);
+    for (const stored of known) if (stored === wanted || canonical(stored) === wanted) return stored;
+    return wanted;
   }
 
   #stopWatching(name: string): void {
@@ -370,11 +471,27 @@ export class DaemonService {
     } finally {
       const { links } = await this.#deps.state.load();
       const linked = new Set(links.map((link) => link.consumer));
+      // Apps in one repository share a hook: it stays while any of them is still linked and guarded.
+      const kept = new Set<string>();
+      for (const link of links) {
+        if (!link.guard) continue;
+        const hook = await this.#options.guard.hookPath(link.consumer).catch(() => undefined);
+        if (hook !== undefined) kept.add(hook);
+      }
       for (const consumer of guarded) {
-        if (!linked.has(consumer)) await this.#options.guard.remove(consumer).catch(() => undefined);
+        if (linked.has(consumer)) continue;
+        const hook = await this.#options.guard.hookPath(consumer).catch(() => undefined);
+        if (hook !== undefined && kept.has(hook)) continue;
+        await this.#options.guard.remove(consumer).catch(() => undefined);
       }
     }
   }
+}
+
+const SOURCE_FOLDERS = new Set(['src', 'source', 'sources', 'projects', 'packages']);
+
+function isInside(path: string, dir: string): boolean {
+  return path === dir || path.startsWith(dir.endsWith('/') ? dir : `${dir}/`);
 }
 
 function describe(error: unknown): { code: string; message: string } {

@@ -1,4 +1,5 @@
-import type { Server } from 'node:http';
+import { realpathSync } from 'node:fs';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { homedir } from 'node:os';
 import { GitCommitGuard } from '../adapters/git/git-commit-guard.ts';
@@ -48,16 +49,33 @@ export async function startDaemon(options: StartDaemonOptions): Promise<RunningD
   const abort = new AbortController();
   const runner = new NodeProcessRunner({ baseEnv: env, signal: abort.signal });
 
-  const ownRegistry = `http://${HOST}:${config.ports.registry}/`;
-  const npmRegistries = await readNpmRegistries(runner, { cwd: env.HOME ?? homedir(), env });
-  const registry = await VerdaccioRegistry.start({
-    storage: home.paths.registry,
-    port: config.ports.registry,
-    uplinks: uplinksFrom({ ...npmRegistries, ownRegistry }),
-    logLevel: 'warn',
-  });
+  // The API port is the single-instance lock (ADR 0012), so it is taken first: a second daemon must
+  // fail here, before its registry replaces the running one's credentials. Until the daemon is ready,
+  // requests are told to wait.
+  const server = createServer();
+  const starting = (_req: IncomingMessage, res: ServerResponse) => {
+    res.writeHead(503, { 'content-type': 'application/json', 'retry-after': '1' });
+    res.end(JSON.stringify({ error: { code: 'daemon-starting', message: 'dryfit is starting' } }));
+  };
+  server.on('request', starting);
+  const port = await listen(server, config.ports.api);
 
-  const hub = new EventHub();
+  let registry: VerdaccioRegistry;
+  try {
+    const ownRegistry = `http://${HOST}:${config.ports.registry}/`;
+    const npmRegistries = await readNpmRegistries(runner, { cwd: env.HOME ?? homedir(), env });
+    registry = await VerdaccioRegistry.start({
+      storage: home.paths.registry,
+      port: config.ports.registry,
+      uplinks: uplinksFrom({ ...npmRegistries, ownRegistry }),
+      logLevel: 'warn',
+    });
+  } catch (error) {
+    await new Promise((resolve) => server.close(resolve));
+    throw error;
+  }
+
+  const hub = new EventHub({ firstId: Date.now() * 1000 });
   // A failed install is otherwise only visible to a client that was listening at the time.
   hub.subscribe((event) => {
     if (event.type === 'install:failed')
@@ -68,6 +86,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<RunningD
     deps = createNodeDeps({ home: home.root, registry, events: hub, process: runner });
   } catch (error) {
     await registry.stop();
+    await new Promise((resolve) => server.close(resolve));
     throw error;
   }
   const startedAt = new Date().toISOString();
@@ -114,17 +133,12 @@ export async function startDaemon(options: StartDaemonOptions): Promise<RunningD
     guard: new GitCommitGuard(
       new NodeProcessRunner({ baseEnv: env, signal: abort.signal, timeoutMs: 30_000 }),
     ),
+    canonicalPath,
     onShutdown: () => void stop(),
   });
-  const server = createApiServer({ token, hub, health, service, onError: (error) => log(String(error)) });
+  server.off('request', starting);
+  createApiServer({ token, hub, health, service, onError: (error) => log(String(error)) }, server);
 
-  let port: number;
-  try {
-    port = await listen(server, config.ports.api);
-  } catch (error) {
-    await registry.stop();
-    throw error;
-  }
   try {
     await home.writeDaemonInfo({ pid: process.pid, port, version, registryUrl: registry.url, startedAt });
     await service.start();
@@ -153,4 +167,13 @@ function listen(server: Server, port: number): Promise<number> {
       resolve((server.address() as AddressInfo).port);
     });
   });
+}
+
+/** A folder's one spelling: symlinks resolved and, on macOS, the case it has on disk. */
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return path;
+  }
 }

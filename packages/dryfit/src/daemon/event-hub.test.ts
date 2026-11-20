@@ -63,4 +63,14 @@ describe('EventHub', () => {
 
     expect(received).toEqual([1]);
   });
+
+  it('replays everything to a client whose id came from an earlier run of the daemon', () => {
+    const hub = new EventHub({ firstId: 2_000_000 });
+    for (let n = 0; n < 3; n++) hub.emit({ type: 'state:changed' });
+    const received: number[] = [];
+
+    hub.subscribe((event) => received.push(event.id), { after: 1_000_300 });
+
+    expect(received).toEqual([2_000_000, 2_000_001, 2_000_002]);
+  });
 });

@@ -77,6 +77,9 @@ describe('GitCommitGuard, with real git', () => {
 
   it('follows core.hooksPath, which is where Husky puts its hooks', async () => {
     await run('config', 'core.hooksPath', '.husky/_');
+    // Husky ignores its own folder, so its hooks are not part of the repository.
+    await mkdir(join(repo, '.husky/_'), { recursive: true });
+    await writeFile(join(repo, '.husky/_/.gitignore'), '*\n');
 
     await guard.install(repo);
 
@@ -104,6 +107,34 @@ describe('GitCommitGuard, with real git', () => {
     await guard.remove(repo);
 
     expect(await readFile(hook, 'utf8')).toBe('');
+  });
+
+  it('leaves a hook the repository shares alone, so the guard is never committed for everyone', async () => {
+    await run('config', 'core.hooksPath', '.githooks');
+    await commit('.githooks/pre-commit', '#!/bin/sh\necho team hook\n');
+
+    await expect(guard.install(repo)).rejects.toThrow(/part of the repository/);
+    expect(await readFile(join(repo, '.githooks/pre-commit'), 'utf8')).toBe('#!/bin/sh\necho team hook\n');
+  });
+
+  it('leaves a hook written in another language alone', async () => {
+    const hook = join(repo, '.git/hooks/pre-commit');
+    await writeFile(hook, '#!/usr/bin/env node\nconsole.log("lint")\n');
+
+    await expect(guard.install(repo)).rejects.toThrow(/not a shell script/);
+    expect(await readFile(hook, 'utf8')).toBe('#!/usr/bin/env node\nconsole.log("lint")\n');
+  });
+
+  it('gives a hook that was not executable its mode back', async () => {
+    const hook = join(repo, '.git/hooks/pre-commit');
+    await writeFile(hook, '#!/bin/sh\nexit 1\n');
+    await chmod(hook, 0o644);
+
+    await guard.install(repo);
+    await guard.remove(repo);
+
+    expect((await stat(hook)).mode & 0o777).toBe(0o644);
+    expect(await readFile(hook, 'utf8')).toBe('#!/bin/sh\nexit 1\n');
   });
 
   it('reports a folder that is not a git repository', async () => {

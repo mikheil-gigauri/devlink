@@ -19,6 +19,8 @@ import type { LocalControl } from './main.ts';
 import type { Output } from './output.ts';
 
 const START_TIMEOUT_MS = 20_000;
+/** How long a kickstarted login agent gets to answer before this CLI starts its own daemon. */
+const KICKSTART_TIMEOUT_MS = 8_000;
 const STOP_TIMEOUT_MS = 10_000;
 
 interface Running {
@@ -75,14 +77,26 @@ export class LocalMachine implements LocalControl {
 
   async daemon(
     action: 'start' | 'stop' | 'restart' | 'status' | 'run' | 'install' | 'uninstall',
+    json = false,
   ): Promise<number> {
     const { out } = this.#options;
+    const printJson = (value: unknown, code = 0) => {
+      out.line(JSON.stringify(value, null, 2));
+      return code;
+    };
     switch (action) {
       case 'run':
         return this.#runInForeground();
       case 'start': {
         const client = await this.connect();
         const health = await client.health();
+        if (json)
+          return printJson({
+            running: true,
+            version: health.version,
+            pid: health.pid,
+            apiUrl: client.baseUrl,
+          });
         out.ok(`dryfit ${health.version} is running (pid ${health.pid}) at ${client.baseUrl}`);
         return 0;
       }
@@ -90,8 +104,14 @@ export class LocalMachine implements LocalControl {
         const running = await this.#find();
         if (running) {
           await this.#stop(running);
+          if (json) return printJson({ ok: true });
           out.ok('Stopped dryfit');
           return 0;
+        }
+        if (json) {
+          const info = await this.#home.readDaemonInfo();
+          const stuck = info !== undefined && isAlive(info.pid);
+          return printJson(stuck ? { ok: false, unresponsivePid: info.pid } : { ok: true }, stuck ? 1 : 0);
         }
         return this.#reportUnresponsive();
       }
@@ -104,10 +124,22 @@ export class LocalMachine implements LocalControl {
       case 'status': {
         const running = await this.#find();
         if (!running) {
+          if (json) return printJson({ running: false }, 1);
           out.line('dryfit is not running. Any command starts it.');
           return 1;
         }
         const { health, client } = running;
+        if (json) {
+          return printJson({
+            running: true,
+            version: health.version,
+            pid: health.pid,
+            startedAt: health.startedAt,
+            apiUrl: client.baseUrl,
+            registryUrl: health.registryUrl,
+            atLogin: existsSync(agentPath()),
+          });
+        }
         out.ok(`dryfit ${health.version} running since ${health.startedAt} (pid ${health.pid})`);
         out.line(`  api       ${client.baseUrl}`);
         out.line(`  registry  ${health.registryUrl}`);
@@ -267,9 +299,32 @@ export class LocalMachine implements LocalControl {
 
     let exited: number | null | undefined;
     // An installed but unloaded agent fails to kickstart; starting the daemon directly still works.
-    const kickstarted =
+    let kickstarted =
       existsSync(agentPath()) &&
       (await this.#launchctl(['kickstart', `gui/${userInfo().uid}/${LAUNCH_AGENT_LABEL}`])) === 0;
+    if (kickstarted) {
+      // The agent runs the dryfit it was installed from, which may be another version than this one,
+      // or a node that is gone. Then this version is started directly instead.
+      const deadline = Date.now() + KICKSTART_TIMEOUT_MS;
+      let other: Running | undefined;
+      while (Date.now() < deadline) {
+        const running = await this.#find();
+        if (running?.health.version === this.#options.version) return running.client;
+        if (running) {
+          other = running;
+          break;
+        }
+        await sleep(100);
+      }
+      if (other) {
+        // A clean shutdown exits 0, which launchd's KeepAlive leaves alone.
+        await this.#stop(other);
+        this.#options.out.warn(
+          `The login agent starts dryfit ${other.health.version}; run \`dryfit daemon install\` to start ${this.#options.version} at login.`,
+        );
+      }
+      kickstarted = false;
+    }
     if (!kickstarted) {
       const log = openSync(this.#home.paths.log, 'a');
       try {
@@ -328,7 +383,9 @@ export class LocalMachine implements LocalControl {
       log(error instanceof Error ? error.message : String(error));
       return 1;
     }
-    stop.addEventListener('abort', () => void daemon.stop(), { once: true });
+    // A signal that arrived while it was starting has already fired; it still means stop.
+    if (stop.aborted) void daemon.stop();
+    else stop.addEventListener('abort', () => void daemon.stop(), { once: true });
     await daemon.stopped;
     log('stopped');
     return 0;
@@ -347,7 +404,7 @@ export class LocalMachine implements LocalControl {
       entry: realpathSync(this.#options.entry),
       path: env.PATH ?? '/usr/bin:/bin',
       log: this.#home.paths.log,
-      ...(env.DRYFIT_HOME && { env: { DRYFIT_HOME: env.DRYFIT_HOME } }),
+      env: agentEnvironment(env),
     });
 
     const running = await this.#find();
@@ -413,4 +470,21 @@ async function guardPresent(runner: NodeProcessRunner, consumer: string): Promis
   const hook = resolve(consumer, result.stdout.trim(), 'pre-commit');
   if (!(await stat(hook).catch(() => undefined))) return false;
   return hasGuard(await readFile(hook, 'utf8'));
+}
+
+/**
+ * What the login agent keeps from the shell that installed it. launchd starts it with almost nothing,
+ * so without these, installs behind a proxy or a company CA work from a terminal and fail after a
+ * reboot. Only settings, never secrets: the plist is readable by anyone on the Mac, so a token an
+ * npmrc expands (`${NPM_TOKEN}`) belongs in the npmrc itself.
+ */
+export function agentEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
+  const kept =
+    /^(DRYFIT_HOME|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR|NPM_CONFIG_(REGISTRY|CAFILE|STRICT_SSL))$|^(https?_proxy|all_proxy|no_proxy)$/i;
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      (entry): entry is [string, string] =>
+        kept.test(entry[0]) && entry[1] !== undefined && !/^npm_/.test(entry[0]),
+    ),
+  );
 }

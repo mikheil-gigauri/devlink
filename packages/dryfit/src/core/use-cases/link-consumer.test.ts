@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { failed } from '../../testing/fakes.ts';
+import { failed, ok } from '../../testing/fakes.ts';
 import { ADMIN, BLOG, createScenario, HOME, json, LIB, SHOP, scenarioFiles } from '../../testing/scenario.ts';
 import type { DryfitState } from '../model.ts';
 import { pathSlug } from '../util/path.ts';
@@ -69,6 +69,56 @@ describe('linkConsumer', () => {
     expect(process.lines(SHOP)).toEqual([]);
   });
 
+  it('builds, publishes and installs again when a link left pending by a failed build is linked again', async () => {
+    const build = { command: 'npm', args: ['run', 'build'], cwd: LIB };
+    const { deps, store, process } = createScenario({
+      state: { ...registered, libraries: [{ ...library, build }] },
+    });
+    process.on('npm run build', failed('error TS2322'));
+    await expect(linkConsumer(deps, { library: '@acme/ui', consumer: SHOP })).rejects.toMatchObject({
+      code: 'build-failed',
+    });
+
+    process.on('npm run build', ok());
+    const link = await linkConsumer(deps, { library: '@acme/ui', consumer: SHOP });
+
+    expect(link.status).toBe('installed');
+    expect(store.current.links).toEqual([link]);
+    expect(process.lines(SHOP)).toHaveLength(1);
+  });
+
+  it('refuses a workspace package without its own lockfile, whose install would change the root lockfile', async () => {
+    const member = '/repos/mono/packages/widget';
+    const { deps, store } = createScenario({
+      state: published,
+      files: {
+        ...scenarioFiles(),
+        '/repos/mono/package.json': json({ name: 'mono', workspaces: ['packages/*'] }),
+        '/repos/mono/package-lock.json': json({ lockfileVersion: 3 }),
+        [`${member}/package.json`]: json({ name: 'widget', dependencies: { '@acme/ui': '^1.4.0' } }),
+      },
+    });
+
+    await expect(linkConsumer(deps, { library: '@acme/ui', consumer: member })).rejects.toMatchObject({
+      code: 'not-a-consumer',
+      details: { workspace: '/repos/mono' },
+    });
+    expect(store.current.links).toEqual([]);
+  });
+
+  it('refuses to snapshot an app whose files already hold a dryfit dev build', async () => {
+    const { deps, fs, store } = createScenario({ state: published });
+    const manifest = JSON.parse((await fs.readText(`${SHOP}/package.json`)) ?? '');
+    manifest.dependencies['@acme/ui'] = '1.4.1-dev.20261118120000';
+    await fs.writeText(`${SHOP}/package.json`, json(manifest));
+
+    await expect(linkConsumer(deps, { library: '@acme/ui', consumer: SHOP })).rejects.toMatchObject({
+      code: 'consumer-linked',
+    });
+    expect(store.current.links).toEqual([]);
+    expect(await fs.readText(`${snapshotDir(SHOP)}/meta.json`)).toBeUndefined();
+  });
+
   it('installs the latest dev version straight away when there is one', async () => {
     const { deps, process } = createScenario({ state: published });
 
@@ -98,6 +148,22 @@ describe('linkConsumer', () => {
       message: 'npm error ERESOLVE could not resolve',
     });
     expect(store.current.links).toEqual([link]);
+  });
+
+  it('installs again, without a new snapshot, when a failed link is linked again', async () => {
+    const { deps, npm, store, fs, process } = createScenario({ state: published });
+    npm.failIn(SHOP);
+    await linkConsumer(deps, { library: '@acme/ui', consumer: SHOP });
+    const snapshot = await fs.readText(`${snapshotDir(SHOP)}/package.json`);
+    const failedManifest = JSON.parse(snapshot ?? '');
+
+    await linkConsumer(deps, { library: '@acme/ui', consumer: SHOP });
+
+    expect(process.lines(SHOP)).toHaveLength(2);
+    expect(store.current.links).toHaveLength(1);
+    expect(JSON.parse((await fs.readText(`${snapshotDir(SHOP)}/package.json`)) ?? '')).toEqual(
+      failedManifest,
+    );
   });
 
   it('records a consumer without a lockfile so restore can remove the one npm creates', async () => {
