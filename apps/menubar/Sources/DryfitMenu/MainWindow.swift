@@ -152,8 +152,11 @@ private struct Sidebar: View {
     }
     .listStyle(.sidebar)
     // In the sidebar's own bar, not the toolbar: a toolbar item there sits beside the sidebar
-    // button and jumps about whenever the sidebar is hidden or shown.
-    .safeAreaInset(edge: .bottom, spacing: 0) {
+    // button and jumps about whenever the sidebar is hidden or shown. A bar rather than an inset, so
+    // the rows that run on beneath it fall under the scroll edge effect instead of showing through
+    // the button; the hard style keeps that edge solid even before the list is scrolled.
+    .scrollEdgeEffectStyle(.hard, for: .bottom)
+    .safeAreaBar(edge: .bottom, spacing: 0) {
       HStack {
         Menu {
           Button("Add Library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
