@@ -1,5 +1,25 @@
 # @dryfit/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- ae17de7: The menu bar app gets a redesigned menu: each library is a card you can fold, with one-click links for the apps that use it, sync progress on the card, and Restore under the pointer. Settings moves into the dryfit window (the gear in the sidebar, or ⌘,), and the old ⋯ menu moves to a right-click on the menu bar icon. Drag libraries, apps and groups in the sidebar to order them; the menu follows. Installing dryfit from the app now says why it failed instead of offering the button again, and an app added by hand no longer shows up twice once linked.
+
+### Patch Changes
+
+- ae17de7: Linking a library that was never published now builds and publishes it, then installs it into the app,
+  instead of recording a link that changed nothing; a failed build is reported and leaves the link pending.
+  Finding apps no longer stops at a folder whose package.json uses none of your libraries (such as a stray
+  `~/package.json`), and with no project folders configured the daemon searches the folders that hold your
+  libraries.
+- ae17de7: `dryfit link` with libraries that pin each other no longer fails on dev builds that pin a sibling's old dev
+  build, such as those published by dryfit 0.4. It publishes them again before installing.
+- 9ccffc6: The menu bar app's window now looks and works like a native macOS app: the sidebar is the system's source
+  list (↑ and ↓ move through it, drag or ⌥⌘↑ and ⌥⌘↓ reorder it), page actions sit in the window's toolbar,
+  buttons, switches and fields are the system's own, and menu items use title case.
+- 0dc0597: The menu bar app is easier to use with the keyboard and easier to read. ↑ and ↓ move through the window's sidebar again, and rows move with ⌥⌘↑ and ⌥⌘↓ or **Move up** and **Move down** in their context menu; while you drag one, the marker shows where it will land. Grey captions are darker in light mode, so they meet WCAG AA contrast. Link, Restore and the window's other buttons show a spinner while their job runs, and the sidebar shows what dryfit is doing. The menu can restore an app after a failed install, and the right-click menu can start dryfit as well as stop it. **New group** won't overwrite a group with the same name. Settings now shows its errors instead of dropping them.
+
 ## 0.5.0
 
 ### Minor Changes
