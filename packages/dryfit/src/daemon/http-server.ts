@@ -37,11 +37,23 @@ export interface ApiServerOptions {
  * make (an `Origin` header or a foreign `Host`), then everything but `/v1/health` without the bearer
  * token: an API that can publish and install runs arbitrary code, so no web page may reach it.
  */
-export function createApiServer(options: ApiServerOptions): Server {
+/** `server` may already be listening, for a daemon that takes its port before it is ready. */
+/** The status for each error a client can act on; the rest are 422. Clients go by `code`. */
+const STATUS_FOR: Partial<Record<DryfitError['code'], number>> = {
+  'invalid-request': 400,
+  'library-not-found': 404,
+  'group-not-found': 404,
+  'daemon-stopping': 503,
+  'state-corrupt': 500,
+  'registry-failed': 502,
+  'daemon-failed': 500,
+};
+
+export function createApiServer(options: ApiServerOptions, server: Server = createServer()): Server {
   const expected = Buffer.from(`Bearer ${options.token}`);
   const { onError } = options;
 
-  const server = createServer((req, res) => {
+  server.on('request', (req, res) => {
     if (req.headers.origin !== undefined || !isLoopbackHost(req.headers.host, server)) {
       return sendError(res, 403, 'forbidden', 'dryfit refuses requests made by browsers');
     }
@@ -93,8 +105,7 @@ function handleOperation(
     } catch (error) {
       if (error instanceof ValidationError) return sendError(res, 400, 'invalid-request', error.message);
       if (error instanceof DryfitError) {
-        const status = error.code === 'daemon-stopping' ? 503 : 422;
-        return sendError(res, status, error.code, error.message, error.details);
+        return sendError(res, STATUS_FOR[error.code] ?? 422, error.code, error.message, error.details);
       }
       onError(error);
       sendError(res, 500, 'internal', 'dryfit hit an unexpected error; see the daemon log');

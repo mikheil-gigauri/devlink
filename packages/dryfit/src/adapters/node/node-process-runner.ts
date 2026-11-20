@@ -14,7 +14,7 @@ const KILL_GRACE_MS = 3_000;
 const OUTPUT_GRACE_MS = 1_000;
 
 export interface NodeProcessRunnerOptions {
-  /** Inherited environment; `npm_*` variables are stripped from it. Defaults to `process.env`. */
+  /** Inherited environment; npm's own `npm_*` variables are stripped from it. Defaults to `process.env`. */
   readonly baseEnv?: NodeJS.ProcessEnv;
   /** Explicit variables applied afterwards, kept even if they start with `npm_`. */
   readonly env?: Readonly<Record<string, string>>;
@@ -30,12 +30,18 @@ export interface NodeProcessRunnerOptions {
  * `npm_*` variables are removed from the child's environment. When dryfit itself is started by npm
  * (`npx @dryfit/cli`, an npm script), npm exports its whole config as `npm_config_*`, which the npm that
  * dryfit runs would obey: a stray `npm_config_global` or `npm_config_registry` would install into the
- * wrong place or from the wrong registry.
+ * wrong place or from the wrong registry. npm exports them in lowercase; the user's own uppercase
+ * settings stay (`NPM_TOKEN` that an npmrc or .yarnrc.yml expands, `NPM_CONFIG_REGISTRY`, a CA file),
+ * except the few that would install somewhere other than the project.
  *
  * Each command leads its own process group, so a timeout or cancellation kills the whole tree: npm
  * runs lifecycle scripts and builders as grandchildren that would otherwise keep running. A command
  * is finished when it exits; background processes it leaves in its group are ended shortly after.
  */
+function isInjectedOrRelocating(key: string): boolean {
+  return /^npm_/.test(key) || /^npm_config_(global|location|prefix)$/i.test(key);
+}
+
 export class NodeProcessRunner implements ProcessRunner {
   readonly #env: NodeJS.ProcessEnv;
   readonly #timeoutMs: number;
@@ -44,7 +50,7 @@ export class NodeProcessRunner implements ProcessRunner {
   constructor(options: NodeProcessRunnerOptions = {}) {
     const baseEnv = options.baseEnv ?? process.env;
     this.#env = {
-      ...Object.fromEntries(Object.entries(baseEnv).filter(([key]) => !/^npm_/i.test(key))),
+      ...Object.fromEntries(Object.entries(baseEnv).filter(([key]) => !isInjectedOrRelocating(key))),
       ...options.env,
     };
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;

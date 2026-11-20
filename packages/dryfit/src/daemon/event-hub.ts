@@ -30,11 +30,20 @@ export class EventHub implements EventSink {
   readonly #capacity: number;
   readonly #history: ServerEvent[] = [];
   readonly #listeners = new Set<Listener>();
-  #nextId = 1;
+  readonly #firstId: number;
+  #nextId: number;
 
-  constructor(options: { readonly now?: () => Date; readonly capacity?: number } = {}) {
+  /**
+   * `firstId` lets a daemon number each run's events above the last run's (its start time in
+   * microseconds), so an id from before a restart is told from one of this run.
+   */
+  constructor(
+    options: { readonly now?: () => Date; readonly capacity?: number; readonly firstId?: number } = {},
+  ) {
     this.#now = options.now ?? (() => new Date());
     this.#capacity = options.capacity ?? 500;
+    this.#firstId = options.firstId ?? 1;
+    this.#nextId = this.#firstId;
   }
 
   emit(event: HubEvent): void {
@@ -50,7 +59,8 @@ export class EventHub implements EventSink {
    */
   subscribe(listener: Listener, options: { readonly after?: number } = {}): () => void {
     if (options.after !== undefined) {
-      const after = options.after < this.#nextId ? options.after : 0;
+      const issued = options.after >= this.#firstId - 1 && options.after < this.#nextId;
+      const after = issued ? options.after : 0;
       for (const event of this.#history) if (event.id > after) deliver(listener, event);
     }
     this.#listeners.add(listener);

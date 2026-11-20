@@ -45,6 +45,36 @@ describe.each<WatchStrategy>(['recursive', 'walk'])('NodeLibraryWatcher (%s)', (
     expect(changes()).toBe(1);
   });
 
+  it("says which files changed, so the daemon can tell its own writes from the user's", async () => {
+    const reported: (readonly string[] | undefined)[] = [];
+    const watcher = new NodeLibraryWatcher({ debounceMs: 80, strategy });
+    stop = watcher.watch(
+      { name: 'lib', root, publishDir: join(root, 'dist/ui') },
+      (paths) => reported.push(paths),
+      () => {},
+    );
+
+    await writeFile(join(root, 'src/a.ts'), 'x');
+    await sleep(500);
+
+    expect(reported.at(-1)).toContain(join(root, 'src/a.ts'));
+  });
+
+  it('fails the watch once the library folder is gone', async () => {
+    let failed: Error | undefined;
+    const lib = join(root, 'src');
+    const changes = watch(lib, (error) => {
+      failed = error;
+    });
+    await sleep(100);
+
+    await rm(lib, { recursive: true, force: true });
+    await sleep(600);
+
+    expect(failed?.message).toMatch(/gone|ENOENT|no such/i);
+    expect(changes()).toBe(0);
+  });
+
   it('ignores dependencies, build output, VCS and caches', async () => {
     const changes = watch();
 

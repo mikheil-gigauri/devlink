@@ -81,9 +81,14 @@ public struct ServerEvent: Decodable, Sendable, Equatable {
     id = try c.decode(Int.self, forKey: .id)
     at = try c.decode(String.self, forKey: .at)
     let type = try c.decode(String.self, forKey: .type)
-    func string(_ key: CodingKeys) throws -> String { try c.decode(String.self, forKey: key) }
+    // A known event whose fields changed in a newer daemon is kept as unknown, with its id, rather
+    // than failing: one bad event would otherwise end the stream and be replayed on every reconnect.
+    kind = (try? Self.kind(of: type, in: c)) ?? .unknown(type: type)
+  }
 
-    kind =
+  private static func kind(of type: String, in c: KeyedDecodingContainer<CodingKeys>) throws -> Kind {
+    func string(_ key: CodingKeys) throws -> String { try c.decode(String.self, forKey: key) }
+    return
       switch type {
       case "build:started": .buildStarted(library: try string(.library))
       case "build:succeeded": .buildSucceeded(library: try string(.library))

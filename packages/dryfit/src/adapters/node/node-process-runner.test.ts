@@ -44,7 +44,7 @@ describe('NodeProcessRunner', () => {
     expect(result.stdout.trim()).toBe(tricky);
   });
 
-  it('strips npm_* variables so an outer npm cannot reconfigure the npm dryfit runs', async () => {
+  it("strips npm's npm_* variables so an outer npm cannot reconfigure the npm dryfit runs", async () => {
     const runner = new NodeProcessRunner({
       baseEnv: {
         PATH: process.env.PATH ?? '',
@@ -52,13 +52,17 @@ describe('NodeProcessRunner', () => {
         npm_lifecycle_event: 'dev',
         NPM_CONFIG_GLOBAL: 'true',
         KEEP_ME: 'yes',
+        // The user's own: an npmrc or .yarnrc.yml expands ${NPM_TOKEN}, and a company registry or CA.
+        NPM_TOKEN: 'secret',
+        NPM_CONFIG_REGISTRY: 'https://npm.corp.example/',
       },
     });
-    const script = 'console.log(JSON.stringify(Object.keys(process.env).filter(k => /npm|KEEP/i.test(k))))';
+    const script =
+      'console.log(JSON.stringify(Object.keys(process.env).filter(k => /npm|KEEP/i.test(k)).sort()))';
 
     const result = await runner.run({ command: node, args: ['-e', script], cwd });
 
-    expect(JSON.parse(result.stdout)).toEqual(['KEEP_ME']);
+    expect(JSON.parse(result.stdout)).toEqual(['KEEP_ME', 'NPM_CONFIG_REGISTRY', 'NPM_TOKEN']);
   });
 
   it('applies explicit extra variables after stripping, so callers can still configure npm', async () => {

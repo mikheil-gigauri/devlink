@@ -243,6 +243,69 @@ import Testing
     await eventually { await daemon.statusCalls > before }
   }
 
+  @Test func waitsForASlowLaunchWithoutCallingTheStartFailed() async {
+    let daemonUp = Switch()
+    let model = makeModel(
+      lookup: { daemonUp.on ? nil : .notRunning },
+      launch: {
+        // A login shell loading nvm: the connection loop runs many times meanwhile.
+        try await Task.sleep(for: .milliseconds(150))
+        daemonUp.on = true
+      })
+    let task = Task { await model.run() }
+    defer { task.cancel() }
+    await eventually { model.connection == .offline }
+
+    let start = Task { await model.startDaemon() }
+    try? await Task.sleep(for: .milliseconds(80))
+    #expect(model.connection == .starting)
+    #expect(model.startError == nil)
+
+    await start.value
+    await eventually { model.connection == .online }
+    #expect(model.startError == nil)
+  }
+
+  @Test func notifiesOnlyFailuresNobodySaw_notRefusedRequests() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    let restore = Job(id: 1, label: "restore /repos/shop", queuedAt: "")
+    daemon.channel.send(.jobFinished(restore, error: .init(code: "manifest-drifted", message: "package.json changed")), id: 1)
+    let sync = Job(id: 2, label: "sync @acme/ui", queuedAt: "")
+    daemon.channel.send(.jobFinished(sync, error: .init(code: "publish-failed", message: "Publishing failed")), id: 2)
+    await eventually { notifier.posted.count == 1 }
+    try? await Task.sleep(for: .milliseconds(20))
+
+    #expect(notifier.posted.map(\.title) == ["Publishing failed"])
+  }
+
+  @Test func clearsProgressLeftByADaemonThatDiedMidJob() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    daemon.channel.send(.buildStarted(library: "@acme/ui"), id: 1)
+    await eventually { model.activity != nil }
+
+    daemon.channel.end()
+    await eventually { daemon.channel.isOpen && model.connection == .online }
+
+    #expect(model.activity == nil)
+    #expect(model.icon == .idle)
+  }
+
+  @Test func namesAppsByFolderInJobLabels_evenWithSpacesInTheirPaths() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(.jobStarted(Job(id: 1, label: "restore @acme/ui in /Users/me/My Apps/shop", queuedAt: "")), id: 1)
+    await eventually { model.activity == "Restore @acme/ui in shop" }
+    daemon.channel.send(.jobStarted(Job(id: 2, label: "hide /a/old shop, /b/admin", queuedAt: "")), id: 2)
+    await eventually { model.activity == "Hide old shop, admin" }
+  }
+
   @Test func reportsABuildFailureOnceWithItsOutput() async {
     let model = makeModel()
     let task = await started(model)

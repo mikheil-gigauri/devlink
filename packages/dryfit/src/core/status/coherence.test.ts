@@ -35,6 +35,14 @@ describe('coherenceWarnings', () => {
     ]);
   });
 
+  it('counts a member whose latest install failed, since it still runs the earlier build', () => {
+    const failed: LinkRecord = { ...link('/repos/cart', '1.0.1-dev.20261118100000'), status: 'failed' };
+
+    expect(coherenceWarnings(state([link('/repos/host', '1.0.1-dev.20261118110000'), failed]))).toHaveLength(
+      1,
+    );
+  });
+
   it('is quiet when the group agrees, and ignores pending links and consumers outside the group', () => {
     const v1 = '1.0.1-dev.20261118100000';
 

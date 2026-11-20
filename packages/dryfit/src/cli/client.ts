@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import type {
   ApiErrorBody,
   ApiErrorCode,
@@ -97,28 +98,58 @@ export class DaemonClient implements ApiClient {
     }
   }
 
+  /**
+   * One request over node:http rather than fetch: the daemon answers an operation only when its job
+   * is done, which can take longer than fetch's fixed five minutes to receive the headers.
+   */
   async #request(
     method: 'GET' | 'POST',
     path: string,
     body?: unknown,
     options: { readonly token?: boolean; readonly signal?: AbortSignal } = {},
   ): Promise<unknown> {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    let reply: { readonly status: number; readonly text: string };
     try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
-        method,
-        headers: {
-          ...(options.token !== false && this.#headers()),
-          ...(body !== undefined && { 'content-type': 'application/json' }),
-        },
-        ...(body !== undefined && { body: JSON.stringify(body) }),
-        ...(options.signal && { signal: options.signal }),
+      reply = await new Promise((resolve, reject) => {
+        const req = request(
+          new URL(path, this.baseUrl),
+          {
+            method,
+            headers: {
+              ...(options.token !== false && this.#headers()),
+              ...(payload !== undefined && {
+                'content-type': 'application/json',
+                'content-length': Buffer.byteLength(payload),
+              }),
+            },
+            ...(options.signal && { signal: options.signal }),
+          },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk: Buffer) => chunks.push(chunk));
+            res.on('end', () =>
+              resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString('utf8') }),
+            );
+            res.on('error', reject);
+          },
+        );
+        req.on('error', reject);
+        req.end(payload);
       });
-      if (!response.ok) throw await toError(response);
-      return await response.json();
     } catch (error) {
-      // Anything but dryfit's own error replies: no answer, a timeout, or something else on the port.
-      throw error instanceof ApiError ? error : unavailable(error);
+      // No answer, a timeout, or the connection dropped.
+      throw unavailable(error);
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(reply.text);
+    } catch {
+      // Something else on the port.
+      throw unavailable(new Error(`it answered HTTP ${reply.status} with something other than JSON`));
+    }
+    if (reply.status < 200 || reply.status >= 300) throw toApiError(parsed, reply.status);
+    return parsed;
   }
 
   #headers(): Record<string, string> {
@@ -127,11 +158,14 @@ export class DaemonClient implements ApiClient {
 }
 
 async function toError(response: Response): Promise<ApiError> {
-  const body = (await response.json().catch(() => undefined)) as Partial<ApiErrorBody> | undefined;
-  const error = body?.error;
+  return toApiError(await response.json().catch(() => undefined), response.status);
+}
+
+function toApiError(body: unknown, status: number): ApiError {
+  const error = (body as Partial<ApiErrorBody> | undefined)?.error;
   return error
     ? new ApiError(error.code, error.message, error.details)
-    : new ApiError('internal', `The daemon answered HTTP ${response.status}`);
+    : new ApiError('internal', `The daemon answered HTTP ${status}`);
 }
 
 function unavailable(error: unknown): ApiError {

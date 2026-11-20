@@ -38,7 +38,7 @@ export const operations = {
   restore: s.object({ consumer: s.path(), library: s.optional(s.string()), force: s.optional(s.boolean()) }),
   saveGroup: s.object({ name: s.string(), consumers: s.array(s.path()) }),
   deleteGroup: s.object({ name: s.string() }),
-  linkGroup: s.object({ group: s.string(), library: s.string() }),
+  linkGroup: s.object({ group: s.string(), library: s.string(), guard: s.optional(s.boolean()) }),
   restoreGroup: s.object({ group: s.string(), force: s.optional(s.boolean()) }),
   roots: s.object({}),
   setRoots: s.object({ roots: s.array(s.path()) }),
@@ -108,7 +108,9 @@ export interface LinkResult {
   readonly link: LinkRecord;
   /** The links for `library` and every one of `libraries`, in that order. */
   readonly links: readonly LinkRecord[];
-  readonly guard: 'installed' | 'declined' | 'not-a-repo';
+  /** `failed`: linked, but the guard could not go in; `message` says why. */
+  readonly guard: 'installed' | 'declined' | 'not-a-repo' | 'failed';
+  readonly message?: string;
 }
 
 export interface Done {

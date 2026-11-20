@@ -42,6 +42,14 @@ export class JsonStateStore implements StateStore {
     } catch {
       throw this.#corrupt('is not valid JSON');
     }
+    if (isRecord(parsed) && typeof parsed.version === 'number' && parsed.version > STATE_VERSION) {
+      // Not corrupt: written by a newer dryfit. Moving it aside would lose every link it records.
+      throw new DryfitError(
+        'state-corrupt',
+        `${this.#path} was written by a newer dryfit (format version ${parsed.version}; this one reads ${STATE_VERSION}). Update dryfit; do not move the file.`,
+        { path: this.#path },
+      );
+    }
     if (!isRecord(parsed) || !READABLE_VERSIONS.includes(parsed.version)) {
       throw this.#corrupt(`has an unknown format version (this dryfit reads version ${STATE_VERSION})`);
     }

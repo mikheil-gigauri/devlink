@@ -51,13 +51,28 @@ export function parseNpmrc(text: string, env: NodeJS.ProcessEnv): Map<string, st
     const equals = line.indexOf('=');
     if (equals === -1) continue;
     const key = line.slice(0, equals).trim();
-    const value = line
-      .slice(equals + 1)
-      .trim()
-      .replace(/\$\{([^}?]+)\??\}/g, (_, name: string) => env[name] ?? '');
+    const value = unquote(line.slice(equals + 1).trim()).replace(
+      /\$\{([^}?]+)\??\}/g,
+      (_, name: string) => env[name] ?? '',
+    );
     settings.set(key, value);
   }
   return settings;
+}
+
+/** As npm's ini parser does: a double-quoted value is a JSON string, a single-quoted one is literal. */
+function unquote(value: string): string {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (typeof parsed === 'string') return parsed;
+    } catch {
+      // Left as it is, like npm.
+    }
+    return value;
+  }
+  if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) return value.slice(1, -1);
+  return value;
 }
 
 /**
@@ -67,12 +82,14 @@ export function parseNpmrc(text: string, env: NodeJS.ProcessEnv): Map<string, st
 export function uplinksFrom(input: NpmRegistries & { readonly ownRegistry: string }): Record<string, Uplink> {
   const own = withSlash(input.ownRegistry);
   const byUrl = new Map<string, { scopes: string[] }>();
-  const defaultUrl = withSlash(input.registry);
+  // npm does not check registry URLs; one it could not use for a scope must not stop the daemon.
+  const given = withSlash(input.registry);
+  const defaultUrl = URL.canParse(given) ? given : 'https://registry.npmjs.org/';
   if (defaultUrl !== own) byUrl.set(defaultUrl, { scopes: [] });
 
   for (const [scope, url] of Object.entries(input.scoped)) {
     const normalized = withSlash(url);
-    if (normalized === own || normalized === defaultUrl) continue;
+    if (!URL.canParse(normalized) || normalized === own || normalized === defaultUrl) continue;
     const entry = byUrl.get(normalized) ?? { scopes: [] };
     entry.scopes.push(scope);
     byUrl.set(normalized, entry);

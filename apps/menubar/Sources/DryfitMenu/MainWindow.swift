@@ -556,6 +556,7 @@ private struct InstallFailedCallout: View {
       }
       Button("Restore") { Task { await model.restore(link.consumer, library: link.library) } }
         .buttonStyle(.pill(busy: model.isBusy(.restore(link.consumer, link.library))))
+        .disabled(!model.isBusy(.restore(link.consumer, link.library)) && model.isRestoring(link.consumer))
         .help("Put \(projectName(link.consumer)) back on the release of \(link.library)")
     }
     .padding(.horizontal, 10)
@@ -595,6 +596,7 @@ private struct AppRow: View {
       // Always at full strength: dimmed until hovered, it read as disabled and keyboard users never saw it.
       Button("Restore") { Task { await model.restore(link.consumer, library: link.library) } }
         .buttonStyle(.pill(busy: busy))
+        .disabled(!busy && model.isRestoring(link.consumer))
         .help("Put \(projectName(link.consumer)) back on the release of \(link.library)")
     }
     .contentShape(.rect)

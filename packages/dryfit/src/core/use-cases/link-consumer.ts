@@ -1,8 +1,9 @@
 import { DryfitError } from '../errors.ts';
+import { DEV_VERSION_PATTERN } from '../guard/commit-guard.ts';
 import type { DryfitState, LibraryRecord, LinkRecord, SnapshotMeta } from '../model.ts';
 import type { CoreDeps, PackageManagerAdapter, ProjectInfo } from '../ports.ts';
 import { dependencyOrder, loadLibraryGraph } from '../project/library-graph.ts';
-import { loadProject } from '../project/load-project.ts';
+import { enclosingWorkspace, loadProject } from '../project/load-project.ts';
 import { findDependency } from '../project/manifest.ts';
 import { joinPath } from '../util/path.ts';
 import { installLinks, linkedSet } from './install-link.ts';
@@ -53,23 +54,36 @@ export async function linkLibraries(deps: CoreDeps, input: LinkLibrariesInput): 
   }
   const adapter = adapterFor(deps, project);
 
-  const isLinked = (name: string) => state.links.some((link) => sameLink(link, { library: name, consumer }));
-  const added = libraries.filter((library) => !isLinked(library.name));
+  const existing = (name: string) => state.links.find((link) => sameLink(link, { library: name, consumer }));
+  const added = libraries.filter((library) => !existing(library.name));
+  // A link left pending by a failed build, or failed by a failed install, is tried again: linking it
+  // once more is how the user retries after fixing the cause.
+  const retried = libraries.filter((library) => {
+    const link = existing(library.name);
+    return link !== undefined && link.status !== 'installed';
+  });
+  const toInstall = [...added, ...retried];
 
-  if (added.length > 0) {
-    const consumerAlreadyLinked = state.links.some((link) => link.consumer === consumer);
-    if (!consumerAlreadyLinked) await takeSnapshot(deps, project, adapter);
+  if (toInstall.length > 0) {
+    let latest = state;
+    if (added.length > 0) {
+      const consumerAlreadyLinked = state.links.some((link) => link.consumer === consumer);
+      if (!consumerAlreadyLinked) {
+        await refuseWorkspaceMember(deps, project, adapter);
+        await takeSnapshot(deps, project, adapter);
+      }
 
-    // Reload: the snapshot took file I/O, and another command may have saved state meanwhile.
-    let latest = await deps.state.load();
-    for (const library of added)
-      latest = withLink(latest, { library: library.name, consumer, status: 'pending' });
-    await deps.state.save(latest);
+      // Reload: the snapshot took file I/O, and another command may have saved state meanwhile.
+      latest = await deps.state.load();
+      for (const library of added)
+        latest = withLink(latest, { library: library.name, consumer, status: 'pending' });
+      await deps.state.save(latest);
+    }
 
     // A build or publish failure throws here and leaves the links pending: nothing was installed.
-    latest = await publishFirstBuilds(deps, latest, added);
+    latest = await publishFirstBuilds(deps, latest, toInstall);
     latest = await republishStaleBuilds(deps, latest, consumer);
-    await installLinks(deps, { consumer, libraries: linkedSet(latest, consumer, added[0]?.name) });
+    await installLinks(deps, { consumer, libraries: linkedSet(latest, consumer, toInstall[0]?.name) });
   }
 
   const { links } = await deps.state.load();
@@ -118,6 +132,21 @@ async function republishStaleBuilds(
   return deps.state.load();
 }
 
+async function refuseWorkspaceMember(
+  deps: CoreDeps,
+  project: ProjectInfo,
+  adapter: PackageManagerAdapter,
+): Promise<void> {
+  if (adapter.lockfiles.some((file) => project.rootFiles.includes(file))) return;
+  const workspace = await enclosingWorkspace(deps.fs, project.root);
+  if (workspace === undefined) return;
+  throw new DryfitError(
+    'not-a-consumer',
+    `${project.root} is a package of the workspace at ${workspace}, whose lockfile an install there would change. dryfit links apps with their own lockfile.`,
+    { consumer: project.root, workspace },
+  );
+}
+
 /**
  * Taken when a consumer's first library is linked, replacing any leftover snapshot (from a restore
  * that was interrupted) because only the current files reflect what the user has committed since.
@@ -131,11 +160,25 @@ async function takeSnapshot(
   const dir = snapshotDir(deps, project.root);
   const lockfiles = adapter.lockfiles.filter((file) => project.rootFiles.includes(file));
 
-  await deps.fs.remove(dir);
+  // Files that already hold a dev build (the app was linked under another spelling of its path, or
+  // dryfit's state was lost) are not what the user committed; restoring them would bring the dev build back.
+  const files = new Map<string, string>();
+  const devBuild = new RegExp(DEV_VERSION_PATTERN);
   for (const file of ['package.json', ...lockfiles]) {
     const text = await deps.fs.readText(joinPath(project.root, file));
-    if (text !== undefined) await deps.fs.writeText(joinPath(dir, file), text);
+    if (text === undefined) continue;
+    if (devBuild.test(text)) {
+      throw new DryfitError(
+        'consumer-linked',
+        `${joinPath(project.root, file)} already holds a dryfit dev build. Restore the app, or put that file back with git, then link again.`,
+        { consumer: project.root, file },
+      );
+    }
+    files.set(file, text);
   }
+
+  await deps.fs.remove(dir);
+  for (const [file, text] of files) await deps.fs.writeText(joinPath(dir, file), text);
 
   const meta: SnapshotMeta = {
     consumer: project.root,

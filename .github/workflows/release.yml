@@ -51,6 +51,9 @@ jobs:
         with:
           cache: ""
           registry-url: https://registry.npmjs.org
+          # This job can publish to npm (OIDC) and push to the repository. A compromised dependency's
+          # postinstall must not run with that; publishing needs no install script (prepack builds).
+          ignore-scripts: "true"
       # GitHub runs no workflows for what GITHUB_TOKEN pushes, so the release pull request is pushed as
       # the release GitHub App instead, and gets CI. Without the App it falls back to GITHUB_TOKEN.
       - id: app-token

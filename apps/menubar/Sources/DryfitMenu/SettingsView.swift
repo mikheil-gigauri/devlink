@@ -120,7 +120,7 @@ public struct SettingsView: View {
             GroupRow {
               Text("Open at login")
               Spacer()
-              Toggle("Open at login", isOn: openAtLogin).toggleStyle(.mini)
+              LiveToggle(title: "Open at login", source: openAtLogin)
             }
           }
         }
@@ -132,7 +132,7 @@ public struct SettingsView: View {
               GroupRow {
                 Text("Install updates automatically")
                 Spacer()
-                Toggle("Install updates automatically", isOn: installAutomatically).toggleStyle(.mini)
+                LiveToggle(title: "Install updates automatically", source: installAutomatically)
               }
             }
             GroupRow {
@@ -160,5 +160,34 @@ public struct SettingsView: View {
     case .offline: "Not running"
     case .incompatible(let version): "dryfit \(version) does not match this app"
     }
+  }
+}
+
+/// A switch over a setting SwiftUI cannot observe (a login item, the updater's preference). It keeps
+/// its own copy, and reads the setting back after each change, so it moves when clicked and shows
+/// what really happened: a login item macOS refused, for one, turns it off again.
+private struct LiveToggle: View {
+  let title: String
+  let source: Binding<Bool>
+  @State private var isOn: Bool
+
+  init(title: String, source: Binding<Bool>) {
+    self.title = title
+    self.source = source
+    _isOn = State(initialValue: source.wrappedValue)
+  }
+
+  var body: some View {
+    Toggle(
+      title,
+      isOn: Binding(
+        get: { isOn },
+        set: { wanted in
+          source.wrappedValue = wanted
+          isOn = source.wrappedValue
+        })
+    )
+    .toggleStyle(.mini)
+    .onAppear { isOn = source.wrappedValue }
   }
 }

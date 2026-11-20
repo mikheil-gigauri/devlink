@@ -40,17 +40,24 @@ export function detectPackageManager({
   files,
   manifest,
 }: DetectPackageManagerInput): PackageManagerDetection {
+  const lockfiles = files.filter((file) => file in LOCKFILES).sort();
   const field = manifest.packageManager;
   if (field !== undefined) {
     const [name, version = ''] = field.split('@');
     // Yarn 1 shares the name but not the commands or the lockfile format of Yarn 2 and later.
     const yarnClassic = name === 'yarn' && /^1\./.test(version);
-    return isPackageManagerName(name) && !yarnClassic
-      ? { ok: true, name, source: 'packageManager-field' }
-      : { ok: false, reason: 'unsupported-package-manager', value: field };
+    if (!isPackageManagerName(name) || yarnClassic)
+      return { ok: false, reason: 'unsupported-package-manager', value: field };
+    // The field wins over a stray lockfile the manager ignores (pnpm and a package-lock.json), but
+    // not over one it rewrites, which would change without being snapshotted: npm updates a yarn.lock,
+    // and Bun a binary bun.lockb that cannot be restored.
+    if (name === 'npm' && lockfiles.includes('yarn.lock'))
+      return { ok: false, reason: 'multiple-lockfiles', lockfiles };
+    if (name === 'bun' && lockfiles.includes('bun.lockb') && !lockfiles.includes('bun.lock'))
+      return { ok: false, reason: 'binary-lockfile', lockfile: 'bun.lockb' };
+    return { ok: true, name, source: 'packageManager-field' };
   }
 
-  const lockfiles = files.filter((file) => file in LOCKFILES).sort();
   const managers = new Set(lockfiles.map((file) => LOCKFILES[file]));
   const [only, ...others] = managers;
 

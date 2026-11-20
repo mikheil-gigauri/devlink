@@ -60,10 +60,13 @@ public struct DaemonLocator: Sendable {
       let data = try? Data(contentsOf: home.daemonInfo),
       let info = try? JSONDecoder().decode(DaemonInfo.self, from: data),
       isAlive(info.pid),
-      let token = readToken()
+      let token = readToken(),
+      // A corrupt or hand-edited daemon.json must not crash the app.
+      (1...65535).contains(info.port),
+      let baseURL = URL(string: "http://127.0.0.1:\(info.port)/")
     else { return .notRunning }
 
-    let client = DaemonClient(baseURL: URL(string: "http://127.0.0.1:\(info.port)/")!, token: token, session: session)
+    let client = DaemonClient(baseURL: baseURL, token: token, session: session)
     guard let health = try? await client.health(), health.name == "dryfit", health.pid == info.pid else {
       return .notRunning
     }

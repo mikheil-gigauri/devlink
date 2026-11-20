@@ -15,7 +15,10 @@ export const PACKAGE_NAME = '@dryfit/cli';
 /** Everything that touches this machine directly rather than through the daemon. */
 export interface LocalControl {
   init(roots: readonly string[]): Promise<{ readonly home: string; readonly roots: readonly string[] }>;
-  daemon(action: 'start' | 'stop' | 'restart' | 'status' | 'run' | 'install' | 'uninstall'): Promise<number>;
+  daemon(
+    action: 'start' | 'stop' | 'restart' | 'status' | 'run' | 'install' | 'uninstall',
+    json?: boolean,
+  ): Promise<number>;
   doctor(out: Output, json: boolean): Promise<number>;
   /** The agent skill, and installing or removing it in a skills folder. */
   skill(): Promise<string>;
@@ -365,9 +368,16 @@ const COMMANDS: Record<string, Command> = {
     async run({ positionals, values, ctx, out, json }) {
       const root = absolute(ctx, positionals[0] ?? '.');
       const publishDir = string(values['publish-dir']);
-      const build = string(values.build)?.trim().split(/\s+/);
+      const buildText = string(values.build)?.trim();
+      const build = buildText?.split(/\s+/);
       if (build?.[0] === '')
         throw new CliError('--build needs a command, such as --build "npm run build"', 2);
+      // Run without a shell, so `&&`, pipes, quotes and `VAR=value` would reach the command as text.
+      if (buildText !== undefined && (/[;&|<>`$"'\\]/.test(buildText) || /^\w+=/.test(buildText)))
+        throw new CliError(
+          '--build takes one command and its arguments, without shell syntax. Put anything longer in a package.json script and use --build "npm run <script>".',
+          2,
+        );
       const client = await ctx.connect();
       // A flag changes only its own setting. The daemon treats a missing one as "none" once either is
       // given, so fill it in with what the library already has, or what dryfit detects.
@@ -475,7 +485,16 @@ const COMMANDS: Record<string, Command> = {
       const group = string(values.group);
       if (group) {
         if (more.length > 0) throw new CliError('Link one library at a time into a group.', 2);
-        const outcomes = await client.call('linkGroup', { group, library });
+        if (positionals.length > 0)
+          throw new CliError(
+            'Name either a group or consumers, not both. To add apps, save the group again.',
+            2,
+          );
+        const outcomes = await client.call('linkGroup', {
+          group,
+          library,
+          ...(values['no-guard'] === true && { guard: false }),
+        });
         if (json) return printJson(out, outcomes, anyFailed(outcomes));
         for (const outcome of outcomes) {
           if (outcome.status === 'done') out.ok(`Linked ${library} into ${out.path(outcome.consumer)}`);
@@ -514,6 +533,8 @@ const COMMANDS: Record<string, Command> = {
         const notes = ['snapshot taken'];
         if (result.guard === 'installed') notes.push('commit guard installed');
         if (result.guard === 'not-a-repo') notes.push('not a git repository, so no commit guard');
+        if (result.guard === 'failed')
+          notes.push(`no commit guard: ${result.message ?? 'it could not be installed'}`);
         const names = [library, ...more].join(', ');
         out.ok(`Linked ${names} into ${out.path(consumer)} ${out.dim(`(${notes.join(', ')})`)}`);
         // One install covers every library, so they usually fail with the same output: show it once.
@@ -657,12 +678,12 @@ const COMMANDS: Record<string, Command> = {
   },
 
   daemon: {
-    async run({ positionals, ctx }) {
+    async run({ positionals, ctx, json }) {
       const action = positionals[0] ?? 'status';
       const actions = ['start', 'stop', 'restart', 'status', 'run', 'install', 'uninstall'] as const;
       const known = actions.find((candidate) => candidate === action);
       if (!known) throw new CliError(`Unknown daemon action: ${action}. Use ${actions.join(', ')}.`, 2);
-      return requireLocal(ctx).daemon(known);
+      return requireLocal(ctx).daemon(known, json);
     },
   },
 
@@ -724,6 +745,11 @@ function restoreCommand(): Command {
       const library = string(values.library);
       const group = string(values.group);
       if (group) {
+        if (library !== undefined || values.all === true || positionals.length > 0)
+          throw new CliError(
+            '--group restores every library in every app of the group; it takes no --library, --all or apps.',
+            2,
+          );
         const outcomes = await client.call('restoreGroup', { group, ...force });
         if (json) return printJson(out, outcomes, anyFailed(outcomes));
         for (const outcome of outcomes) {
@@ -738,7 +764,7 @@ function restoreCommand(): Command {
       let consumers = positionals.map((path) => absolute(ctx, path));
       if (values.all === true) {
         consumers = [...new Set((await client.call('status', {})).links.map((link) => link.consumer))];
-        if (consumers.length === 0) out.line('Nothing is linked.');
+        if (consumers.length === 0 && !json) out.line('Nothing is linked.');
       } else if (consumers.length === 0) {
         consumers = [linkedProjectAround(await client.call('status', {}), ctx.cwd)];
       }

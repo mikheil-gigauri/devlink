@@ -25,6 +25,19 @@ describe('detectPackageManager', () => {
     expect(result).toEqual({ ok: true, name: 'pnpm', source: 'packageManager-field' });
   });
 
+  it.each([
+    ['npm@10.9.0', ['yarn.lock'], 'multiple-lockfiles'],
+    ['bun@1.1.38', ['bun.lockb'], 'binary-lockfile'],
+  ])(
+    'refuses a %s field next to %s, which that manager would rewrite unsnapshotted',
+    (field, files, reason) => {
+      expect(detectPackageManager({ files, manifest: { packageManager: field } })).toMatchObject({
+        ok: false,
+        reason,
+      });
+    },
+  );
+
   it('falls back to npm when there is neither a field nor a lockfile', () => {
     expect(detectPackageManager({ files: ['package.json'], manifest: {} })).toEqual({
       ok: true,

@@ -100,12 +100,18 @@ describe('npm adapter', () => {
   });
 
   describe('publish', () => {
-    it('publishes to the local registry under the given dist-tag, never with provenance', () => {
+    it('publishes to the local registry under the given dist-tag, never with provenance or lifecycle scripts', () => {
       expect(
         npmPublisher.publish({ cwd: '/staging/ui', packageName: 'ui', registryUrl, tag: 'dryfit' }),
       ).toEqual({
         command: 'npm',
-        args: ['publish', '--registry=http://127.0.0.1:4873/', '--tag=dryfit', '--provenance=false'],
+        args: [
+          'publish',
+          '--ignore-scripts',
+          '--registry=http://127.0.0.1:4873/',
+          '--tag=dryfit',
+          '--provenance=false',
+        ],
         cwd: '/staging/ui',
       });
     });
@@ -116,6 +122,7 @@ describe('npm adapter', () => {
           .args,
       ).toEqual([
         'publish',
+        '--ignore-scripts',
         '--registry=http://127.0.0.1:4873/',
         '--@acme:registry=http://127.0.0.1:4873/',
         '--tag=dryfit',

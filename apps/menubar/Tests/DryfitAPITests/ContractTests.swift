@@ -95,6 +95,20 @@ import Testing
     #expect(fixtures.errorBody.error.code == .manifestDrifted)
   }
 
+  @Test func keepsAKnownEventWithChangedFieldsAsUnknown_withItsID() throws {
+    // A newer daemon changed build:failed: one such event must not end the stream.
+    let data = Data(#"{"id":7,"at":"","type":"build:failed","library":"@acme/ui"}"#.utf8)
+    let event = try JSONDecoder().decode(ServerEvent.self, from: data)
+    #expect(event.id == 7)
+    #expect(event.kind == .unknown(type: "build:failed"))
+  }
+
+  @Test func readsAGuardOutcomeItDoesNotKnowWithoutFailingTheLink() throws {
+    let link = #"{"library":"@acme/ui","consumer":"/repos/shop","status":"installed"}"#
+    let data = Data(#"{"link":\#(link),"links":[\#(link)],"guard":"something-new"}"#.utf8)
+    #expect(try JSONDecoder().decode(LinkResult.self, from: data).guardOutcome == .unknown)
+  }
+
   @Test func decodesEveryEventIntoItsOwnCase() throws {
     let events = try load(Fixtures.self, from: "fixtures.json").events
 

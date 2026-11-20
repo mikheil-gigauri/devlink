@@ -26,3 +26,29 @@ export async function loadProject(
 
   return { root, manifest, rootFiles, configs };
 }
+
+/** Whether a folder is the root of an npm, Yarn, Bun or pnpm workspace. */
+export function isWorkspaceRoot(project: Pick<ProjectInfo, 'manifest' | 'rootFiles'>): boolean {
+  return project.manifest.workspaces !== undefined || project.rootFiles.includes('pnpm-workspace.yaml');
+}
+
+/**
+ * The workspace root above `dir`, when `dir` is one of its packages without a lockfile of its own:
+ * installing there rewrites the root's lockfile, which a snapshot of `dir` would not cover.
+ */
+export async function enclosingWorkspace(fs: FileSystem, dir: string): Promise<string | undefined> {
+  let current = joinPath(dir);
+  while (current !== '/') {
+    current = joinPath(current, '..');
+    const text = await fs.readText(joinPath(current, 'package.json'));
+    const manifest = text === undefined ? undefined : tryParseJson(text);
+    const workspaces =
+      typeof manifest === 'object' &&
+      manifest !== null &&
+      'workspaces' in manifest &&
+      manifest.workspaces !== undefined;
+    if (workspaces || (await fs.readText(joinPath(current, 'pnpm-workspace.yaml'))) !== undefined)
+      return current;
+  }
+  return undefined;
+}

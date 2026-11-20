@@ -9,7 +9,8 @@ export interface CoherenceWarning {
 /**
  * Consumers saved in one group run together, such as a federation host and its remotes. If they run
  * different dev versions of one library, what you see in the browser is a mix of both (ADR 0005).
- * Only installed links count: a pending or failed one has no version to compare yet.
+ * Every link with an installed version counts, failed ones too: a member whose latest install failed
+ * still runs the earlier dev build, which is exactly the mix this warns about.
  */
 export function coherenceWarnings(state: DryfitState): CoherenceWarning[] {
   const warnings: CoherenceWarning[] = [];
@@ -18,7 +19,7 @@ export function coherenceWarnings(state: DryfitState): CoherenceWarning[] {
     const byLibrary = new Map<string, { consumer: string; version: string }[]>();
 
     for (const link of state.links) {
-      if (!members.has(link.consumer) || link.status !== 'installed' || !link.installedVersion) continue;
+      if (!members.has(link.consumer) || !link.installedVersion) continue;
       const versions = byLibrary.get(link.library) ?? [];
       versions.push({ consumer: link.consumer, version: link.installedVersion });
       byLibrary.set(link.library, versions);

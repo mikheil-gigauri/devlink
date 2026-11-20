@@ -30,6 +30,9 @@ export async function registerLibrary(deps: CoreDeps, input: RegisterLibraryInpu
     publishDir: resolvePublishDir(root, input.publishDir),
     build: input.build && { ...input.build, cwd: root },
     lastPublishedVersion: existing?.lastPublishedVersion,
+    // Kept with the build it describes; dropping it would make every sibling look stale and
+    // republish the library, and all that depends on it, at the next link.
+    pinnedSiblings: existing?.pinnedSiblings,
     watch: existing?.watch,
   };
 

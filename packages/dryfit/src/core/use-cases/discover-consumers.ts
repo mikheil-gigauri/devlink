@@ -2,7 +2,7 @@ import { DryfitError } from '../errors.ts';
 import type { DependencyField } from '../model.ts';
 import { detectPackageManager, type PackageManagerDetection } from '../package-manager/detect.ts';
 import type { CoreDeps, ProjectInfo } from '../ports.ts';
-import { loadProject } from '../project/load-project.ts';
+import { isWorkspaceRoot, loadProject } from '../project/load-project.ts';
 import { findDependency } from '../project/manifest.ts';
 import { joinPath } from '../util/path.ts';
 
@@ -45,7 +45,15 @@ export async function discoverConsumers(
 
   const visit = async (dir: string, depth: number): Promise<void> => {
     if (libraryRoots.has(dir)) return;
-    const entries = await deps.fs.readDir(dir);
+    let entries: Awaited<ReturnType<typeof deps.fs.readDir>>;
+    try {
+      entries = await deps.fs.readDir(dir);
+    } catch (error) {
+      // A folder macOS keeps from the daemon (~/Documents without Full Disk Access) or one without
+      // read permission hides only itself, not every app found elsewhere.
+      if (isPermissionError(error)) return;
+      throw error;
+    }
 
     if (entries.some((entry) => entry.name === 'package.json' && !entry.isDirectory)) {
       const project = await tryLoadProject(deps, dir);
@@ -54,6 +62,9 @@ export async function discoverConsumers(
         found.set(consumer.root, consumer);
         return;
       }
+      // A workspace's packages install through its root's lockfile, which dryfit does not snapshot
+      // for them, so they are not offered as apps.
+      if (project && isWorkspaceRoot(project)) return;
     }
 
     if (depth >= maxDepth) return;
@@ -66,6 +77,10 @@ export async function discoverConsumers(
 
   for (const root of new Set(roots.map((root) => joinPath(root)))) await visit(root, 0);
   return [...found.values()].sort((a, b) => (a.root < b.root ? -1 : a.root > b.root ? 1 : 0));
+}
+
+function isPermissionError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM');
 }
 
 async function tryLoadProject(deps: CoreDeps, dir: string): Promise<ProjectInfo | undefined> {

@@ -461,6 +461,7 @@ private struct LinkRowView: View {
         label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
         busy: busy
       ) { Task { await model.restore(link.consumer, library: link.library) } }
+      .disabled(!busy && model.isRestoring(link.consumer))
     }
     .font(DS.body)
     .padding(4)
