@@ -151,6 +151,15 @@ private func health(pid: Int32, apiVersion: Int = 1, name: String = "dryfit") ->
     }
   }
 
+  @Test func updatesTheCLIAskingTheRegistryAgain_thenRestartsTheDaemon() async throws {
+    let commands = Commands(replies: [0])
+    try await launcher(agentInstalled: false, commands).updateCLI(environment: [:])
+    #expect(
+      await commands.ran == [
+        ["/bin/zsh", "-l", "-c", "npm install --global --prefer-online @dryfit/cli@latest && dryfit daemon restart"]
+      ])
+  }
+
   @Test func explainsWhenNpmMayNotWriteToItsGlobalFolder() async {
     let denied = DaemonLauncher(
       agentInstalled: { false }, shell: "/bin/zsh", userID: 501,
