@@ -501,9 +501,9 @@ import Testing
     }
 
     #expect(titles(MenuActions(checkForUpdates: {})) == [
-      "Open dryfit", "Settings…", "Open log", "Check for updates…", "Stop dryfit", "Quit dryfit",
+      "Open dryfit", "Settings…", "Open Log", "Check for Updates…", "Stop dryfit", "Quit dryfit",
     ])
-    #expect(!titles(MenuActions()).contains("Check for updates…"))
+    #expect(!titles(MenuActions()).contains("Check for Updates…"))
   }
 
   /// The Open panel hands back folder paths ending in a slash; the daemon stores them without one.
