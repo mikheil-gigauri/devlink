@@ -74,6 +74,8 @@ Set up
 
 Linking
   consumers [library]           List the projects that use your libraries
+  hide [consumer]...            Stop listing these apps (none: show the hidden ones)
+  unhide <consumer>...          List these apps again
   link <consumer>...            Install dev builds of a library into consumers
       --library <name>          Which library (default: the one here, or the only one)
       --group <name>            Link every consumer in a saved group
@@ -223,6 +225,7 @@ const HINTS: Partial<Record<string, string>> = {
   'library-not-found': 'Run `dryfit status` to see registered libraries, or `dryfit add` in the library.',
   'not-a-consumer': 'Check the path, or run `dryfit consumers` to see which projects use the library.',
   'library-linked': 'Run `dryfit restore` for those consumers first.',
+  'consumer-linked': 'Run `dryfit restore` in that app first, then hide it.',
   'snapshot-missing': 'dryfit has nothing to restore there: it was never linked, or was already restored.',
   'daemon-unavailable': 'Start it with `dryfit daemon start`, or run `dryfit doctor`.',
   'daemon-failed': 'See `dryfit doctor` and the log in ~/.dryfit/logs/daemon.log.',
@@ -421,6 +424,36 @@ const COMMANDS: Record<string, Command> = {
           out.line(`  ${library.name} ${out.dim(library.range)}  ${state}`.trimEnd());
         }
       }
+      return 0;
+    },
+  },
+
+  hide: {
+    async run({ positionals, ctx, out, json }) {
+      const client = await ctx.connect();
+      if (positionals.length === 0) {
+        const { hiddenApps } = await client.call('hiddenApps', {});
+        if (json) return printJson(out, hiddenApps);
+        if (hiddenApps.length === 0) out.line('No hidden apps.');
+        for (const app of hiddenApps) out.line(out.path(app));
+        return 0;
+      }
+      const consumers = positionals.map((path) => absolute(ctx, path));
+      const result = await client.call('hideApps', { consumers, hidden: true });
+      if (json) return printJson(out, result);
+      for (const app of consumers) out.ok(`Hid ${out.path(app)}`);
+      out.line(out.dim('`dryfit unhide <consumer>` lists it again.'));
+      return 0;
+    },
+  },
+
+  unhide: {
+    async run({ positionals, ctx, out, json }) {
+      if (positionals.length === 0) throw new CliError('Which apps? Usage: dryfit unhide <consumer>...', 2);
+      const consumers = positionals.map((path) => absolute(ctx, path));
+      const result = await (await ctx.connect()).call('hideApps', { consumers, hidden: false });
+      if (json) return printJson(out, result);
+      for (const app of consumers) out.ok(`Listing ${out.path(app)} again`);
       return 0;
     },
   },

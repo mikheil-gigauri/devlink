@@ -57,10 +57,18 @@ describe('DryfitHome', () => {
     await home.writeConfig({ ...DEFAULT_CONFIG, roots: ['/repos'] });
     await writeFile(home.paths.config, JSON.stringify({ roots: ['/repos'] }));
     expect(await home.readConfig()).toEqual({ ...DEFAULT_CONFIG, roots: ['/repos'] });
+
+    await writeFile(home.paths.config, JSON.stringify({ roots: ['/repos'], hiddenApps: ['/repos/old'] }));
+    expect(await home.readConfig()).toEqual({
+      ...DEFAULT_CONFIG,
+      roots: ['/repos'],
+      hiddenApps: ['/repos/old'],
+    });
   });
 
   it.each([
     ['roots that are not a list of paths', { roots: 'repos' }],
+    ['hidden apps that are not absolute paths', { hiddenApps: ['shop'] }],
     ['a port out of range', { ports: { api: 70_000 } }],
     ['broken JSON', '{'],
   ])('refuses a config with %s, naming the file', async (_, config) => {

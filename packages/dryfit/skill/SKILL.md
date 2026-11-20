@@ -80,6 +80,9 @@ publish folder for Nx, Angular CLI and packages with a `build` script; otherwise
 - `dryfit group save <name> <app>...`, then `link --group <name>` and `restore --group <name>`, for apps
   that run together.
 - `dryfit remove <library>` forgets a library; restore its apps first.
+- `dryfit hide <app>...` stops listing apps the user does not work on, and `dryfit unhide <app>...` lists
+  them again; `dryfit hide` alone shows the hidden ones. Hiding changes nothing in the app, and a linked
+  app must be restored first. Hide only the apps the user asks to.
 - `dryfit daemon start|stop|restart|status` controls the service; `dryfit doctor --json` checks the setup.
 - `dryfit help` lists every command and option.
 

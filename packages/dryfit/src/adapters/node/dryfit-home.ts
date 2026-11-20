@@ -8,11 +8,17 @@ import { isRecord } from '../../core/util/json.ts';
 export interface DryfitConfig {
   /** Folders searched for consumers. */
   readonly roots: readonly string[];
+  /** Apps the user hid: still on disk and under a root, but no longer listed as consumers. */
+  readonly hiddenApps: readonly string[];
   readonly ports: { readonly api: number; readonly registry: number };
 }
 
 /** Fixed ports keep lockfile URLs and the launchd agent stable; 4873 is Verdaccio's own default. */
-export const DEFAULT_CONFIG: DryfitConfig = { roots: [], ports: { api: 4875, registry: 4874 } };
+export const DEFAULT_CONFIG: DryfitConfig = {
+  roots: [],
+  hiddenApps: [],
+  ports: { api: 4875, registry: 4874 },
+};
 
 /** What a running daemon publishes about itself, so clients can find and check it. */
 export interface DaemonInfo {
@@ -73,8 +79,10 @@ export class DryfitHome {
     }
     if (!isRecord(parsed)) throw this.#invalidConfig('must hold a JSON object');
     const roots = parsed.roots ?? DEFAULT_CONFIG.roots;
-    if (!Array.isArray(roots) || !roots.every((root) => typeof root === 'string' && root.startsWith('/'))) {
-      throw this.#invalidConfig('needs "roots" to be a list of absolute paths');
+    if (!isAbsolutePathList(roots)) throw this.#invalidConfig('needs "roots" to be a list of absolute paths');
+    const hiddenApps = parsed.hiddenApps ?? DEFAULT_CONFIG.hiddenApps;
+    if (!isAbsolutePathList(hiddenApps)) {
+      throw this.#invalidConfig('needs "hiddenApps" to be a list of absolute paths');
     }
     const ports = { ...DEFAULT_CONFIG.ports, ...(isRecord(parsed.ports) ? parsed.ports : {}) };
     for (const [name, port] of Object.entries(ports)) {
@@ -82,7 +90,7 @@ export class DryfitHome {
         throw this.#invalidConfig(`has an invalid "ports.${name}"`);
       }
     }
-    return { roots, ports: ports as DryfitConfig['ports'] };
+    return { roots, hiddenApps, ports: ports as DryfitConfig['ports'] };
   }
 
   async writeConfig(config: DryfitConfig): Promise<void> {
@@ -148,6 +156,10 @@ export class DryfitHome {
   #invalidConfig(problem: string): DryfitError {
     return new DryfitError('invalid-config', `${this.paths.config} ${problem}`, { path: this.paths.config });
   }
+}
+
+function isAbsolutePathList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.startsWith('/'));
 }
 
 async function readOptional(path: string): Promise<string | undefined> {

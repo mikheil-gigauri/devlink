@@ -64,7 +64,7 @@ public struct MainWindow: View {
       case .library(let name) where model.libraries.contains { $0.id == name }:
         LibraryDetail(name: name, model: model, navigation: navigation, actions: actions)
       case .app(let root) where model.apps.contains { $0.root == root }:
-        AppDetail(root: root, model: model, actions: actions)
+        AppDetail(root: root, model: model, navigation: navigation, actions: actions)
       case .group(let name) where model.status?.groups.contains { $0.name == name } == true:
         GroupDetail(name: name, model: model, navigation: navigation)
       default:
@@ -135,6 +135,10 @@ private struct Sidebar: View {
             .tag(SidebarItem.app(app.root))
             .contextMenu {
               Button("Show in Finder") { revealInFinder(app.root) }
+              Divider()
+              // Linked apps stay listed: hidden, they could only be restored from the command line.
+              Button("Hide App") { Task { await model.hideApp(app.root, navigation: navigation) } }
+                .disabled(!app.linked.isEmpty)
             }
           }
         }

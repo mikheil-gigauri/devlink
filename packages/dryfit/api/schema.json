@@ -304,6 +304,40 @@
         }
       }
     },
+    "hiddenApps": {
+      "method": "POST",
+      "path": "/v1/hiddenApps",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      }
+    },
+    "hideApps": {
+      "method": "POST",
+      "path": "/v1/hideApps",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "consumers",
+          "hidden"
+        ],
+        "properties": {
+          "consumers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^/"
+            }
+          },
+          "hidden": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
     "shutdown": {
       "method": "POST",
       "path": "/v1/shutdown",
@@ -328,6 +362,7 @@
     "state-corrupt",
     "registry-failed",
     "library-linked",
+    "consumer-linked",
     "group-not-found",
     "invalid-group",
     "invalid-request",

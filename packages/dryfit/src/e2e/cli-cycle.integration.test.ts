@@ -59,7 +59,7 @@ describe.skipIf(!process.features.typescript)('a working session through the dry
       { name: 'user-home', private: true },
       { '.npmrc': `registry=${publicRegistry.url}\n` },
     );
-    await home.writeConfig({ roots: [], ports: { api: 0, registry: 0 } });
+    await home.writeConfig({ roots: [], hiddenApps: [], ports: { api: 0, registry: 0 } });
     const env = { ...process.env, HOME: userHome, DRYFIT_HOME: home.root, NO_COLOR: '1' };
     cli = new NodeProcessRunner({ baseEnv: env, timeoutMs: 180_000 });
     git = new NodeProcessRunner({

@@ -120,6 +120,46 @@ describe('dryfit CLI', () => {
     expect(stdout).toContain('npm install --global @dryfit/cli');
   });
 
+  it('hides apps given relative to here, lists the hidden ones, and shows them again', async () => {
+    const client = new FakeClient();
+    let hidden: string[] = [];
+    client.handlers.hideApps = ({ consumers, hidden: hide }) => {
+      hidden = hide ? [...hidden, ...consumers] : hidden.filter((app) => !consumers.includes(app));
+      return { hiddenApps: hidden };
+    };
+    client.handlers.hiddenApps = () => ({ hiddenApps: hidden });
+
+    expect((await dryfit('hide ../old-shop', { client })).code).toBe(0);
+    expect(client.calls.at(-1)).toEqual({
+      name: 'hideApps',
+      input: { consumers: ['/Users/me/repos/old-shop'], hidden: true },
+    });
+    expect((await dryfit('hide', { client })).stdout).toContain('~/repos/old-shop');
+    expect((await dryfit('unhide ../old-shop', { client })).code).toBe(0);
+    expect((await dryfit('hide', { client })).stdout).toContain('No hidden apps.');
+  });
+
+  it('will not hide a linked app, and says to restore it first', async () => {
+    const client = new FakeClient();
+    client.replies.hideApps = new ApiError(
+      'consumer-linked',
+      '/Users/me/repos/shop is still linked; restore it first',
+      {
+        consumers: ['/Users/me/repos/shop'],
+      },
+    );
+
+    const { code, stderr } = await dryfit('hide ../shop', { client });
+
+    expect(code).toBe(1);
+    expect(stderr).toContain('restore it first');
+    expect(stderr).toContain('Run `dryfit restore` in that app first');
+  });
+
+  it('asks which apps to show again', async () => {
+    expect((await dryfit('unhide')).code).toBe(2);
+  });
+
   it('links consumers given relative to here, into the library this folder belongs to', async () => {
     const client = new FakeClient();
     client.replies.link = {

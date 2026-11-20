@@ -44,6 +44,9 @@ export interface DaemonServiceOptions {
   readonly roots: () => readonly string[] | Promise<readonly string[]>;
   /** Replaces the folders searched for consumers in config.json. */
   readonly saveRoots: (roots: readonly string[]) => Promise<void>;
+  /** Apps left out of discovery (`hiddenApps` in config.json), read per request like the roots. */
+  readonly hiddenApps: () => readonly string[] | Promise<readonly string[]>;
+  readonly saveHiddenApps: (apps: readonly string[]) => Promise<void>;
   readonly watcher: LibraryWatcher;
   readonly guard: CommitGuard;
   /** Called after a `shutdown` request has been answered. */
@@ -191,7 +194,11 @@ export class DaemonService {
         }),
 
       discover: async ({ library }) => {
-        const consumers = await discoverConsumers(deps, { roots: await this.#options.roots() });
+        const [found, hidden] = await Promise.all([
+          discoverConsumers(deps, { roots: await this.#options.roots() }),
+          this.#options.hiddenApps(),
+        ]);
+        const consumers = found.filter((consumer) => !hidden.includes(consumer.root));
         return library === undefined
           ? consumers
           : consumers.filter((consumer) => consumer.libraries.some((entry) => entry.name === library));
@@ -262,6 +269,31 @@ export class DaemonService {
         await this.#options.saveRoots(roots);
         return { roots };
       },
+
+      hiddenApps: async () => ({ hiddenApps: await this.#options.hiddenApps() }),
+
+      // A job, so a link cannot slip in between the check and the save.
+      hideApps: ({ consumers, hidden }) =>
+        job(`${hidden ? 'hide' : 'show'} ${consumers.join(', ')}`, async () => {
+          const apps = consumers.map((consumer) => joinPath(consumer));
+          const current = await this.#options.hiddenApps();
+          if (hidden) {
+            const { links } = await deps.state.load();
+            const linked = apps.filter((app) => links.some((link) => link.consumer === app));
+            if (linked.length > 0) {
+              throw new DryfitError(
+                'consumer-linked',
+                `${linked.length === 1 ? linked[0] : `${linked.length} apps`} ${linked.length === 1 ? 'is' : 'are'} still linked; restore ${linked.length === 1 ? 'it' : 'them'} first`,
+                { consumers: linked },
+              );
+            }
+          }
+          const hiddenApps = hidden
+            ? [...new Set([...current, ...apps])]
+            : current.filter((app) => !apps.includes(app));
+          await this.#options.saveHiddenApps(hiddenApps);
+          return { hiddenApps };
+        }),
 
       shutdown: async () => {
         setTimeout(() => this.#options.onShutdown(), 0);

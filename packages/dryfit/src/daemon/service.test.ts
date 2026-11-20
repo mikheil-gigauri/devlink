@@ -50,6 +50,7 @@ function setup(state: DryfitState = registered) {
   const guard = new FakeGuard();
   let shutdowns = 0;
   let roots: readonly string[] = ['/repos'];
+  let hiddenApps: readonly string[] = [];
   const service = new DaemonService({
     deps: { ...scenario.deps, events: hub },
     hub,
@@ -57,6 +58,10 @@ function setup(state: DryfitState = registered) {
     roots: () => roots,
     saveRoots: async (next) => {
       roots = next;
+    },
+    hiddenApps: () => hiddenApps,
+    saveHiddenApps: async (next) => {
+      hiddenApps = next;
     },
     watcher,
     guard,
@@ -73,6 +78,7 @@ function setup(state: DryfitState = registered) {
     guard,
     shutdowns: () => shutdowns,
     roots: () => roots,
+    hiddenApps: () => hiddenApps,
   };
 }
 
@@ -184,6 +190,33 @@ describe('DaemonService', () => {
 
     expect(saved).toEqual({ roots: ['/code/b', '/code/a'] });
     expect(roots()).toEqual(['/code/b', '/code/a']);
+  });
+
+  it('leaves hidden apps out of discovery until they are shown again', async () => {
+    const { service, hiddenApps } = setup();
+    const roots = async () => (await service.call('discover', {})).map((consumer) => consumer.root);
+    expect(await roots()).toContain(SHOP);
+
+    expect(await service.call('hideApps', { consumers: [`${SHOP}/`, SHOP], hidden: true })).toEqual({
+      hiddenApps: [SHOP],
+    });
+    expect(hiddenApps()).toEqual([SHOP]);
+    expect(await roots()).not.toContain(SHOP);
+    expect(await service.call('hiddenApps', {})).toEqual({ hiddenApps: [SHOP] });
+
+    expect(await service.call('hideApps', { consumers: [SHOP], hidden: false })).toEqual({ hiddenApps: [] });
+    expect(await roots()).toContain(SHOP);
+  });
+
+  it('refuses to hide a linked app, which could then only be restored from the command line', async () => {
+    const { service, hiddenApps } = setup();
+    await service.call('link', { library: '@acme/ui', consumer: SHOP });
+
+    await expect(service.call('hideApps', { consumers: [SHOP], hidden: true })).rejects.toMatchObject({
+      code: 'consumer-linked',
+      details: { consumers: [SHOP] },
+    });
+    expect(hiddenApps()).toEqual([]);
   });
 
   it('installs the commit guard when linking, and records it', async () => {

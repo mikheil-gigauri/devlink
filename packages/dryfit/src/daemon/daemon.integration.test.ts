@@ -16,7 +16,7 @@ describe('startDaemon', () => {
   beforeEach(async () => {
     ({ path: dir, cleanup } = await createTempDir());
     home = new DryfitHome(join(dir, '.dryfit'));
-    await home.writeConfig({ roots: [join(dir, 'repos')], ports: { api: 0, registry: 0 } });
+    await home.writeConfig({ roots: [join(dir, 'repos')], hiddenApps: [], ports: { api: 0, registry: 0 } });
     await mkdir(join(dir, 'user'), { recursive: true });
     await writeFile(join(dir, 'user', '.npmrc'), '@corp:registry=https://npm.corp.example/\n');
     env = { ...process.env, HOME: join(dir, 'user') };
@@ -96,7 +96,7 @@ describe('startDaemon', () => {
     await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));
     const port = (blocker.address() as { port: number }).port;
     const registry = await freePort();
-    await home.writeConfig({ roots: [], ports: { api: port, registry } });
+    await home.writeConfig({ roots: [], hiddenApps: [], ports: { api: port, registry } });
 
     try {
       await expect(startDaemon({ home, version: '9.9.9-test', env, log: () => {} })).rejects.toMatchObject({
@@ -112,7 +112,7 @@ describe('startDaemon', () => {
 
   it('releases both ports when a step after listening fails', async () => {
     const [api, registry] = [await freePort(), await freePort()];
-    await home.writeConfig({ roots: [], ports: { api, registry } });
+    await home.writeConfig({ roots: [], hiddenApps: [], ports: { api, registry } });
     await mkdir(home.paths.daemon, { recursive: true }); // daemon.json cannot be written
 
     await expect(startDaemon({ home, version: '9.9.9-test', env, log: () => {} })).rejects.toThrow();

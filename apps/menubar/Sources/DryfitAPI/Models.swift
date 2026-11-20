@@ -7,7 +7,7 @@ public let supportedAPIVersion = 1
 /// daemon's exported schema, so the two cannot drift apart.
 public enum OperationName: String, CaseIterable, Sendable {
   case status, register, unregister, inspect, sync, watch, discover, link, restore
-  case saveGroup, deleteGroup, linkGroup, restoreGroup, roots, setRoots, shutdown
+  case saveGroup, deleteGroup, linkGroup, restoreGroup, roots, setRoots, hiddenApps, hideApps, shutdown
 }
 
 public struct Health: Codable, Sendable, Equatable {
@@ -244,6 +244,13 @@ public struct Roots: Codable, Sendable, Equatable {
   public let roots: [String]
 
   public init(roots: [String]) { self.roots = roots }
+}
+
+/// Apps the user hid: the daemon leaves them out of `discover` until they are shown again.
+public struct HiddenApps: Codable, Sendable, Equatable {
+  public let hiddenApps: [String]
+
+  public init(hiddenApps: [String]) { self.hiddenApps = hiddenApps }
 }
 
 public struct RegisterResult: Codable, Sendable, Equatable {
