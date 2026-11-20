@@ -16,11 +16,14 @@ public struct SettingsView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
         Text("Settings").font(DS.title)
+        if let error = model.actionError {
+          ErrorBanner(message: error) { model.dismissActionError() }.padding(.top, 12)
+        }
 
         SectionLabel("Project folders")
         HairlineGroup {
           if model.connection != .online {
-            GroupRow { Text("Start dryfit to change these.").foregroundStyle(.secondary) }
+            GroupRow { Text("Start dryfit to change these.").foregroundStyle(DS.muted) }
           } else if let roots = model.roots, !roots.isEmpty {
             ForEach(roots, id: \.self) { root in
               GroupRow {
@@ -28,22 +31,30 @@ public struct SettingsView: View {
                 Text(abbreviatedPath(root)).lineLimit(1).truncationMode(.head)
                 Spacer(minLength: 8)
                 Button {
-                  Task { try? await model.setRoots(roots.filter { $0 != root }) }
+                  Task {
+                    do {
+                      try await model.setRoots(roots.filter { $0 != root })
+                    } catch {
+                      model.actionError = error.localizedDescription
+                    }
+                  }
                 } label: {
-                  Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                  // The row's own height, but a 24 pt target.
+                  Image(systemName: "minus.circle").foregroundStyle(DS.muted).hitTarget(CGSize(width: 14, height: 14))
                 }
                 .buttonStyle(.plain)
+                .disabled(model.isBusy(.roots))
                 .help("Stop looking in \(abbreviatedPath(root))")
                 .accessibilityLabel("Remove \(abbreviatedPath(root))")
               }
             }
           } else {
-            GroupRow { Text("No folders yet. Add the folders that hold your apps.").foregroundStyle(.secondary) }
+            GroupRow { Text("No folders yet. Add the folders that hold your apps.").foregroundStyle(DS.muted) }
           }
           GroupRow {
             Spacer()
-            Button("Add folder…") { Task { await model.chooseProjectFolders() } }
-              .buttonStyle(.pill)
+            Button("Add folders…") { Task { await model.chooseProjectFolders() } }
+              .buttonStyle(.pill(busy: model.isBusy(.roots)))
               .disabled(model.connection != .online)
           }
         }
@@ -58,8 +69,7 @@ public struct SettingsView: View {
                 Text(projectName(root)).lineLimit(1)
                 Spacer(minLength: 8)
                 Button("Show") { Task { await model.showApp(root) } }
-                  .buttonStyle(.pill)
-                  .disabled(model.isBusy(.hide(root)))
+                  .buttonStyle(.pill(busy: model.isBusy(.hide(root))))
                   .help("List \(projectName(root)) again")
               }
               .help(abbreviatedPath(root))
@@ -72,11 +82,11 @@ public struct SettingsView: View {
           GroupRow {
             Text("Status")
             Spacer(minLength: 8)
-            Text(status).foregroundStyle(.secondary)
+            Text(status).foregroundStyle(DS.muted)
           }
           if let outdated = model.outdatedVersion {
             GroupRow {
-              Image(systemName: "arrow.up.circle").foregroundStyle(.orange)
+              Image(systemName: "arrow.up.circle").foregroundStyle(.orange).accessibilityHidden(true)
               Text("dryfit \(outdated) is older than this app")
               Spacer(minLength: 8)
               UpdateDryfitControl(model: model, prominent: false)
@@ -86,7 +96,7 @@ public struct SettingsView: View {
             GroupRow {
               Text("Registry")
               Spacer(minLength: 8)
-              Text(registry).foregroundStyle(.secondary).textSelection(.enabled)
+              Text(registry).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
             }
           }
           GroupRow {
@@ -94,9 +104,11 @@ public struct SettingsView: View {
             Spacer()
             switch model.connection {
             case .online:
-              Button("Stop") { Task { await model.stopDaemon() } }.buttonStyle(.pill)
+              Button("Stop") { Task { await model.stopDaemon() } }.buttonStyle(.pill(busy: model.isBusy(.stop)))
             case .offline:
               Button("Start") { Task { await model.startDaemon() } }.buttonStyle(.pill)
+            case .starting:
+              Button("Start") {}.buttonStyle(.pill(busy: true))
             default:
               EmptyView()
             }

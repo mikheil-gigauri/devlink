@@ -25,24 +25,34 @@ struct LibraryEditor: View {
       } else {
         HStack(spacing: 8) {
           ProgressView().controlSize(.small)
-          Text("Reading \(projectName(root))'s package.json…").foregroundStyle(.secondary)
+          Text("Reading \(projectName(root))'s package.json…").foregroundStyle(DS.muted)
         }
         .frame(maxWidth: .infinity, minHeight: 120)
       }
       HStack(spacing: 8) {
         if saving { ProgressView().controlSize(.small) }
         Spacer()
-        Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction)
-        Button(preview?.registered == true ? "Save" : "Add library") { save() }
-          .buttonStyle(.primaryPill)
-          .keyboardShortcut(.defaultAction)
-          .disabled(preview == nil || publishDir.isEmpty || saving)
+        if loadError != nil {
+          // Nothing to add: one way out, not a Cancel beside a button that can never be clicked.
+          // Return through the default action, Escape through the exit command below.
+          Button("Close") { dismiss() }.buttonStyle(.primaryPill).keyboardShortcut(.defaultAction)
+        } else {
+          Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction).disabled(saving)
+          Button(preview?.registered == true ? "Save" : "Add library") { save() }
+            .buttonStyle(.primaryPill)
+            .keyboardShortcut(.defaultAction)
+            .disabled(preview == nil || publishDir.isEmpty || saving)
+        }
       }
       .padding(.top, 14)
     }
     .font(DS.body)
     .padding(14)
     .frame(width: 420)
+    // Closed mid-save, the save would still finish and then move the window to the library.
+    .interactiveDismissDisabled(saving)
+    // The error state has no Cancel to carry Escape.
+    .onExitCommand { if loadError != nil { dismiss() } }
     .task {
       do {
         let found = try await model.inspect(root)
@@ -67,7 +77,7 @@ struct LibraryEditor: View {
     HairlineGroup {
       GroupRow {
         Text(publishDir == preview.root ? "The library's folder" : relative(publishDir, to: preview.root))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(DS.muted)
           .lineLimit(1)
           .truncationMode(.head)
         Spacer(minLength: 8)
@@ -131,16 +141,27 @@ struct GroupEditor: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      SheetLabel("Name", top: 0)
-      TextField("Name", text: $name, prompt: Text("storefront"))
-        .field()
-        .disabled(isEditing)
-      Footnote("A group links a library into all of its apps at once.")
+      // Groups can't be renamed, so editing names the group in the title instead of a greyed-out field.
+      if case .edit(let group) = request {
+        SheetHeader(
+          symbol: "square.stack.3d.up", tint: .purple, title: "Edit \(group.name)",
+          subtitle: "Choose the apps dryfit links and restores together.")
+      } else {
+        SheetHeader(
+          symbol: "square.stack.3d.up", tint: .purple, title: "New group",
+          subtitle: "A group links a library into all of its apps at once.")
+        SheetLabel("Name")
+        TextField("Name", text: $name, prompt: Text("storefront"))
+          .field()
+        if nameTaken {
+          Text("There's already a group called \(trimmedName).").font(DS.caption).foregroundStyle(.red).padding(.top, 4)
+        }
+      }
       SheetLabel("Apps")
       ScrollView {
         HairlineGroup {
           if projects.isEmpty {
-            GroupRow { Text("No apps found in your project folders. Add one below.").foregroundStyle(.secondary) }
+            GroupRow { Text("No apps found in your project folders. Add one below.").foregroundStyle(DS.muted) }
           }
           ForEach(projects, id: \.self) { project in
             GroupRow {
@@ -154,7 +175,7 @@ struct GroupEditor: View {
               }
               .toggleStyle(.checkbox13)
               Spacer(minLength: 8)
-              Text(abbreviatedPath(project)).font(DS.caption).foregroundStyle(.secondary).lineLimit(1)
+              Text(abbreviatedPath(project)).font(DS.caption).foregroundStyle(DS.muted).lineLimit(1)
                 .truncationMode(.head)
             }
           }
@@ -172,17 +193,18 @@ struct GroupEditor: View {
       }
       HStack(spacing: 8) {
         Spacer()
-        Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction)
+        Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction).disabled(saving)
         Button(isEditing ? "Save" : "Create group") { save() }
           .buttonStyle(.primaryPill)
           .keyboardShortcut(.defaultAction)
-          .disabled(trimmedName.isEmpty || members.isEmpty || saving)
+          .disabled(trimmedName.isEmpty || nameTaken || members.isEmpty || saving)
       }
       .padding(.top, 14)
     }
     .font(DS.body)
     .padding(14)
     .frame(width: 420)
+    .interactiveDismissDisabled(saving)
     .onAppear {
       if case .edit(let group) = request {
         name = group.name
@@ -196,6 +218,11 @@ struct GroupEditor: View {
   }
 
   private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
+  /// Saving a new group under an existing name would replace that group's apps.
+  private var nameTaken: Bool {
+    !isEditing && model.groups.contains { $0.name == trimmedName }
+  }
 
   private var projects: [String] {
     var all = model.knownProjects
@@ -229,15 +256,16 @@ struct GroupEditor: View {
 /// A sheet's tile, title and one line about what it shows.
 private struct SheetHeader: View {
   let symbol: String
+  var tint = Color.teal
   let title: String
   let subtitle: String
 
   var body: some View {
     HStack(spacing: 10) {
-      Tile(symbol: symbol, tint: .teal, size: 30)
+      Tile(symbol: symbol, tint: tint, size: 30)
       VStack(alignment: .leading, spacing: 1) {
         Text(title).font(DS.sheetTitle).lineLimit(1)
-        Text(subtitle).font(DS.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+        Text(subtitle).font(DS.caption).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.middle)
       }
     }
   }
@@ -253,6 +281,6 @@ private struct SheetLabel: View {
   }
 
   var body: some View {
-    Text(text).font(DS.caption).foregroundStyle(.secondary).padding(.top, top).padding(.bottom, 4)
+    Text(text).font(DS.caption).foregroundStyle(DS.muted).padding(.top, top).padding(.bottom, 4)
   }
 }

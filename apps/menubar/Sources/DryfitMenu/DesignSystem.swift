@@ -25,6 +25,18 @@ enum DS {
   /// Behind a button, a step brighter than the group it sits on.
   static let buttonFill = Color.primary.opacity(0.1)
   static let radius: CGFloat = 8
+  /// Muted text and symbols: captions, paths, values beside a label. The system's secondary grey
+  /// measures 3.8:1 on a group in light mode, under the 4.5:1 that 11 pt text needs; this one is
+  /// about 4.8:1 there and the system's own 55% in dark mode, and stronger with Increase Contrast.
+  static let muted = Color(
+    nsColor: NSColor(name: "dryfitMuted") { appearance in
+      switch appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]) {
+      case .darkAqua: NSColor(white: 1, alpha: 0.55)
+      case .accessibilityHighContrastDarkAqua: NSColor(white: 1, alpha: 0.75)
+      case .accessibilityHighContrastAqua: NSColor(white: 0, alpha: 0.75)
+      default: NSColor(white: 0, alpha: 0.56)
+      }
+    })
 }
 
 /// A one-pixel line across the full width, snapped to the pixel grid so it never fades out.
@@ -75,7 +87,7 @@ struct SectionLabel: View {
   init(_ text: String) { self.text = text }
 
   var body: some View {
-    Text(text).font(DS.caption).foregroundStyle(.secondary).padding(.top, 14).padding(.bottom, 4)
+    Text(text).font(DS.caption).foregroundStyle(DS.muted).padding(.top, 14).padding(.bottom, 4)
   }
 }
 
@@ -85,7 +97,7 @@ struct Footnote: View {
   init(_ text: String) { self.text = text }
 
   var body: some View {
-    Text(text).font(DS.caption).foregroundStyle(.secondary).padding(.top, 4)
+    Text(text).font(DS.caption).foregroundStyle(DS.muted).padding(.top, 4)
       .fixedSize(horizontal: false, vertical: true)
   }
 }
@@ -102,7 +114,7 @@ struct TwoLine: View {
     VStack(alignment: .leading, spacing: 1) {
       Text(title).font(titleFont).lineLimit(1)
       if let caption {
-        Text(caption).font(DS.caption).foregroundStyle(.secondary)
+        Text(caption).font(DS.caption).foregroundStyle(DS.muted)
           .lineLimit(wraps ? nil : 1)
           .fixedSize(horizontal: false, vertical: wraps)
       }
@@ -118,7 +130,7 @@ struct TwoLineView<Title: View>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 1) {
       title
-      Text(caption).font(DS.caption).foregroundStyle(.secondary).lineLimit(1)
+      Text(caption).font(DS.caption).foregroundStyle(DS.muted).lineLimit(1)
     }
   }
 }
@@ -130,9 +142,11 @@ struct TwoLineView<Title: View>: View {
 struct PillButtonStyle: ButtonStyle {
   enum Kind { case normal, primary, accent, danger }
   var kind = Kind.normal
+  /// While its job runs: a spinner in place of the title, at full strength, the same width.
+  var busy = false
 
   func makeBody(configuration: Configuration) -> some View {
-    PillLabel(kind: kind, pressed: configuration.isPressed) { configuration.label }
+    PillLabel(kind: kind, pressed: configuration.isPressed, busy: busy) { configuration.label }
   }
 }
 
@@ -141,12 +155,16 @@ extension ButtonStyle where Self == PillButtonStyle {
   static var primaryPill: PillButtonStyle { PillButtonStyle(kind: .primary) }
   static var accentPill: PillButtonStyle { PillButtonStyle(kind: .accent) }
   static var dangerPill: PillButtonStyle { PillButtonStyle(kind: .danger) }
+  static func pill(busy: Bool) -> PillButtonStyle { PillButtonStyle(busy: busy) }
+  static func accentPill(busy: Bool) -> PillButtonStyle { PillButtonStyle(kind: .accent, busy: busy) }
+  static func dangerPill(busy: Bool) -> PillButtonStyle { PillButtonStyle(kind: .danger, busy: busy) }
 }
 
 /// A pill's look, for menus that open from one.
 struct PillLabel<Label: View>: View {
   var kind = PillButtonStyle.Kind.normal
   var pressed = false
+  var busy = false
   @ViewBuilder var label: Label
   @Environment(\.isEnabled) private var isEnabled
 
@@ -156,17 +174,23 @@ struct PillLabel<Label: View>: View {
       .font(DS.caption)
       .lineLimit(1)
       .fixedSize()
+      .opacity(busy ? 0 : 1)
+      .overlay { if busy { ProgressView().controlSize(.mini) } }
       .padding(.horizontal, 8)
       .padding(.vertical, 2)
       .foregroundStyle(foreground)
       .background(kind == .primary ? AnyShapeStyle(Color.primary) : AnyShapeStyle(DS.buttonFill), in: .rect(cornerRadius: DS.radius))
       .contentShape(.rect)
-      .opacity(isEnabled ? (pressed ? 0.7 : 1) : 0.35)
+      // Disabled fades as far as the switch does: at 35% a pill all but disappeared.
+      .opacity(isEnabled ? (pressed ? 0.7 : 1) : 0.5)
+      // A second click while the job runs would be dropped by the model anyway; this says so.
+      .allowsHitTesting(!busy)
+      .accessibilityValue(busy ? Text("In progress") : Text(""))
   }
 
   private var foreground: AnyShapeStyle {
     switch kind {
-    case .normal: AnyShapeStyle(.secondary)
+    case .normal: AnyShapeStyle(DS.muted)
     case .primary: AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
     case .accent: AnyShapeStyle(Color.accentColor)
     case .danger: AnyShapeStyle(Color.red)
@@ -187,15 +211,17 @@ struct PillLabelStyle: LabelStyle {
 /// A pill that opens a menu.
 struct PillMenu<Items: View, Label: View>: View {
   var kind = PillButtonStyle.Kind.normal
+  var busy = false
   @ViewBuilder var items: Items
   @ViewBuilder var label: Label
 
   var body: some View {
-    Menu { items } label: { PillLabel(kind: kind) { label } }
+    Menu { items } label: { PillLabel(kind: kind, busy: busy) { label } }
       .menuStyle(.button)
       .buttonStyle(.plain)
       .menuIndicator(.hidden)
       .fixedSize()
+      .allowsHitTesting(!busy)
   }
 }
 
@@ -210,7 +236,7 @@ struct ChipButtonStyle: ButtonStyle {
       .lineLimit(1)
       .padding(.horizontal, 7)
       .padding(.vertical, 2)
-      .foregroundStyle(quiet ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
+      .foregroundStyle(quiet ? AnyShapeStyle(DS.muted) : AnyShapeStyle(Color.accentColor))
       .background(quiet ? Color.clear : DS.accentTint, in: .rect(cornerRadius: DS.radius))
       .contentShape(.rect)
       .opacity(configuration.isPressed ? 0.7 : 1)
@@ -231,9 +257,9 @@ struct IconButton: View {
         if busy { ProgressView().controlSize(.mini) }
       }
       .font(.system(size: 12))
-      .foregroundStyle(.secondary)
+      .foregroundStyle(DS.muted)
       .frame(width: 18, height: 18)
-      .contentShape(.rect)
+      .hitTarget()
     }
     .buttonStyle(.plain)
     .disabled(busy)
@@ -268,6 +294,16 @@ struct MiniSwitchStyle: ToggleStyle {
       .opacity(isEnabled ? 1 : 0.5)
       .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
     }
+  }
+}
+
+extension View {
+  /// Clicks land anywhere within 24 by 24 pt of a smaller control, without moving anything.
+  func hitTarget(_ size: CGSize = CGSize(width: 18, height: 18)) -> some View {
+    let x = max(0, (24 - size.width) / 2)
+    let y = max(0, (24 - size.height) / 2)
+    return padding(.horizontal, x).padding(.vertical, y).contentShape(.rect)
+      .padding(.horizontal, -x).padding(.vertical, -y)
   }
 }
 
@@ -344,7 +380,7 @@ struct Badge: View {
       .font(DS.small)
       .padding(.horizontal, 6)
       .padding(.vertical, 1)
-      .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+      .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(DS.muted))
       .background(tint.map { $0.opacity(0.15) } ?? DS.neutralFill, in: .rect(cornerRadius: 5))
   }
 }
@@ -406,7 +442,7 @@ struct PageHeader<Accessory: View>: View {
           Text(title).font(DS.title).textSelection(.enabled).lineLimit(1)
           accessory
         }
-        Text(subtitle).font(DS.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        Text(subtitle).font(DS.body).foregroundStyle(DS.muted).fixedSize(horizontal: false, vertical: true)
       }
     }
   }

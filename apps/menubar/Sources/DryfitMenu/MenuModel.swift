@@ -1,3 +1,4 @@
+import AppKit
 import DryfitAPI
 import Foundation
 import Observation
@@ -86,8 +87,16 @@ public struct LibraryRow: Identifiable, Equatable {
   /// Apps the user added by hand from outside the project folders, until they are linked.
   public internal(set) var addedApps: [DiscoveredConsumer] = []
   public internal(set) var inFlight: Set<Action> = []
-  /// Why the last action did not work, shown under the controls.
-  public internal(set) var actionError: String?
+  /// Why the last action did not work, shown under the controls. VoiceOver reads it out once when it
+  /// arrives: it comes after a job, away from where VoiceOver is.
+  public internal(set) var actionError: String? {
+    didSet {
+      guard let actionError, actionError != oldValue else { return }
+      NSAccessibility.post(
+        element: NSApp as Any, notification: .announcementRequested,
+        userInfo: [.announcement: actionError, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+  }
   /// Why starting the daemon did not work.
   public internal(set) var startError: String?
   /// Starting failed because the CLI is not installed, so the app offers to install it.

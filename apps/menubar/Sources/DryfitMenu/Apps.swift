@@ -162,20 +162,24 @@ struct AppDetail: View {
 
   private func content(_ app: AppSummary) -> some View {
     Page {
-      Text(abbreviatedPath(app.root)).font(DS.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+      Text(abbreviatedPath(app.root)).font(DS.caption).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.head)
       Spacer(minLength: 8)
       Button { revealInFinder(app.root) } label: { Image(systemName: "folder") }
         .buttonStyle(.pill)
         .help("Show \(app.name) in Finder")
         .accessibilityLabel("Show in Finder")
-      Button {
-        Task { await model.restore(app.root) }
-      } label: {
-        Label("Restore all", systemImage: "arrow.uturn.backward")
+      // Only while there is something to restore: the subtitle already says when there isn't.
+      if !app.linked.isEmpty {
+        Button {
+          Task { await model.restore(app.root) }
+        } label: {
+          Label("Restore all", systemImage: "arrow.uturn.backward")
+        }
+        .buttonStyle(.pill(busy: model.isBusy(.restore(app.root, nil))))
+        // Not while one of its libraries is being restored: both would edit the same package.json.
+        .disabled(app.libraries.contains { model.isBusy(.restore(app.root, $0.library)) })
+        .help("Put every library in \(app.name) back on its release")
       }
-      .buttonStyle(.pill)
-      .disabled(app.linked.isEmpty || model.isBusy(.restore(app.root, nil)))
-      .help(app.linked.isEmpty ? "\(app.name) already uses released versions" : "Put every library in \(app.name) back on its release")
     } content: {
       if let error = model.actionError {
         ErrorBanner(message: error) { model.dismissActionError() }.padding(.bottom, 12)
@@ -199,8 +203,8 @@ struct AppDetail: View {
               : "Restore it first: dryfit only hides apps that use released versions.", wraps: true)
           Spacer(minLength: 8)
           Button("Hide app") { Task { await model.hideApp(app.root, navigation: navigation) } }
-            .buttonStyle(.pill)
-            .disabled(!app.linked.isEmpty || model.isBusy(.hide(app.root)))
+            .buttonStyle(.pill(busy: model.isBusy(.hide(app.root))))
+            .disabled(!app.linked.isEmpty)
         }
       }
       .padding(.top, 12)
@@ -235,7 +239,7 @@ private struct AppLibraryRow: View {
         } else {
           Text(detail)
             .font(DS.caption)
-            .foregroundStyle(entry.link?.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+            .foregroundStyle(entry.link?.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(DS.muted))
             .lineLimit(1)
         }
       }
@@ -243,13 +247,12 @@ private struct AppLibraryRow: View {
       BuildChip(dev: entry.link != nil)
       if entry.link == nil {
         Button("Link") { Task { await model.link(entry.library, into: app.root) } }
-          .buttonStyle(.accentPill)
-          .disabled(model.isBusy(.link(entry.library, app.root)))
+          .buttonStyle(.accentPill(busy: model.isBusy(.link(entry.library, app.root))))
           .help("Install the dev build of \(entry.library) into \(app.name)")
       } else {
         Button("Restore") { Task { await model.restore(app.root, library: entry.library) } }
-          .buttonStyle(.pill)
-          .disabled(model.isBusy(.restore(app.root, entry.library)) || model.isBusy(.restore(app.root, nil)))
+          .buttonStyle(.pill(busy: model.isBusy(.restore(app.root, entry.library))))
+          .disabled(model.isBusy(.restore(app.root, nil)))
           .help("Put \(app.name) back on the release of \(entry.library)")
       }
     }
