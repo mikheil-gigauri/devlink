@@ -195,6 +195,121 @@ describe('dryfit CLI', () => {
     );
   });
 
+  describe('consumers by the name `dryfit consumers` shows', () => {
+    const found = (root: string, name?: string) => ({
+      root,
+      name,
+      packageManager: { name: 'npm' as const, lockfile: 'package-lock.json' },
+      libraries: [],
+    });
+    const linkReply = (client: FakeClient) => {
+      client.handlers.link = ({ library, consumer }) => {
+        const link = { library, consumer, status: 'pending' as const };
+        return { link, links: [link], guard: 'installed', clearedCaches: [] };
+      };
+    };
+
+    it('links an app by its package name or its folder name, from anywhere', async () => {
+      const client = new FakeClient();
+      client.replies.discover = [
+        found('/Users/me/repos/shop', 'shop'),
+        found('/Users/me/work/admin-app', '@acme/admin'),
+      ] as never;
+      linkReply(client);
+
+      const { code } = await dryfit('link shop @acme/admin admin-app', {
+        client,
+        cwd: '/Users/me/repos/ui-lib',
+      });
+
+      expect(code).toBe(0);
+      expect(client.calls.filter((call) => call.name === 'link').map((call) => call.input)).toEqual([
+        { library: '@acme/ui', consumer: '/Users/me/repos/shop' },
+        { library: '@acme/ui', consumer: '/Users/me/work/admin-app' },
+        { library: '@acme/ui', consumer: '/Users/me/work/admin-app' },
+      ]);
+    });
+
+    it('asks for a path when two apps go by the name', async () => {
+      const client = new FakeClient();
+      client.replies.discover = [
+        found('/Users/me/a/shop', 'shop'),
+        found('/Users/me/b/shop', 'shop'),
+      ] as never;
+
+      const { code, stderr } = await dryfit('link shop', { client });
+
+      expect(code).toBe(2);
+      expect(stderr).toContain('More than one app is called shop');
+      expect(stderr).toContain('/Users/me/b/shop');
+      expect(client.calls.some((call) => call.name === 'link')).toBe(false);
+    });
+
+    it('keeps a path a path, without looking for apps', async () => {
+      const client = new FakeClient();
+      linkReply(client);
+
+      await dryfit('link ../shop ./admin', { client });
+
+      expect(client.calls.some((call) => call.name === 'discover')).toBe(false);
+      expect(client.calls.filter((call) => call.name === 'link').map((call) => call.input)).toEqual([
+        { library: '@acme/ui', consumer: '/Users/me/repos/shop' },
+        { library: '@acme/ui', consumer: '/Users/me/repos/ui-lib/admin' },
+      ]);
+    });
+
+    it('will not hide or show again an app by a name dryfit does not know', async () => {
+      const client = new FakeClient();
+      client.replies.discover = [];
+      client.replies.hiddenApps = { hiddenApps: ['/Users/me/repos/blog'] };
+
+      const hide = await dryfit('hide shop', { client, cwd: '/Users/me' });
+      const unhide = await dryfit('unhide @acme/blog', { client, cwd: '/Users/me' });
+
+      expect([hide.code, unhide.code]).toEqual([2, 2]);
+      expect(hide.stderr).toContain('No app is called shop');
+      expect(client.calls.some((call) => call.name === 'hideApps')).toBe(false);
+      client.replies.hideApps = { hiddenApps: [] };
+      expect((await dryfit('unhide blog', { client, cwd: '/Users/me' })).code).toBe(0);
+      expect(client.calls.at(-1)?.input).toEqual({ consumers: ['/Users/me/repos/blog'], hidden: false });
+    });
+
+    it('takes a known project in this folder over another of the same name', async () => {
+      const client = new FakeClient();
+      client.replies.discover = [
+        found('/Users/me/repos/shop', 'shop'),
+        found('/Users/me/old/shop', 'shop'),
+      ] as never;
+      linkReply(client);
+
+      const { code } = await dryfit('link shop', { client, cwd: '/Users/me/repos' });
+
+      expect(code).toBe(0);
+      expect(client.calls.at(-1)?.input).toEqual({ library: '@acme/ui', consumer: '/Users/me/repos/shop' });
+    });
+
+    it('restores a linked app by its folder name, and hides one by name', async () => {
+      const client = new FakeClient();
+      client.replies.discover = [];
+      client.replies.status = status({
+        links: [{ library: '@acme/ui', consumer: '/Users/me/repos/shop', status: 'installed' }],
+      });
+      client.replies.restore = { ok: true };
+
+      expect((await dryfit('restore shop', { client, cwd: '/Users/me' })).code).toBe(0);
+      expect(client.calls.at(-1)).toEqual({ name: 'restore', input: { consumer: '/Users/me/repos/shop' } });
+
+      client.replies.discover = [found('/Users/me/repos/blog', 'blog')] as never;
+      client.replies.hiddenApps = { hiddenApps: [] };
+      client.replies.hideApps = { hiddenApps: ['/Users/me/repos/blog'] };
+      await dryfit('hide blog', { client, cwd: '/Users/me' });
+      expect(client.calls.at(-1)).toEqual({
+        name: 'hideApps',
+        input: { consumers: ['/Users/me/repos/blog'], hidden: true },
+      });
+    });
+  });
+
   it('exits 1 when the first install into a linked consumer fails, and says why', async () => {
     const client = new FakeClient();
     const link = {
