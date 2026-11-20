@@ -84,10 +84,13 @@ public struct DaemonLauncher: Sendable {
     "npm is not allowed to write to its global folder, so the app cannot install dryfit for you. Run \(installCommand) in Terminal (with sudo in front if npm asks for it), then click Start dryfit."
 
   /// Updates the CLI to the newest release with npm and restarts the daemon on it, at the user's
-  /// request: `npm install --global @dryfit/cli@latest && dryfit daemon restart`.
+  /// request: `npm install --global @dryfit/cli@latest && dryfit daemon restart`. `--prefer-online` makes
+  /// npm ask the registry again: right after a release, its cached copy of the package's versions can
+  /// still lack the one that release published, and npm then fails with ETARGET.
   public func updateCLI(environment: [String: String] = ProcessInfo.processInfo.environment) async throws {
     do {
-      try await runInShell("npm install --global @dryfit/cli@latest && dryfit daemon restart", environment)
+      try await runInShell(
+        "npm install --global --prefer-online @dryfit/cli@latest && dryfit daemon restart", environment)
     } catch Failure.cliNotFound {
       throw Failure.failed(output: "npm or dryfit was not found in your shell. Install Node.js from nodejs.org, then try again.")
     } catch Failure.failed(let output) where Self.isPermissionDenied(output) {
