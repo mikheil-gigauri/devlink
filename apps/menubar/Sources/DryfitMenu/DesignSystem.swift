@@ -13,7 +13,7 @@ enum DS {
   static let sheetTitle = Font.system(size: 14, weight: .medium)
   static let title = Font.system(size: 18, weight: .medium)
 
-  /// The default hairline, between rows and around groups.
+  /// The default hairline, between rows.
   static let hairline = Color.primary.opacity(0.1)
   /// Around buttons.
   static let strongBorder = Color.primary.opacity(0.2)
@@ -21,28 +21,10 @@ enum DS {
   static let neutralFill = Color.primary.opacity(0.06)
   static let accentTint = Color.accentColor.opacity(0.14)
   /// Behind a group of rows or a card, so it reads as a surface on the window or the menu's glass.
-  static let groupFill = Color.primary.opacity(0.045)
-  /// Behind a button.
-  static let buttonFill = Color.primary.opacity(0.07)
+  static let groupFill = Color.primary.opacity(0.06)
+  /// Behind a button, a step brighter than the group it sits on.
+  static let buttonFill = Color.primary.opacity(0.1)
   static let radius: CGFloat = 8
-}
-
-extension EnvironmentValues {
-  /// True inside the menu bar window, whose glass washes out faint text: captions there use the
-  /// secondary grey, not the tertiary one the window uses.
-  @Entry var onGlass = false
-}
-
-extension View {
-  /// The grey for captions: tertiary in the window, secondary on the menu's glass.
-  func captionStyle() -> some View { modifier(CaptionGrey()) }
-}
-
-private struct CaptionGrey: ViewModifier {
-  @Environment(\.onGlass) private var onGlass
-  func body(content: Content) -> some View {
-    content.foregroundStyle(onGlass ? HierarchicalShapeStyle.secondary : HierarchicalShapeStyle.tertiary)
-  }
 }
 
 /// A one-pixel line across the full width, snapped to the pixel grid so it never fades out.
@@ -103,7 +85,7 @@ struct Footnote: View {
   init(_ text: String) { self.text = text }
 
   var body: some View {
-    Text(text).font(DS.caption).captionStyle().padding(.top, 4)
+    Text(text).font(DS.caption).foregroundStyle(.secondary).padding(.top, 4)
       .fixedSize(horizontal: false, vertical: true)
   }
 }
@@ -120,7 +102,7 @@ struct TwoLine: View {
     VStack(alignment: .leading, spacing: 1) {
       Text(title).font(titleFont).lineLimit(1)
       if let caption {
-        Text(caption).font(DS.caption).captionStyle()
+        Text(caption).font(DS.caption).foregroundStyle(.secondary)
           .lineLimit(wraps ? nil : 1)
           .fixedSize(horizontal: false, vertical: wraps)
       }
@@ -136,7 +118,7 @@ struct TwoLineView<Title: View>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 1) {
       title
-      Text(caption).font(DS.caption).captionStyle().lineLimit(1)
+      Text(caption).font(DS.caption).foregroundStyle(.secondary).lineLimit(1)
     }
   }
 }
@@ -424,7 +406,7 @@ struct PageHeader<Accessory: View>: View {
           Text(title).font(DS.title).textSelection(.enabled).lineLimit(1)
           accessory
         }
-        Text(subtitle).font(DS.body).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+        Text(subtitle).font(DS.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       }
     }
   }

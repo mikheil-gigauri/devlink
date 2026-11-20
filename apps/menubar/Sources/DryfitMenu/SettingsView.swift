@@ -20,7 +20,7 @@ public struct SettingsView: View {
         SectionLabel("Project folders")
         HairlineGroup {
           if model.connection != .online {
-            GroupRow { Text("Start dryfit to change these.").foregroundStyle(.tertiary) }
+            GroupRow { Text("Start dryfit to change these.").foregroundStyle(.secondary) }
           } else if let roots = model.roots, !roots.isEmpty {
             ForEach(roots, id: \.self) { root in
               GroupRow {
@@ -30,7 +30,7 @@ public struct SettingsView: View {
                 Button {
                   Task { try? await model.setRoots(roots.filter { $0 != root }) }
                 } label: {
-                  Image(systemName: "minus.circle").foregroundStyle(.tertiary)
+                  Image(systemName: "minus.circle").foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help("Stop looking in \(abbreviatedPath(root))")
@@ -38,7 +38,7 @@ public struct SettingsView: View {
               }
             }
           } else {
-            GroupRow { Text("No folders yet. Add the folders that hold your apps.").foregroundStyle(.tertiary) }
+            GroupRow { Text("No folders yet. Add the folders that hold your apps.").foregroundStyle(.secondary) }
           }
           GroupRow {
             Spacer()

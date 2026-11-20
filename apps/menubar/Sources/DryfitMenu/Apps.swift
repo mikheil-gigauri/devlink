@@ -162,7 +162,7 @@ struct AppDetail: View {
 
   private func content(_ app: AppSummary) -> some View {
     Page {
-      Text(abbreviatedPath(app.root)).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+      Text(abbreviatedPath(app.root)).font(DS.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
       Spacer(minLength: 8)
       Button { revealInFinder(app.root) } label: { Image(systemName: "folder") }
         .buttonStyle(.pill)
@@ -235,7 +235,7 @@ private struct AppLibraryRow: View {
         } else {
           Text(detail)
             .font(DS.caption)
-            .foregroundStyle(entry.link?.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
+            .foregroundStyle(entry.link?.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
             .lineLimit(1)
         }
       }

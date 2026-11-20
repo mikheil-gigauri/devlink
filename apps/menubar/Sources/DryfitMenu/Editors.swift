@@ -67,7 +67,7 @@ struct LibraryEditor: View {
     HairlineGroup {
       GroupRow {
         Text(publishDir == preview.root ? "The library's folder" : relative(publishDir, to: preview.root))
-          .foregroundStyle(.tertiary)
+          .foregroundStyle(.secondary)
           .lineLimit(1)
           .truncationMode(.head)
         Spacer(minLength: 8)
@@ -140,7 +140,7 @@ struct GroupEditor: View {
       ScrollView {
         HairlineGroup {
           if projects.isEmpty {
-            GroupRow { Text("No apps found in your project folders. Add one below.").foregroundStyle(.tertiary) }
+            GroupRow { Text("No apps found in your project folders. Add one below.").foregroundStyle(.secondary) }
           }
           ForEach(projects, id: \.self) { project in
             GroupRow {
@@ -154,7 +154,7 @@ struct GroupEditor: View {
               }
               .toggleStyle(.checkbox13)
               Spacer(minLength: 8)
-              Text(abbreviatedPath(project)).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1)
+              Text(abbreviatedPath(project)).font(DS.caption).foregroundStyle(.secondary).lineLimit(1)
                 .truncationMode(.head)
             }
           }
@@ -237,7 +237,7 @@ private struct SheetHeader: View {
       Tile(symbol: symbol, tint: .teal, size: 30)
       VStack(alignment: .leading, spacing: 1) {
         Text(title).font(DS.sheetTitle).lineLimit(1)
-        Text(subtitle).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+        Text(subtitle).font(DS.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
       }
     }
   }

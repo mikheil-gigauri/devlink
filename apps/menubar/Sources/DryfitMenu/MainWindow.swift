@@ -135,7 +135,7 @@ private struct Sidebar: View {
           }
         }
         if model.libraries.isEmpty, model.connection == .online {
-          Text("No libraries yet").foregroundStyle(.tertiary).padding(.horizontal, 14).padding(.vertical, 4)
+          Text("No libraries yet").foregroundStyle(.secondary).padding(.horizontal, 14).padding(.vertical, 4)
         }
         if !apps.isEmpty {
           SidebarHeader(title: "Apps")
@@ -171,7 +171,7 @@ private struct Sidebar: View {
         if model.libraries.count + apps.count + groups.count > 1 {
           Text("Drag rows to reorder")
             .font(DS.caption)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
@@ -256,7 +256,7 @@ private struct SidebarHeader: View {
   var body: some View {
     Text(title)
       .font(DS.caption)
-      .foregroundStyle(.tertiary)
+      .foregroundStyle(.secondary)
       .padding(.horizontal, 12)
       .padding(.top, 10)
       .padding(.bottom, 4)
@@ -311,7 +311,7 @@ private struct SidebarRow: View {
           Image(systemName: "arrow.clockwise").font(DS.caption).accessibilityLabel("Auto-sync on")
         }
         Spacer(minLength: 4)
-        Text("\(count)").font(DS.caption).foregroundStyle(.tertiary).monospacedDigit()
+        Text("\(count)").font(DS.caption).foregroundStyle(.secondary).monospacedDigit()
       }
       .font(DS.body)
       .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
@@ -440,10 +440,10 @@ private struct LibraryDetail: View {
     let library = row.library
     let candidates = model.linkCandidates(for: name)
     return Page {
-      Text(abbreviatedPath(library.root)).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1)
+      Text(abbreviatedPath(library.root)).font(DS.caption).foregroundStyle(.secondary).lineLimit(1)
         .truncationMode(.head)
       Spacer(minLength: 8)
-      Text("Auto-sync").font(DS.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+      Text("Auto-sync").font(DS.caption).foregroundStyle(.secondary).accessibilityHidden(true)
       Toggle("Auto-sync", isOn: Binding(
         get: { library.isWatched },
         set: { enabled in Task { await model.setWatch(name, enabled: enabled) } }))
@@ -478,7 +478,7 @@ private struct LibraryDetail: View {
       HairlineGroup {
         if row.links.isEmpty {
           GroupRow {
-            Text("No app is linked yet. Link one below to install the dev build.").foregroundStyle(.tertiary)
+            Text("No app is linked yet. Link one below to install the dev build.").foregroundStyle(.secondary)
           }
         }
         ForEach(row.links) { link in AppRow(link: link, model: model, actions: actions) }
@@ -489,7 +489,7 @@ private struct LibraryDetail: View {
         if candidates.isEmpty {
           GroupRow {
             Text(model.isBusy(.discover) ? "Looking for apps…" : "No other app in your project folders uses \(name).")
-              .foregroundStyle(.tertiary)
+              .foregroundStyle(.secondary)
           }
         }
         ForEach(candidates) { consumer in
@@ -509,7 +509,7 @@ private struct LibraryDetail: View {
         GroupRow {
           Text("Folder")
           Spacer(minLength: 8)
-          Text(abbreviatedPath(library.root)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+          Text(abbreviatedPath(library.root)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
             .textSelection(.enabled)
         }
         GroupRow {
@@ -517,14 +517,14 @@ private struct LibraryDetail: View {
           Spacer(minLength: 8)
           Text(library.build.map { BuildCommand(command: $0.command, args: $0.args).line } ?? "None")
             .font(DS.mono)
-            .foregroundStyle(library.build == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+            .foregroundStyle(library.build == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             .lineLimit(1)
             .textSelection(.enabled)
         }
         GroupRow {
           Text("Publish folder")
           Spacer(minLength: 8)
-          Text(publishFolder(library)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+          Text(publishFolder(library)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
             .textSelection(.enabled)
         }
         GroupRow {
@@ -589,7 +589,7 @@ private struct AppRow: View {
         } else {
           Text(detail)
             .font(DS.caption)
-            .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
+            .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
             .lineLimit(1)
         }
       }
@@ -629,7 +629,7 @@ private struct SuggestedAppRow: View {
 
   var body: some View {
     GroupRow {
-      Image(systemName: "macwindow").foregroundStyle(.tertiary).accessibilityHidden(true)
+      Image(systemName: "macwindow").foregroundStyle(.secondary).accessibilityHidden(true)
       TwoLineView(
         title: NameAndBadge(name: projectName(consumer.root), badge: consumer.packageManager.name),
         caption: consumer.libraries.first(where: { $0.name == library }).map { "\($0.range) from the registry" }
@@ -699,7 +699,7 @@ private struct GroupDetail: View {
           GroupRow {
             TwoLine(title: projectName(consumer), caption: abbreviatedPath(consumer))
             Spacer(minLength: 8)
-            Text(linked(consumer)).foregroundStyle(.tertiary).lineLimit(1)
+            Text(linked(consumer)).foregroundStyle(.secondary).lineLimit(1)
           }
         }
         GroupRow {

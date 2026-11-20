@@ -60,14 +60,12 @@ public struct MenuContent: View {
       case .incompatible(let daemonVersion):
         IncompatibleView(model: model, actions: actions, daemonVersion: daemonVersion)
       }
-      // Only while dryfit is doing something.
-      if let activity = model.activity {
-        Hairline()
-        Footer(activity: activity)
+      Hairline()
+      Footer(model: model, actions: actions, addLibrary: addLibrary) {
+        navigation.showSettings { openWindow(id: mainWindowID) }
       }
     }
     .font(DS.body)
-    .environment(\.onGlass, true)
     .frame(width: 340)
     .onAppear { model.menuOpened() }
     // The rest of what the old footer menu held is on the menu bar icon's right-click menu. These keep
@@ -139,17 +137,41 @@ private struct Header: View {
   }
 }
 
+/// Always there, the same height whatever it shows: what dryfit is doing while it works, otherwise
+/// the way to add a library (or, while dryfit is not running, its log), and Settings.
 private struct Footer: View {
-  let activity: String
+  let model: MenuModel
+  let actions: MenuActions
+  let addLibrary: () -> Void
+  let showSettings: () -> Void
 
   var body: some View {
     HStack(spacing: 6) {
-      ProgressView().controlSize(.mini)
-      Text(activity).lineLimit(1).truncationMode(.middle)
-      Spacer(minLength: 0)
+      if let activity = model.activity {
+        ProgressView().controlSize(.mini)
+        Text(activity).lineLimit(1).truncationMode(.middle)
+      } else if model.connection == .online {
+        // With no library yet, the page above already offers the same button.
+        if !model.libraries.isEmpty {
+          Button(action: addLibrary) {
+            Label("Add library…", systemImage: "plus").labelStyle(PillLabelStyle()).contentShape(.rect)
+          }
+          .buttonStyle(.plain)
+        }
+      } else {
+        Button("Open log", action: actions.openLog).buttonStyle(.plain)
+      }
+      Spacer(minLength: 8)
+      Button(action: showSettings) {
+        Image(systemName: "gearshape").frame(width: 18, height: 18).contentShape(.rect)
+      }
+      .buttonStyle(.plain)
+      .help("Settings (⌘,)")
+      .accessibilityLabel("Settings")
     }
     .font(DS.body)
     .foregroundStyle(.secondary)
+    .frame(minHeight: 18)
     .padding(.horizontal, 12)
     .padding(.vertical, 7)
   }

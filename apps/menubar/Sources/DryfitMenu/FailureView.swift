@@ -23,7 +23,7 @@ public struct FailureView: View {
               } label: {
                 VStack(alignment: .leading, spacing: 1) {
                   Text(failure.title).lineLimit(2).multilineTextAlignment(.leading)
-                  Text(failure.date, format: .dateTime.hour().minute()).font(DS.caption).foregroundStyle(.tertiary)
+                  Text(failure.date, format: .dateTime.hour().minute()).font(DS.caption).foregroundStyle(.secondary)
                 }
                 .font(DS.body)
                 .foregroundStyle(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
@@ -77,7 +77,7 @@ private struct Detail: View {
       }
       Text(when)
         .font(DS.caption)
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(.secondary)
         .padding(.leading, 22)
         .padding(.top, 2)
         .padding(.bottom, 10)
