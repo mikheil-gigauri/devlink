@@ -518,20 +518,31 @@ struct ServiceUnavailableView: View {
         Button("Install dryfit") { Task { await model.installCLI() } }
           .buttonStyle(.borderedProminent)
           .padding(.top, 4)
-        Text("Runs npm install --global @dryfit/cli").font(.caption).foregroundStyle(.tertiary)
+        Text("Runs \(DaemonLauncher.installCommand)").font(.caption).foregroundStyle(.tertiary)
       } else {
         Button("Start dryfit") { Task { await model.startDaemon() } }
           .buttonStyle(.borderedProminent)
           .padding(.top, 4)
       }
-      if let error = model.startError, !model.cliMissing {
+      // Shown while the CLI is missing too: a failed install would otherwise just offer the button
+      // again, with no word of why.
+      if let error = model.startError, !model.isBusy(.installCLI) {
         Text(error)
           .font(.caption)
           .foregroundStyle(.red)
           .multilineTextAlignment(.center)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
-        Button("Open Log", action: actions.openLog).buttonStyle(.link).font(.caption)
+        if model.cliMissing {
+          Button("Copy Install Command") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(DaemonLauncher.installCommand, forType: .string)
+          }
+          .buttonStyle(.link)
+          .font(.caption)
+        } else {
+          Button("Open Log", action: actions.openLog).buttonStyle(.link).font(.caption)
+        }
       }
     }
     .frame(maxWidth: compact ? .infinity : 380)

@@ -63,11 +63,25 @@ public struct DaemonLauncher: Sendable {
   /// Installs the CLI with npm, at the user's request: `npm install --global @dryfit/cli`.
   public func installCLI(environment: [String: String] = ProcessInfo.processInfo.environment) async throws {
     do {
-      try await runInShell("npm install --global @dryfit/cli", environment)
+      try await runInShell(Self.installCommand, environment)
     } catch Failure.cliNotFound {
       throw Failure.failed(output: "npm was not found. Install Node.js from nodejs.org, then try again.")
+    } catch Failure.failed(let output) where Self.isPermissionDenied(output) {
+      throw Failure.failed(output: Self.permissionDeniedAdvice)
     }
   }
+
+  /// What the app runs to install the CLI, for the user to run themselves when the app cannot.
+  public static let installCommand = "npm install --global @dryfit/cli"
+
+  /// npm could not write to its global folder: Node.js from the nodejs.org installer puts it under
+  /// /usr/local, owned by root, and the app cannot ask for an administrator password.
+  static func isPermissionDenied(_ output: String) -> Bool {
+    output.contains("EACCES") || output.contains("EPERM")
+  }
+
+  static let permissionDeniedAdvice =
+    "npm is not allowed to write to its global folder, so the app cannot install dryfit for you. Run \(installCommand) in Terminal (with sudo in front if npm asks for it), then click Start dryfit."
 
   /// Updates the CLI to the newest release with npm and restarts the daemon on it, at the user's
   /// request: `npm install --global @dryfit/cli@latest && dryfit daemon restart`.
@@ -76,6 +90,9 @@ public struct DaemonLauncher: Sendable {
       try await runInShell("npm install --global @dryfit/cli@latest && dryfit daemon restart", environment)
     } catch Failure.cliNotFound {
       throw Failure.failed(output: "npm or dryfit was not found in your shell. Install Node.js from nodejs.org, then try again.")
+    } catch Failure.failed(let output) where Self.isPermissionDenied(output) {
+      throw Failure.failed(
+        output: "npm is not allowed to write to its global folder. Run npm install --global @dryfit/cli@latest in Terminal (with sudo in front if npm asks for it), then dryfit daemon restart.")
     }
   }
 
