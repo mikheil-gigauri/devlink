@@ -17,15 +17,12 @@ public struct MainWindow: View {
   public var body: some View {
     NavigationSplitView {
       Sidebar(model: model, navigation: navigation)
-        // No toolbar at all (the window's title bar is hidden too): each page carries its own controls
-        // along its top, and the sidebar is shown and hidden from the View menu (⌃⌘S).
-        .toolbar(removing: .sidebarToggle)
-        .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 300)
+        .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 300)
     } detail: {
       // The minimum size goes on the detail column, not the split view: on the split view it makes
       // the toolbar lag behind the sidebar while it opens, pushing the sidebar button into overflow.
       // Up into the title bar: a page's own controls sit level with the window's buttons.
-      detail.frame(minWidth: 480, minHeight: 460).ignoresSafeArea(.container, edges: .top)
+      detail.frame(minWidth: 480, minHeight: 460)
     }
     .sheet(item: $navigation.libraryEditor) { request in
       LibraryEditor(root: request.root, model: model, navigation: navigation)
@@ -108,128 +105,109 @@ public struct MainWindow: View {
 
 // MARK: Sidebar
 
-/// The sidebar: libraries, apps and groups, each list in the order the user dragged it into. Drawn
-/// to the app's own measurements rather than as a system list: 11 pt section names, rows 4 by 10 pt
-/// inside a 6 pt rounded rectangle, and an accent wash for the one that is open.
-///
-/// It does what the system list did for the keyboard too: ↑ and ↓ move through every row, and ⌥⌘↑
-/// and ⌥⌘↓ move the open row within its list, as Move up and Move down in its menu also do.
+/// The sidebar: the system's source list, so it is the window's floating glass column, moves with ↑
+/// and ↓, selects and reorders the way every Mac list does. Each list keeps the order the user
+/// dragged it into; Move Up and Move Down in a row's menu do the same from the keyboard.
 private struct Sidebar: View {
   let model: MenuModel
   @Bindable var navigation: AppNavigation
-  @FocusState private var focused: Bool
-  @State private var dragging: String?
 
   var body: some View {
     let apps = model.apps
     let groups = model.groups
-    let rows = SidebarRows(model: model, apps: apps, groups: groups)
-    ScrollViewReader { proxy in
-      ScrollView {
-        VStack(alignment: .leading, spacing: 0) {
-          SidebarHeader(title: "Libraries")
-          ForEach(model.libraries) { row in
-            let failed = row.links.contains { $0.status == .failed }
-            let item = SidebarItem.library(row.library.name)
-            SidebarRow(
-              item: item, navigation: navigation, focused: focused,
-              symbol: failed ? "exclamationmark.triangle" : "shippingbox", symbolTint: failed ? .red : nil,
-              name: row.library.name, caption: caption(row), watched: row.library.isWatched, count: row.links.count,
-              reorder: rows.reorder(item)!, select: select, dragging: $dragging
-            ) {
-              Button("Sync now") { Task { await model.sync(row.library.name) } }
+    List(selection: $navigation.selection) {
+      Section("Libraries") {
+        ForEach(model.libraries) { row in
+          let failed = row.links.contains { $0.status == .failed }
+          SidebarLabel(
+            name: row.library.name, symbol: failed ? "exclamationmark.triangle.fill" : "shippingbox",
+            tint: failed ? .red : nil, watched: row.library.isWatched, count: row.links.count, caption: caption(row))
+            .tag(SidebarItem.library(row.library.name))
+            .contextMenu {
+              Button("Sync Now") { Task { await model.sync(row.library.name) } }
               Button("Show in Finder") { revealInFinder(row.library.root) }
+              moveItems(.libraries, row.id, model.libraries.map(\.id))
             }
-          }
-          if model.libraries.isEmpty, model.connection == .online {
-            Text("No libraries yet").foregroundStyle(DS.muted).padding(.horizontal, 14).padding(.vertical, 4)
-          }
-          if !apps.isEmpty {
-            SidebarHeader(title: "Apps")
-            ForEach(apps) { app in
-              let item = SidebarItem.app(app.root)
-              SidebarRow(
-                item: item, navigation: navigation, focused: focused,
-                symbol: app.hasFailedInstall ? "exclamationmark.triangle" : "macwindow",
-                symbolTint: app.hasFailedInstall ? .red : app.linked.isEmpty ? DS.muted : nil,
-                name: app.name, caption: caption(app), watched: false, count: app.linked.count,
-                reorder: rows.reorder(item)!, select: select, dragging: $dragging
-              ) {
+        }
+        .onMove { model.move(.libraries, ids: model.libraries.map(\.id), from: $0, to: $1) }
+        if model.libraries.isEmpty, model.connection == .online {
+          Text("No libraries yet").foregroundStyle(DS.muted).selectionDisabled()
+        }
+      }
+      if !apps.isEmpty {
+        Section("Apps") {
+          ForEach(apps) { app in
+            SidebarLabel(
+              name: app.name, symbol: app.hasFailedInstall ? "exclamationmark.triangle.fill" : "macwindow",
+              tint: app.hasFailedInstall ? .red : nil, watched: false, count: app.linked.count, caption: caption(app))
+              .tag(SidebarItem.app(app.root))
+              .contextMenu {
                 Button("Show in Finder") { revealInFinder(app.root) }
                 Divider()
-                // Linked apps stay listed: hidden, they could only be restored from the command line.
-                Button("Hide app") { Task { await model.hideApp(app.root, navigation: navigation) } }
+                Button("Hide App") { Task { await model.hideApp(app.root, navigation: navigation) } }
                   .disabled(!app.linked.isEmpty)
+                moveItems(.apps, app.root, apps.map(\.root))
               }
-            }
           }
-          if !groups.isEmpty {
-            SidebarHeader(title: "Groups")
-            ForEach(groups) { group in
-              let item = SidebarItem.group(group.name)
-              SidebarRow(
-                item: item, navigation: navigation, focused: focused, symbol: "square.stack.3d.up", symbolTint: nil,
-                name: group.name, caption: group.consumers.count == 1 ? "1 app" : "\(group.consumers.count) apps",
-                watched: false, count: group.consumers.count, reorder: rows.reorder(item)!, select: select, dragging: $dragging
-              ) {
-                EmptyView()
-              }
-            }
-          }
-          if rows.items.count > 1 {
-            Text("Drag rows to reorder")
-              .font(DS.caption)
-              .foregroundStyle(DS.muted)
-              .padding(.horizontal, 12)
-              .padding(.vertical, 6)
-          }
+          .onMove { model.move(.apps, ids: apps.map(\.root), from: $0, to: $1) }
         }
-        .font(DS.body)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Below the window's buttons, which sit over the sidebar now that the window has no toolbar.
-        .padding(.top, 30)
-        .padding(.bottom, 8)
       }
-      .ignoresSafeArea(.container, edges: .top)
-      // In the sidebar's own bar, not the toolbar, so it stays put when the sidebar is hidden or shown.
-      // A bar rather than an inset, so the rows that run on beneath it fall under the scroll edge effect.
-      .scrollEdgeEffectStyle(.hard, for: .bottom)
-      .safeAreaBar(edge: .bottom, spacing: 0) { bottomBar }
-      .focusable()
-      .focused($focused)
-      // The open row shows focus itself, in a stronger wash, as a focused system list does.
-      .focusEffectDisabled()
-      .onKeyPress(keys: [.upArrow, .downArrow]) { press in
-        let up = press.key == .upArrow
-        // Arrow keys carry the keypad flag; any other modifier is someone else's shortcut.
-        let modifiers = press.modifiers.subtracting([.numericPad, .capsLock])
-        if modifiers == [.command, .option] {
-          guard let item = navigation.selection, let reorder = rows.reorder(item) else { return .ignored }
-          reorder.move(by: up ? -1 : 1)
-        } else if modifiers.isEmpty {
-          navigation.selection = rows.step(from: navigation.selection, by: up ? -1 : 1)
-        } else {
-          return .ignored
+      if !groups.isEmpty {
+        Section("Groups") {
+          ForEach(groups) { group in
+            SidebarLabel(
+              name: group.name, symbol: "square.stack.3d.up", tint: nil, watched: false,
+              count: group.consumers.count, caption: group.consumers.count == 1 ? "1 app" : "\(group.consumers.count) apps")
+              .tag(SidebarItem.group(group.name))
+              .contextMenu { moveItems(.groups, group.name, groups.map(\.name)) }
+          }
+          .onMove { model.move(.groups, ids: groups.map(\.name), from: $0, to: $1) }
         }
-        return .handled
       }
-      .onChange(of: navigation.selection) { _, item in
-        guard let item, rows.items.contains(item) else { return }
-        withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(item) }
+    }
+    .listStyle(.sidebar)
+    .environment(\.sidebarRowSize, .small)
+    .font(DS.body)
+    .safeAreaBar(edge: .bottom, spacing: 0) { bottomBar }
+    .background {
+      // ⌥⌘↑ and ⌥⌘↓ move the selected row, as Move Up and Move Down in its menu do.
+      Group {
+        Button("Move Up") { moveSelection(up: true) }.keyboardShortcut(.upArrow, modifiers: [.command, .option])
+        Button("Move Down") { moveSelection(up: false) }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
       }
+      .opacity(0)
+      .frame(width: 0, height: 0)
+      .accessibilityHidden(true)
     }
   }
 
-  /// A click opens the row and gives the sidebar the keyboard, so the arrows work straight after.
-  private func select(_ item: SidebarItem) {
-    navigation.selection = item
-    focused = true
+  @ViewBuilder private func moveItems(_ kind: ItemOrder.Kind, _ id: String, _ ids: [String]) -> some View {
+    if ids.count > 1, let index = ids.firstIndex(of: id) {
+      Divider()
+      Button("Move Up") { model.move(kind, ids: ids, from: IndexSet(integer: index), to: index - 1) }
+        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+        .disabled(index == 0)
+      Button("Move Down") { model.move(kind, ids: ids, from: IndexSet(integer: index), to: index + 2) }
+        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+        .disabled(index == ids.count - 1)
+    }
+  }
+
+  /// Moves the selected library, app or group one place within its own list.
+  private func moveSelection(up: Bool) {
+    let (kind, id, ids): (ItemOrder.Kind, String, [String])
+    switch navigation.selection {
+    case .library(let name)?: (kind, id, ids) = (.libraries, name, model.libraries.map(\.id))
+    case .app(let root)?: (kind, id, ids) = (.apps, root, model.apps.map(\.root))
+    case .group(let name)?: (kind, id, ids) = (.groups, name, model.groups.map(\.name))
+    default: return
+    }
+    guard let index = ids.firstIndex(of: id), up ? index > 0 : index < ids.count - 1 else { return }
+    model.move(kind, ids: ids, from: IndexSet(integer: index), to: up ? index - 1 : index + 2)
   }
 
   private var bottomBar: some View {
-    VStack(spacing: 0) {
-      Hairline()
-      // What dryfit is doing, as the menu's footer shows it: Auto-sync runs start without a click.
+    VStack(alignment: .leading, spacing: 6) {
       if let activity = model.activity {
         HStack(spacing: 6) {
           ProgressView().controlSize(.mini)
@@ -237,53 +215,38 @@ private struct Sidebar: View {
         }
         .font(DS.caption)
         .foregroundStyle(DS.muted)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.top, 7)
         .accessibilityElement(children: .combine)
       }
       HStack(spacing: 6) {
         Menu {
-          Button("Add library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
-          Button("Add app…") { Task { await model.chooseApp(navigation: navigation) } }
+          Button("Add Library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
+          Button("Add App…") { Task { await model.chooseApp(navigation: navigation) } }
           Divider()
-          Button("New group…") { navigation.groupEditor = .new }
+          Button("New Group…") { navigation.groupEditor = .new }
         } label: {
-          HStack(spacing: 4) {
-            Image(systemName: "plus")
-            Text("Add")
-          }
-          .font(DS.body)
-          .foregroundStyle(DS.muted)
-          .contentShape(.rect)
+          Label("Add", systemImage: "plus")
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(model.connection != .online)
         .help("Add a library, an app or a group")
         Spacer()
-        let settings = navigation.selection == .settings
         Button {
           navigation.selection = .settings
         } label: {
           Image(systemName: "gearshape")
-            .font(DS.body)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .foregroundStyle(settings ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(DS.muted))
-            .background(settings ? DS.accentTint : .clear, in: .rect(cornerRadius: DS.radius))
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
+        .foregroundStyle(navigation.selection == .settings ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
         .help("Settings (⌘,)")
         .accessibilityLabel("Settings")
-        .accessibilityAddTraits(settings ? .isSelected : [])
       }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 8)
     }
+    .font(DS.body)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
   }
 
   private func caption(_ row: LibraryRow) -> String {
@@ -307,202 +270,30 @@ private struct Sidebar: View {
   }
 }
 
-/// Every row in the order the sidebar shows them, and where each sits in its own list.
-private struct SidebarRows {
-  let model: MenuModel
-  let apps: [AppSummary]
-  let groups: [DryfitAPI.Group]
-
-  var items: [SidebarItem] {
-    model.libraries.map { .library($0.id) } + apps.map { .app($0.root) } + groups.map { .group($0.name) }
-  }
-
-  /// The row `by` rows after `item`, or the first or last row when nothing in the list is open.
-  func step(from item: SidebarItem?, by offset: Int) -> SidebarItem? {
-    let items = items
-    guard let item, let index = items.firstIndex(of: item) else {
-      return offset > 0 ? items.first : items.last
-    }
-    return items[min(max(index + offset, 0), items.count - 1)]
-  }
-
-  func reorder(_ item: SidebarItem) -> Reorder? {
-    switch item {
-    case .library(let name): Reorder(kind: .libraries, id: name, ids: model.libraries.map(\.id), model: model)
-    case .app(let root): Reorder(kind: .apps, id: root, ids: apps.map(\.root), model: model)
-    case .group(let name): Reorder(kind: .groups, id: name, ids: groups.map(\.name), model: model)
-    case .settings: nil
-    }
-  }
-}
-
-private struct SidebarHeader: View {
-  let title: String
-
-  var body: some View {
-    Text(title)
-      .font(DS.caption)
-      .foregroundStyle(DS.muted)
-      .padding(.horizontal, 12)
-      .padding(.top, 10)
-      .padding(.bottom, 4)
-      .accessibilityAddTraits(.isHeader)
-  }
-}
-
-/// Where a sidebar row sits in its list, so it can be moved, and another row of the list dropped on it.
-private struct Reorder {
-  let kind: ItemOrder.Kind
-  let id: String
-  let ids: [String]
-  let model: MenuModel
-
-  /// What a dragged row carries: its list and its id.
-  var payload: String { "\(kind)\u{1F}\(id)" }
-
-  private var index: Int? { ids.firstIndex(of: id) }
-  var canMoveUp: Bool { (index ?? 0) > 0 }
-  var canMoveDown: Bool { index.map { $0 < ids.count - 1 } ?? false }
-
-  /// Moves this row up (-1) or down (1) one place.
-  func move(by offset: Int) {
-    guard let from = index, ids.indices.contains(from + offset) else { return }
-    model.move(kind, ids: ids, from: IndexSet(integer: from), to: offset > 0 ? from + offset + 1 : from + offset)
-  }
-
-  /// Whether a row dragged with `payload` is one of this list's.
-  func accepts(_ payload: String) -> Bool { source(payload) != nil }
-
-  /// Whether dropping the dragged row above, or below, this one would change the order.
-  func moves(_ payload: String, below: Bool) -> Bool { destination(payload, below: below) != nil }
-
-  /// Puts the dragged row just above this one, or just below it. False for a row from another list,
-  /// or a drop that would leave it where it is.
-  func drop(_ payload: String, below: Bool) -> Bool {
-    guard let (from, to) = destination(payload, below: below) else { return false }
-    model.move(kind, ids: ids, from: IndexSet(integer: from), to: to)
-    return true
-  }
-
-  private func source(_ payload: String) -> Int? {
-    let parts = payload.split(separator: "\u{1F}", maxSplits: 1).map(String.init)
-    guard parts.count == 2, parts[0] == "\(kind)" else { return nil }
-    return ids.firstIndex(of: parts[1])
-  }
-
-  private func destination(_ payload: String, below: Bool) -> (from: Int, to: Int)? {
-    guard let from = source(payload), let target = index else { return nil }
-    let to = below ? target + 1 : target
-    return to == from || to == from + 1 ? nil : (from, to)
-  }
-}
-
-/// Where a drag over a row would put the dragged row: the half the pointer is in decides above or below,
-/// and the marker is drawn at that edge, so it shows where the row lands whichever way it moves. The
-/// sidebar knows which row is being dragged, so a row from another list, or a drop that would leave it
-/// where it is, shows no marker at all.
-private struct RowDrop: DropDelegate {
-  let reorder: Reorder
-  let dragging: String?
-  let height: CGFloat
-  @Binding var marker: VerticalEdge?
-
-  func validateDrop(info: DropInfo) -> Bool { dragging.map(reorder.accepts) ?? false }
-
-  func dropUpdated(info: DropInfo) -> DropProposal? {
-    guard let dragging else { return DropProposal(operation: .forbidden) }
-    let below = info.location.y >= height / 2
-    marker = reorder.moves(dragging, below: below) ? (below ? .bottom : .top) : nil
-    return DropProposal(operation: marker == nil ? .forbidden : .move)
-  }
-
-  func dropExited(info: DropInfo) { marker = nil }
-
-  func performDrop(info: DropInfo) -> Bool {
-    defer { marker = nil }
-    guard let dragging, let marker else { return false }
-    return reorder.drop(dragging, below: marker == .bottom)
-  }
-}
-
-/// One row: its symbol, name and the number of links, 4 by 10 pt inside a 6 pt rounded rectangle.
-private struct SidebarRow<Menu: View>: View {
-  let item: SidebarItem
-  let navigation: AppNavigation
-  let focused: Bool
-  let symbol: String
-  let symbolTint: Color?
+/// One sidebar row: symbol, name, an auto-sync mark, and how many apps it links as the row's badge.
+private struct SidebarLabel: View {
   let name: String
-  /// What the row's tooltip says, and VoiceOver after the name: "Linked to 2 apps · Auto-sync on".
-  let caption: String
+  let symbol: String
+  let tint: Color?
   let watched: Bool
   let count: Int
-  let reorder: Reorder
-  let select: (SidebarItem) -> Void
-  /// The row being dragged, if any, as its payload.
-  @Binding var dragging: String?
-  @ViewBuilder let menu: Menu
-  @State private var marker: VerticalEdge?
-  @State private var height: CGFloat = 0
+  let caption: String
 
   var body: some View {
-    let selected = navigation.selection == item
-    Button {
-      select(item)
-    } label: {
-      HStack(spacing: 7) {
-        Image(systemName: symbol)
-          .frame(width: 14)
-          .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : symbolTint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary))
-        Text(name).lineLimit(1)
+    Label {
+      HStack(spacing: 4) {
+        Text(name).font(DS.body).lineLimit(1)
         if watched {
-          Image(systemName: "arrow.clockwise").font(DS.caption)
+          Image(systemName: "arrow.clockwise").font(DS.caption).foregroundStyle(.secondary)
+            .accessibilityHidden(true)
         }
-        Spacer(minLength: 4)
-        Text("\(count)").font(DS.caption).foregroundStyle(DS.muted).monospacedDigit()
       }
-      .font(DS.body)
-      .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
-      .padding(.horizontal, 10)
-      .padding(.vertical, 4)
-      .background(selected ? (focused ? Color.accentColor.opacity(0.22) : DS.accentTint) : .clear, in: .rect(cornerRadius: 6))
-      .contentShape(.rect)
+    } icon: {
+      Image(systemName: symbol).foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tint))
     }
-    .buttonStyle(.plain)
+    .badge(count)
     .help(caption)
-    // One element, read as its name and what it holds, rather than a symbol's name and a bare count.
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(name)
     .accessibilityValue(caption)
-    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-    .accessibilityAction(named: "Move up") { reorder.move(by: -1) }
-    .accessibilityAction(named: "Move down") { reorder.move(by: 1) }
-    .padding(.horizontal, 4)
-    .id(item)
-    .contextMenu {
-      menu
-      if reorder.ids.count > 1 {
-        if !(menu is EmptyView) { Divider() }
-        Button("Move up") { reorder.move(by: -1) }.disabled(!reorder.canMoveUp)
-        Button("Move down") { reorder.move(by: 1) }.disabled(!reorder.canMoveDown)
-      }
-    }
-    // Drop marker: the gap the dragged row will land in.
-    .overlay(alignment: marker == .bottom ? .bottom : .top) {
-      if marker != nil {
-        Capsule().fill(Color.accentColor).frame(height: 2).padding(.horizontal, 8)
-          .offset(y: marker == .bottom ? 1 : -1)
-      }
-    }
-    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-    // onDrag rather than draggable: it says when a drag starts, so the rows know which one it is.
-    .onDrag {
-      dragging = reorder.payload
-      return NSItemProvider(object: reorder.payload as NSString)
-    }
-    .onDrop(
-      of: [.utf8PlainText, .plainText],
-      delegate: RowDrop(reorder: reorder, dragging: dragging, height: height, marker: $marker))
   }
 }
 
@@ -513,6 +304,10 @@ private struct WelcomeView: View {
   let navigation: AppNavigation
 
   var body: some View {
+    welcome.toolbar(removing: .title)
+  }
+
+  private var welcome: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
         Tile(symbol: "shippingbox", tint: .teal)
@@ -545,7 +340,7 @@ private struct WelcomeView: View {
       .font(DS.body)
       .frame(maxWidth: 560, alignment: .leading)
       .padding(.horizontal, 18)
-      .padding(.top, 22)
+      .padding(.top, 8)
       .padding(.bottom, 16)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -609,31 +404,24 @@ private struct LibraryDetail: View {
   private func content(_ row: LibraryRow) -> some View {
     let library = row.library
     let candidates = model.linkCandidates(for: name)
+    let failed = row.links.filter { $0.status == .failed }
     return Page {
-      Text(abbreviatedPath(library.root)).font(DS.caption).foregroundStyle(DS.muted).lineLimit(1)
-        .truncationMode(.head)
-      Spacer(minLength: 8)
-      Text("Auto-sync").font(DS.caption).foregroundStyle(DS.muted).accessibilityHidden(true)
-      Toggle("Auto-sync", isOn: Binding(
+      AutoSyncToggle(isOn: Binding(
         get: { library.isWatched },
         set: { enabled in Task { await model.setWatch(name, enabled: enabled) } }))
-        .toggleStyle(.mini)
         .disabled(model.isBusy(.watch(name)))
         .help(library.isWatched
           ? "Auto-sync is on: every change you save to \(name) is synced to its apps"
           : "Turn on to sync every change you save to \(name)")
-      Button { revealInFinder(library.root) } label: { Image(systemName: "folder") }
-        .buttonStyle(.pill)
+      Button("Show in Finder", systemImage: "folder") { revealInFinder(library.root) }
         .help("Show \(name) in Finder")
-        .accessibilityLabel("Show in Finder")
       Button {
         Task { await model.sync(name) }
       } label: {
         Label("Sync now", systemImage: "arrow.clockwise")
           .symbolEffect(.rotate, options: .repeat(.continuous), isActive: model.isBusy(.sync(name)))
+          .labelStyle(.titleAndIcon)
       }
-      .buttonStyle(.pill)
-      // While it runs the symbol turns; it stays at full strength rather than fading as if disabled.
       .allowsHitTesting(!model.isBusy(.sync(name)))
       .disabled(row.links.isEmpty)
       .help(row.links.isEmpty ? "Link an app first" : "Build, publish and install into every linked app")
@@ -646,6 +434,11 @@ private struct LibraryDetail: View {
         subtitle: library.published(timeZone: timeZone).replacingOccurrences(of: " · dev ", with: " · dev build ")
           + (library.isWatched ? " · Auto-sync on" : ""))
 
+      // What needs attention first: a failed install, above the list it belongs to.
+      ForEach(failed) { link in
+        InstallFailedCallout(link: link, model: model, actions: actions).padding(.top, 14)
+      }
+
       SectionLabel("Linked apps")
       HairlineGroup {
         if row.links.isEmpty {
@@ -656,7 +449,14 @@ private struct LibraryDetail: View {
         ForEach(row.links) { link in AppRow(link: link, model: model, actions: actions) }
       }
 
-      SectionLabel("Apps that use \(name)")
+      HStack(alignment: .lastTextBaseline) {
+        SectionLabel("Apps that use \(name)")
+        Spacer()
+        Button("Look again") { Task { await model.discoverConsumers() } }
+          .buttonStyle(.borderless).controlSize(.small).font(DS.caption)
+          .disabled(model.isBusy(.discover))
+          .padding(.bottom, 4)
+      }
       HairlineGroup {
         if candidates.isEmpty {
           GroupRow {
@@ -668,55 +468,37 @@ private struct LibraryDetail: View {
           SuggestedAppRow(library: name, consumer: consumer, model: model)
         }
         GroupRow {
+          Text("Not listed?").foregroundStyle(DS.muted)
+          Spacer()
           Button("Choose app…") { Task { await model.chooseAppAndLink(name) } }.buttonStyle(.pill)
-          Button("Look again") { Task { await model.discoverConsumers() } }
-            .buttonStyle(.pill(busy: model.isBusy(.discover)))
         }
       }
-      Footnote("Found in your project folders. You can change those in Settings.")
 
+      // Set once, rarely changed: one quiet line, not a section of its own.
       SectionLabel("Build")
-      HairlineGroup {
-        GroupRow {
-          Text("Folder")
-          Spacer(minLength: 8)
-          Text(abbreviatedPath(library.root)).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.head)
-            .textSelection(.enabled)
-        }
-        GroupRow {
-          Text("Build command")
-          Spacer(minLength: 8)
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
           if let build = library.build.map({ BuildCommand(command: $0.command, args: $0.args).line }) {
             Text(build).font(DS.mono).lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(build)
           } else {
-            // In the body font: "None" in monospace read as a command called None.
-            Text("No build step").foregroundStyle(DS.muted)
+            Text("No build step")
           }
+          Text("Publishes \(publishFolder(library)) · in \(abbreviatedPath(library.root))")
+            .font(DS.caption).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.head)
         }
-        GroupRow {
-          Text("Publish folder")
-          Spacer(minLength: 8)
-          Text(publishFolder(library)).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.head)
-            .textSelection(.enabled)
-        }
-        GroupRow {
-          Spacer()
-          Button("Change…") { navigation.libraryEditor = LibraryEditorRequest(root: library.root) }.buttonStyle(.pill)
-        }
+        Spacer(minLength: 8)
+        Button("Change…") { navigation.libraryEditor = LibraryEditorRequest(root: library.root) }.buttonStyle(.pill)
       }
 
-      HairlineGroup {
-        GroupRow {
-          TwoLine(
-            title: "Remove from dryfit",
-            caption: row.links.isEmpty ? "Your library's files are not touched." : "Restore its linked apps first.")
-          Spacer(minLength: 8)
-          Button("Remove…") { confirmingRemoval = true }
-            .buttonStyle(.dangerPill(busy: model.isBusy(.unregister(name))))
-            .disabled(!row.links.isEmpty)
-        }
+      Divider().padding(.top, 18).padding(.bottom, 10)
+      HStack(spacing: 8) {
+        Button("Remove from dryfit…", role: .destructive) { confirmingRemoval = true }
+          .buttonStyle(.borderless)
+          .foregroundStyle(row.links.isEmpty ? .red : DS.muted)
+          .disabled(!row.links.isEmpty || model.isBusy(.unregister(name)))
+        Text(row.links.isEmpty ? "Your library's files are not touched." : "Restore its linked apps first.")
+          .font(DS.caption).foregroundStyle(DS.muted)
       }
-      .padding(.top, 12)
     }
     .confirmationDialog("Remove \(name) from dryfit?", isPresented: $confirmingRemoval) {
       Button("Remove", role: .destructive) {
@@ -735,6 +517,51 @@ private struct LibraryDetail: View {
     let root = library.root.hasSuffix("/") ? library.root : library.root + "/"
     if library.publishDir == library.root { return "The library's folder" }
     return library.publishDir.hasPrefix(root) ? String(library.publishDir.dropFirst(root.count)) : abbreviatedPath(library.publishDir)
+  }
+}
+
+/// The switch for auto-sync with its name beside it, for the toolbar.
+struct AutoSyncToggle: View {
+  @Binding var isOn: Bool
+
+  var body: some View {
+    HStack(spacing: 6) {
+      Text("Auto-sync").font(DS.body).accessibilityHidden(true)
+      Toggle("Auto-sync", isOn: $isOn).toggleStyle(.switch).controlSize(.mini).labelsHidden()
+    }
+    .padding(.leading, 8)
+    .fixedSize()
+  }
+}
+
+/// A failed install, with its first line of output and the two ways on: read it, or put the app back.
+private struct InstallFailedCallout: View {
+  let link: DryfitAPI.Link
+  let model: MenuModel
+  let actions: MenuActions
+
+  var body: some View {
+    let failure = model.installFailure(in: link.consumer)
+    HStack(alignment: .top, spacing: 8) {
+      Image(systemName: "xmark.octagon.fill").foregroundStyle(.red).accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Install into \(projectName(link.consumer)) failed").font(DS.medium)
+        if let line = failure?.detail.split(whereSeparator: \.isNewline).first {
+          Text(line).font(DS.mono).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.tail)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      if let failure {
+        Button("Show output") { actions.showFailures(failure.id) }.buttonStyle(.pill)
+      }
+      Button("Restore") { Task { await model.restore(link.consumer, library: link.library) } }
+        .buttonStyle(.pill(busy: model.isBusy(.restore(link.consumer, link.library))))
+        .help("Put \(projectName(link.consumer)) back on the release of \(link.library)")
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .background(Color.red.opacity(0.12), in: .rect(cornerRadius: DS.radius))
+    .overlay { RoundedRectangle(cornerRadius: DS.radius).strokeBorder(Color.red.opacity(0.35), lineWidth: 1) }
   }
 }
 
@@ -831,26 +658,21 @@ private struct GroupDetail: View {
 
   private func content(_ group: DryfitAPI.Group) -> some View {
     Page {
-      Spacer()
       Button {
         Task { await model.restoreGroup(name) }
       } label: {
-        Label("Restore all", systemImage: "arrow.uturn.backward")
+        Label("Restore all", systemImage: "arrow.uturn.backward").labelStyle(.titleAndIcon)
       }
-      .buttonStyle(.pill(busy: model.isBusy(.restoreGroup(name))))
+      .disabled(model.isBusy(.restoreGroup(name)))
       .help("Put every app in \(name) back on released versions")
-      PillMenu(busy: model.isBusy(.linkGroup(name))) {
+      Menu {
         ForEach(model.status?.libraries ?? []) { library in
           Button(library.name) { Task { await model.linkGroup(name, library: library.name) } }
         }
       } label: {
-        HStack(spacing: 4) {
-          Image(systemName: "link.badge.plus").accessibilityHidden(true)
-          Text("Link library")
-          Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).accessibilityHidden(true)
-        }
+        Label("Link library", systemImage: "link.badge.plus").labelStyle(.titleAndIcon)
       }
-      .disabled(model.status?.libraries.isEmpty ?? true)
+      .disabled(model.status?.libraries.isEmpty ?? true || model.isBusy(.linkGroup(name)))
       .help("Link a library into every app in \(name)")
     } content: {
       if let error = model.actionError {
@@ -889,14 +711,14 @@ private struct GroupDetail: View {
         }
         .padding(.top, 12)
       }
-      HairlineGroup {
-        GroupRow {
-          TwoLine(title: "Delete group", caption: "Deleting the group leaves its apps as they are.")
-          Spacer(minLength: 8)
-          Button("Delete…") { confirmingDeletion = true }.buttonStyle(.dangerPill(busy: model.isBusy(.deleteGroup(name))))
-        }
+      Divider().padding(.top, 18).padding(.bottom, 10)
+      HStack(spacing: 8) {
+        Button("Delete group…", role: .destructive) { confirmingDeletion = true }
+          .buttonStyle(.borderless)
+          .foregroundStyle(.red)
+          .disabled(model.isBusy(.deleteGroup(name)))
+        Text("Its apps stay as they are.").font(DS.caption).foregroundStyle(DS.muted)
       }
-      .padding(.top, 12)
     }
     .confirmationDialog("Delete the group \(name)?", isPresented: $confirmingDeletion) {
       Button("Delete", role: .destructive) {

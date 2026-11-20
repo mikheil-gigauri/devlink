@@ -14,45 +14,22 @@ public struct FailureView: View {
   public var body: some View {
     HStack(spacing: 0) {
       if failures.count > 1 {
-        ScrollView {
-          VStack(spacing: 0) {
-            ForEach(failures) { failure in
-              let on = failure.id == selected?.id
-              Button {
-                selection = failure.id
-              } label: {
-                VStack(alignment: .leading, spacing: 1) {
-                  Text(failure.title).lineLimit(2).multilineTextAlignment(.leading)
-                  Text(failure.date, format: .dateTime.hour().minute()).font(DS.caption).foregroundStyle(DS.muted)
-                }
-                .font(DS.body)
-                .foregroundStyle(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(on ? DS.accentTint : .clear, in: .rect(cornerRadius: 6))
-                .contentShape(.rect)
-              }
-              .buttonStyle(.plain)
-              .accessibilityAddTraits(on ? .isSelected : [])
+        // The system's source list: selection, ↑ and ↓, and type-to-select come with it.
+        List(selection: $selection) {
+          ForEach(failures) { failure in
+            VStack(alignment: .leading, spacing: 1) {
+              Text(failure.title).lineLimit(2)
+              Text(failure.date, format: .dateTime.hour().minute()).font(DS.caption).foregroundStyle(.secondary)
             }
-          }
-          .padding(.horizontal, 4)
-          .padding(.vertical, 6)
-        }
-        .frame(width: 200)
-        .background(.background.secondary)
-        .focusable()
-        .focusEffectDisabled()
-        .onMoveCommand { direction in
-          guard let index = failures.firstIndex(where: { $0.id == selected?.id }) else { return }
-          switch direction {
-          case .up where index > 0: selection = failures[index - 1].id
-          case .down where index < failures.count - 1: selection = failures[index + 1].id
-          default: break
+            .font(DS.body)
+            .padding(.vertical, 2)
+            .tag(failure.id)
           }
         }
-        Rectangle().fill(DS.hairline).frame(width: 0.5)
+        .listStyle(.sidebar)
+        .frame(width: 210)
+        .onAppear { if selection == nil { selection = failures.first?.id } }
+        Divider()
       }
       if let failure = selected {
         Detail(failure: failure)
@@ -102,6 +79,8 @@ private struct Detail: View {
           .padding(.horizontal, 10)
           .padding(.vertical, 8)
       }
+      // Opens on the output's first line, not wherever the content's centre falls.
+      .defaultScrollAnchor(.topLeading)
       .background(DS.neutralFill, in: .rect(cornerRadius: DS.radius))
     }
     .padding(.horizontal, 16)

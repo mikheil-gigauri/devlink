@@ -26,10 +26,10 @@ through three steps: choose the folders where your apps live, add a library, and
   **Link** for the ones still on their release. **Add App…** (⇧⌘O) adds an app from outside your
   project folders. You can also drop a folder on the window: an app opens its page, a library opens the
   form that adds it.
-- Drag libraries, apps and groups in the sidebar to put them in your own order, or use **Move up** and
-  **Move down** in a row's context menu (⌥⌘↑ and ⌥⌘↓ for the open row). The menu lists them, and the
+- Drag libraries, apps and groups in the sidebar to put them in your own order, or use **Move Up** and
+  **Move Down** in a row's context menu (⌥⌘↑ and ⌥⌘↓ for the open row). The menu lists them, and the
   apps under each library, in that same order. ↑ and ↓ move through the sidebar.
-- **Hide app**, at the bottom of an app's page or in its row's context menu, stops listing an app you
+- **Hide App** in an app's row context menu, or the hide button at the bottom of its page, stops listing an app you
   don't work on. Nothing in the app changes, and **Settings** lists hidden apps with **Show** to bring
   one back. A linked app has to be restored first.
 - **Sync now** builds, publishes and installs into every linked app. Turn on **Auto-sync** to do that
@@ -57,8 +57,8 @@ From the menu you can:
 
 It also tells you, in a notification, when an install fails while the menu is closed.
 
-Right-click (or Control-click) the menu bar icon for **Settings…**, the log, **Open at login**,
-**Check for updates…**, starting or stopping dryfit, and quitting.
+Right-click (or Control-click) the menu bar icon for **Settings…**, the log, **Open at Login**,
+**Check for Updates…**, starting or stopping dryfit, and quitting.
 
 ## Settings
 
@@ -95,5 +95,5 @@ it is older than the app, the menu says so and offers **Update**: it runs
 links and watches carry over. Settings shows the same.
 
 To choose when, turn off **Install updates automatically** in Settings: the app then asks before
-installing. **Check for updates…** in the icon's right-click menu looks right away. Versions from before 0.3.0 do not
+installing. **Check for Updates…** in the icon's right-click menu looks right away. Versions from before 0.3.0 do not
 update themselves; download the newest once more.

@@ -83,8 +83,8 @@ struct LinkMenuItems: View {
       Text(model.isBusy(.discover) ? "Looking for apps…" : "No other app in your project folders uses \(library)")
     }
     Divider()
-    Button("Choose app…") { Task { await model.chooseAppAndLink(library) } }
-    Button("Look again") { Task { await model.discoverConsumers() } }
+    Button("Choose App…") { Task { await model.chooseAppAndLink(library) } }
+    Button("Look Again") { Task { await model.discoverConsumers() } }
   }
 }
 

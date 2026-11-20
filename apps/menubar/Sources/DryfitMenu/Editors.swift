@@ -35,11 +35,10 @@ struct LibraryEditor: View {
         if loadError != nil {
           // Nothing to add: one way out, not a Cancel beside a button that can never be clicked.
           // Return through the default action, Escape through the exit command below.
-          Button("Close") { dismiss() }.buttonStyle(.primaryPill).keyboardShortcut(.defaultAction)
+          Button("Close") { dismiss() }.keyboardShortcut(.defaultAction)
         } else {
-          Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction).disabled(saving)
+          Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
           Button(preview?.registered == true ? "Save" : "Add library") { save() }
-            .buttonStyle(.primaryPill)
             .keyboardShortcut(.defaultAction)
             .disabled(preview == nil || publishDir.isEmpty || saving)
         }
@@ -193,9 +192,8 @@ struct GroupEditor: View {
       }
       HStack(spacing: 8) {
         Spacer()
-        Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction).disabled(saving)
+        Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
         Button(isEditing ? "Save" : "Create group") { save() }
-          .buttonStyle(.primaryPill)
           .keyboardShortcut(.defaultAction)
           .disabled(trimmedName.isEmpty || nameTaken || members.isEmpty || saving)
       }

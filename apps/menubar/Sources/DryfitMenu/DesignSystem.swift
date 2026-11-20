@@ -137,20 +137,32 @@ struct TwoLineView<Title: View>: View {
 
 // MARK: Buttons
 
-/// The app's button: 11 pt text on a small filled rounded rectangle. One per screen is
-/// `.primary`, filled; `.accent` and `.danger` colour the text for Link and for removing things.
-struct PillButtonStyle: ButtonStyle {
+/// The app's buttons are the system's: bordered at small size, the one primary action of a screen
+/// prominent in the accent colour, and removal destructive. This style only adds a spinner that
+/// stands in for the title while the button's job runs, at full strength and the same width.
+struct PillButtonStyle: PrimitiveButtonStyle {
   enum Kind { case normal, primary, accent, danger }
   var kind = Kind.normal
-  /// While its job runs: a spinner in place of the title, at full strength, the same width.
   var busy = false
 
   func makeBody(configuration: Configuration) -> some View {
-    PillLabel(kind: kind, pressed: configuration.isPressed, busy: busy) { configuration.label }
+    let button = Button(role: kind == .danger ? .destructive : nil, action: configuration.trigger) {
+      configuration.label
+        .labelStyle(PillLabelStyle())
+        .foregroundStyle(kind == .accent ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
+        .opacity(busy ? 0 : 1)
+        .overlay { if busy { ProgressView().controlSize(.mini) } }
+    }
+    return Group {
+      if kind == .primary { button.buttonStyle(.borderedProminent) } else { button.buttonStyle(.bordered) }
+    }
+    .controlSize(.small)
+    .allowsHitTesting(!busy)
+    .accessibilityValue(busy ? Text("In progress") : Text(""))
   }
 }
 
-extension ButtonStyle where Self == PillButtonStyle {
+extension PrimitiveButtonStyle where Self == PillButtonStyle {
   static var pill: PillButtonStyle { PillButtonStyle() }
   static var primaryPill: PillButtonStyle { PillButtonStyle(kind: .primary) }
   static var accentPill: PillButtonStyle { PillButtonStyle(kind: .accent) }
@@ -158,44 +170,6 @@ extension ButtonStyle where Self == PillButtonStyle {
   static func pill(busy: Bool) -> PillButtonStyle { PillButtonStyle(busy: busy) }
   static func accentPill(busy: Bool) -> PillButtonStyle { PillButtonStyle(kind: .accent, busy: busy) }
   static func dangerPill(busy: Bool) -> PillButtonStyle { PillButtonStyle(kind: .danger, busy: busy) }
-}
-
-/// A pill's look, for menus that open from one.
-struct PillLabel<Label: View>: View {
-  var kind = PillButtonStyle.Kind.normal
-  var pressed = false
-  var busy = false
-  @ViewBuilder var label: Label
-  @Environment(\.isEnabled) private var isEnabled
-
-  var body: some View {
-    label
-      .labelStyle(PillLabelStyle())
-      .font(DS.caption)
-      .lineLimit(1)
-      .fixedSize()
-      .opacity(busy ? 0 : 1)
-      .overlay { if busy { ProgressView().controlSize(.mini) } }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 2)
-      .foregroundStyle(foreground)
-      .background(kind == .primary ? AnyShapeStyle(Color.primary) : AnyShapeStyle(DS.buttonFill), in: .rect(cornerRadius: DS.radius))
-      .contentShape(.rect)
-      // Disabled fades as far as the switch does: at 35% a pill all but disappeared.
-      .opacity(isEnabled ? (pressed ? 0.7 : 1) : 0.5)
-      // A second click while the job runs would be dropped by the model anyway; this says so.
-      .allowsHitTesting(!busy)
-      .accessibilityValue(busy ? Text("In progress") : Text(""))
-  }
-
-  private var foreground: AnyShapeStyle {
-    switch kind {
-    case .normal: AnyShapeStyle(DS.muted)
-    case .primary: AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
-    case .accent: AnyShapeStyle(Color.accentColor)
-    case .danger: AnyShapeStyle(Color.red)
-    }
-  }
 }
 
 /// Icon and title 4 pt apart, the icon at the text's size.
@@ -208,7 +182,7 @@ struct PillLabelStyle: LabelStyle {
   }
 }
 
-/// A pill that opens a menu.
+/// A small bordered button that opens a menu, with the system's indicator.
 struct PillMenu<Items: View, Label: View>: View {
   var kind = PillButtonStyle.Kind.normal
   var busy = false
@@ -216,30 +190,27 @@ struct PillMenu<Items: View, Label: View>: View {
   @ViewBuilder var label: Label
 
   var body: some View {
-    Menu { items } label: { PillLabel(kind: kind, busy: busy) { label } }
-      .menuStyle(.button)
-      .buttonStyle(.plain)
-      .menuIndicator(.hidden)
-      .fixedSize()
-      .allowsHitTesting(!busy)
+    Menu { items } label: {
+      label.opacity(busy ? 0 : 1).overlay { if busy { ProgressView().controlSize(.mini) } }
+    }
+    .menuStyle(.button)
+    .buttonStyle(.bordered)
+    .controlSize(.small)
+    .fixedSize()
+    .allowsHitTesting(!busy)
   }
 }
 
-/// An accent-tinted chip that links an app with one click.
-struct ChipButtonStyle: ButtonStyle {
+/// An app that uses the library, linked with one click: a small bordered button with a link symbol.
+struct ChipButtonStyle: PrimitiveButtonStyle {
   var quiet = false
 
   func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .labelStyle(PillLabelStyle())
-      .font(DS.caption)
-      .lineLimit(1)
-      .padding(.horizontal, 7)
-      .padding(.vertical, 2)
-      .foregroundStyle(quiet ? AnyShapeStyle(DS.muted) : AnyShapeStyle(Color.accentColor))
-      .background(quiet ? Color.clear : DS.accentTint, in: .rect(cornerRadius: DS.radius))
-      .contentShape(.rect)
-      .opacity(configuration.isPressed ? 0.7 : 1)
+    Button(action: configuration.trigger) {
+      configuration.label.labelStyle(PillLabelStyle()).foregroundStyle(Color.accentColor)
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.small)
   }
 }
 
@@ -256,44 +227,21 @@ struct IconButton: View {
         Image(systemName: symbol).opacity(busy ? 0 : 1)
         if busy { ProgressView().controlSize(.mini) }
       }
-      .font(.system(size: 12))
-      .foregroundStyle(DS.muted)
       .frame(width: 18, height: 18)
-      .hitTarget()
     }
-    .buttonStyle(.plain)
+    .buttonStyle(.borderless)
     .disabled(busy)
     .help(label)
     .accessibilityLabel(label)
   }
 }
 
-// MARK: Switch
+// MARK: Switch and checkbox
 
-/// A 24 by 14 pt switch: accent when on, grey when off.
+/// The system switch at mini size, its label hidden: rows say what it does.
 struct MiniSwitchStyle: ToggleStyle {
   func makeBody(configuration: Configuration) -> some View {
-    MiniSwitch(configuration: configuration)
-  }
-
-  private struct MiniSwitch: View {
-    let configuration: Configuration
-    @Environment(\.isEnabled) private var isEnabled
-
-    var body: some View {
-      Button {
-        withAnimation(.snappy(duration: 0.18)) { configuration.isOn.toggle() }
-      } label: {
-        ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-          Capsule().fill(configuration.isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.15)))
-          Circle().fill(.white).padding(2).shadow(color: .black.opacity(0.15), radius: 0.5, y: 0.5)
-        }
-        .frame(width: 24, height: 14)
-      }
-      .buttonStyle(.plain)
-      .opacity(isEnabled ? 1 : 0.5)
-      .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
-    }
+    Toggle(configuration).toggleStyle(.switch).controlSize(.mini).labelsHidden()
   }
 }
 
@@ -311,28 +259,10 @@ extension ToggleStyle where Self == MiniSwitchStyle {
   static var mini: MiniSwitchStyle { MiniSwitchStyle() }
 }
 
-/// A 13 pt square checkbox with its label 8 pt after it: accent with a white tick when on.
+/// The system checkbox.
 struct Checkbox13Style: ToggleStyle {
   func makeBody(configuration: Configuration) -> some View {
-    Button {
-      configuration.isOn.toggle()
-    } label: {
-      HStack(spacing: 8) {
-        ZStack {
-          if configuration.isOn {
-            RoundedRectangle(cornerRadius: 4).fill(Color.accentColor)
-            Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
-          } else {
-            RoundedRectangle(cornerRadius: 4).strokeBorder(DS.strongBorder, lineWidth: 0.5)
-          }
-        }
-        .frame(width: 13, height: 13)
-        configuration.label
-      }
-      .contentShape(.rect)
-    }
-    .buttonStyle(.plain)
-    .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
+    Toggle(configuration).toggleStyle(.checkbox)
   }
 }
 
@@ -341,14 +271,9 @@ extension ToggleStyle where Self == Checkbox13Style {
 }
 
 extension View {
-  /// A text field drawn flat: a hairline, 6 pt corners, 3 by 7 pt inside.
+  /// The system's rounded text field, in the app's body or monospaced font.
   func field(monospaced: Bool = false) -> some View {
-    textFieldStyle(.plain)
-      .font(monospaced ? DS.mono : DS.body)
-      .padding(.horizontal, 7)
-      .padding(.vertical, 3)
-      .background(Color(nsColor: .textBackgroundColor).opacity(0.6), in: .rect(cornerRadius: 6))
-      .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(DS.hairline, lineWidth: 0.5) }
+    textFieldStyle(.roundedBorder).font(monospaced ? DS.mono : DS.body)
   }
 }
 
@@ -402,27 +327,27 @@ extension View {
 
 // MARK: Pages
 
-/// A page of the dryfit window: a bar of controls along the top, then the page, 18 pt in from the
-/// sides. The bar is part of the page, not a toolbar: the window has no title bar.
+/// A page of the dryfit window: the page, 18 pt in from the sides, scrolling under the window's
+/// toolbar, which holds the page's actions.
 struct Page<Bar: View, Content: View>: View {
   @ViewBuilder var bar: Bar
   @ViewBuilder var content: Content
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 0) {
-        HStack(spacing: 8) { bar }
-          .font(DS.body)
-          .frame(minHeight: 20)
-          .padding(.top, 10)
-          .padding(.bottom, 12)
-        content
-      }
-      .font(DS.body)
-      .padding(.horizontal, 18)
-      .padding(.bottom, 16)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      VStack(alignment: .leading, spacing: 0) { content }
+        .font(DS.body)
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
+    .toolbar {
+      ToolbarSpacer(.flexible)
+      ToolbarItemGroup { bar }
+    }
+    // The page's name is in the page, not repeated in the bar.
+    .toolbar(removing: .title)
   }
 }
 
