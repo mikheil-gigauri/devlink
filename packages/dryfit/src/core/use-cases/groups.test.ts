@@ -71,6 +71,19 @@ describe('linkGroup', () => {
     expect((await store.load()).links.map((link) => link.consumer)).toEqual([SHOP, ADMIN]);
   });
 
+  it('reports a member whose first install failed as failed, with the reason', async () => {
+    const published = { ...library, lastPublishedVersion: '1.4.1-dev.20261118143201' };
+    const { deps, npm } = createScenario({ state: { ...withCheckout, libraries: [published] } });
+    npm.failIn(ADMIN);
+
+    const outcomes = await linkGroup(deps, { group: 'checkout', library: '@acme/ui' });
+
+    expect(outcomes.slice(0, 2)).toEqual([
+      { consumer: SHOP, status: 'done' },
+      { consumer: ADMIN, status: 'failed', message: 'npm error ERESOLVE could not resolve' },
+    ]);
+  });
+
   it('refuses an unknown library before touching any member', async () => {
     const { deps, fs } = createScenario({ state: withCheckout });
     const before = fs.snapshot();

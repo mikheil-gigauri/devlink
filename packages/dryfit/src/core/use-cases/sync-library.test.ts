@@ -87,11 +87,25 @@ describe('syncLibrary', () => {
       { consumer: SHOP, ok: false, version: VERSION, output: 'npm error ERESOLVE could not resolve' },
       { consumer: ADMIN, ok: true, version: VERSION, clearedCaches: ['node_modules/.vite'] },
     ]);
-    expect(store.current.links.map((link) => [link.consumer, link.status])).toEqual([
-      [SHOP, 'failed'],
-      [ADMIN, 'installed'],
+    expect(store.current.links.map((link) => [link.consumer, link.status, link.message])).toEqual([
+      [SHOP, 'failed', 'npm error ERESOLVE could not resolve'],
+      [ADMIN, 'installed', undefined],
     ]);
     expect(await fs.exists(`${SHOP}/.angular/cache`)).toBe(true);
+  });
+
+  it('clears the failure message once an install into that consumer succeeds', async () => {
+    const state = linked([SHOP]);
+    const { deps, store } = createScenario({
+      state: {
+        ...state,
+        links: [{ library: '@acme/ui', consumer: SHOP, status: 'failed', message: 'npm error ERESOLVE' }],
+      },
+    });
+
+    await syncLibrary(deps, { library: '@acme/ui' });
+
+    expect(store.current.links[0]?.message).toBeUndefined();
   });
 
   it('emits an install event per consumer between publish and the end', async () => {

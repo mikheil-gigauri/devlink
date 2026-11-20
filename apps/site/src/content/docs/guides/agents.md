@@ -61,4 +61,6 @@ With `--json`, an error is one line of JSON on stderr:
 
 The exit code is 0 when everything succeeded, 1 when something failed, 2 when the command was used
 wrongly, and 130 when it was interrupted. Commands that act on several apps, such as `link` and
-`restore`, report each app in their result and exit 1 if any of them failed.
+`restore`, report each app in their result and exit 1 if any of them failed. A link whose install
+failed has `"status": "failed"` and a `message` with the end of the package manager's output, such as
+npm's `ERESOLVE` report.

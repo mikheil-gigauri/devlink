@@ -58,6 +58,11 @@ export async function startDaemon(options: StartDaemonOptions): Promise<RunningD
   });
 
   const hub = new EventHub();
+  // A failed install is otherwise only visible to a client that was listening at the time.
+  hub.subscribe((event) => {
+    if (event.type === 'install:failed')
+      log(`install of ${event.library}@${event.version} into ${event.consumer} failed:\n${event.output}`);
+  });
   let deps: ReturnType<typeof createNodeDeps>;
   try {
     deps = createNodeDeps({ home: home.root, registry, events: hub, process: runner });

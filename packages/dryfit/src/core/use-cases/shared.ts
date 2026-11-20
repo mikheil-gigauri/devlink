@@ -98,3 +98,12 @@ export async function runSafely(deps: Pick<CoreDeps, 'process'>, spec: CommandSp
 export function commandOutput(result: { readonly stdout: string; readonly stderr: string }): string {
   return result.stderr.trim() || result.stdout.trim();
 }
+
+/**
+ * A failed command's output cut to its last lines, short enough to keep on a link. Package managers
+ * end with the reason (npm's ERESOLVE report, a 404, a peer conflict), so the end is what matters.
+ */
+export function failureMessage(output: string, maxLines = 20, maxChars = 2000): string {
+  const tail = output.trim().split('\n').slice(-maxLines).join('\n');
+  return tail.length > maxChars ? `…${tail.slice(-maxChars)}` : tail;
+}

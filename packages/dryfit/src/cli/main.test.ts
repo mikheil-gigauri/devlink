@@ -138,6 +138,30 @@ describe('dryfit CLI', () => {
     expect(stdout).toContain('commit guard installed');
   });
 
+  it('exits 1 when the first install into a linked consumer fails, and says why', async () => {
+    const client = new FakeClient();
+    const failed = {
+      link: {
+        library: '@acme/ui',
+        consumer: '/Users/me/repos/shop',
+        status: 'failed' as const,
+        message: 'npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree',
+      },
+      guard: 'installed' as const,
+    };
+    client.replies.link = failed;
+
+    const json = await dryfit('link /Users/me/repos/shop --json', { client, cwd: '/Users/me/repos/ui-lib' });
+    const human = await dryfit('link /Users/me/repos/shop', { client, cwd: '/Users/me/repos/ui-lib' });
+
+    expect(json.code).toBe(1);
+    expect(JSON.parse(json.stdout)).toEqual([failed]);
+    expect(human.code).toBe(1);
+    expect(human.stdout).toContain('Install into ~/repos/shop failed');
+    expect(human.stdout).toContain('ERESOLVE unable to resolve dependency tree');
+    expect(human.stdout).not.toContain('Next:');
+  });
+
   it('asks which library when it cannot tell', async () => {
     const client = new FakeClient();
     client.replies.status = status({ libraries: [ui, forms] });
@@ -239,6 +263,25 @@ describe('dryfit CLI', () => {
     expect(stdout).toContain('~/repos/shop');
     expect(stdout).toContain('installed 1.4.1-dev.20261118143201');
     expect(stdout).toContain('checkout runs different versions of @acme/ui');
+  });
+
+  it("shows why a link's last install failed", async () => {
+    const client = new FakeClient();
+    client.replies.status = status({
+      links: [
+        {
+          library: '@acme/ui',
+          consumer: '/Users/me/repos/shop',
+          status: 'failed',
+          message: 'npm error ERESOLVE unable to resolve dependency tree',
+        },
+      ],
+    });
+
+    const { stdout } = await dryfit('status', { client });
+
+    expect(stdout).toContain('last install failed');
+    expect(stdout).toContain('npm error ERESOLVE unable to resolve dependency tree');
   });
 
   it('prints the raw result with --json, for scripts and agents', async () => {

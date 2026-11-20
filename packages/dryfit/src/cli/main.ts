@@ -469,12 +469,19 @@ const COMMANDS: Record<string, Command> = {
           continue;
         }
         results.push(result);
+        // Linked, but the install failed: the consumer does not run the library, so this is a failure.
+        if (result.link.status === 'failed') failed = 1;
         if (json) continue;
         const notes = ['snapshot taken'];
         if (result.guard === 'installed') notes.push('commit guard installed');
         if (result.guard === 'not-a-repo') notes.push('not a git repository, so no commit guard');
         out.ok(`Linked ${library} into ${out.path(consumer)} ${out.dim(`(${notes.join(', ')})`)}`);
-        if (result.link.installedVersion) out.line(out.dim(`  running ${result.link.installedVersion}`));
+        if (result.link.status === 'failed') {
+          out.fail(`Install into ${out.path(consumer)} failed`);
+          if (result.link.message) out.output(result.link.message);
+        } else if (result.link.installedVersion) {
+          out.line(out.dim(`  running ${result.link.installedVersion}`));
+        }
       }
       if (json) return printJson(out, results, failed);
       if (failed === 0)
@@ -749,6 +756,7 @@ function printStatus(out: Output, status: StatusView): void {
     out.line(
       `  ${link.library} → ${out.path(link.consumer)}  ${state}${link.guard ? out.dim('  guarded') : ''}`,
     );
+    if (link.status === 'failed' && link.message) out.output(link.message);
   }
 
   if (status.groups.length > 0) {

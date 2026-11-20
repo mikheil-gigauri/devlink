@@ -58,6 +58,7 @@ export const outputs = {
         consumer: ADMIN,
         status: 'failed',
         installedVersion: '1.4.1-dev.20261118120000',
+        message: 'npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree',
       },
     ],
     groups: [group],
@@ -119,7 +120,7 @@ export const outputs = {
   deleteGroup: { ok: true },
   linkGroup: [
     { consumer: SHOP, status: 'done' },
-    { consumer: ADMIN, status: 'failed', message: 'Install into /Users/me/repos/admin failed' },
+    { consumer: ADMIN, status: 'failed', message: 'npm error ERESOLVE unable to resolve dependency tree' },
   ],
   restoreGroup: [
     { consumer: SHOP, status: 'done' },

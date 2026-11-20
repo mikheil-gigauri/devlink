@@ -52,7 +52,8 @@
           "library": "@acme/ui",
           "consumer": "/Users/me/repos/admin",
           "status": "failed",
-          "installedVersion": "1.4.1-dev.20261118120000"
+          "installedVersion": "1.4.1-dev.20261118120000",
+          "message": "npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree"
         }
       ],
       "groups": [
@@ -235,7 +236,7 @@
       {
         "consumer": "/Users/me/repos/admin",
         "status": "failed",
-        "message": "Install into /Users/me/repos/admin failed"
+        "message": "npm error ERESOLVE unable to resolve dependency tree"
       }
     ],
     "restoreGroup": [

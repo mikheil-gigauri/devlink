@@ -62,8 +62,13 @@ export async function linkGroup(
   const outcomes: GroupMemberOutcome[] = [];
   for (const consumer of group.consumers) {
     try {
-      await linkConsumer(deps, { library: input.library, consumer });
-      outcomes.push({ consumer, status: 'done' });
+      const link = await linkConsumer(deps, { library: input.library, consumer });
+      // Linked, but the first install failed: the member does not run the library yet.
+      outcomes.push(
+        link.status === 'failed'
+          ? { consumer, status: 'failed', message: link.message ?? `Install into ${consumer} failed` }
+          : { consumer, status: 'done' },
+      );
     } catch (error) {
       if (!(error instanceof DryfitError)) throw error;
       const status = error.code === 'not-a-consumer' ? 'skipped' : 'failed';
