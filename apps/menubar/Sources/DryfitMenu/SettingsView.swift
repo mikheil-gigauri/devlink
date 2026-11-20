@@ -15,7 +15,6 @@ public struct SettingsView: View {
   public var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
-        Text("Settings").font(DS.title)
         if let error = model.actionError {
           ErrorBanner(message: error) { model.dismissActionError() }.padding(.top, 12)
         }
@@ -146,10 +145,11 @@ public struct SettingsView: View {
       }
       .font(DS.body)
       .padding(.horizontal, 18)
-      .padding(.top, 16)
       .padding(.bottom, 16)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
+    // The window's toolbar carries the page's name; the page has no actions of its own.
+    .navigationTitle("Settings")
   }
 
   private var status: String {

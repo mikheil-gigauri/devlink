@@ -50,7 +50,7 @@ struct EndToEndTests {
     #expect(model.linkCandidates(for: "@acme/ui").map(\.root) == [consumer])
     await model.link("@acme/ui", into: consumer)
     #expect(model.actionError == nil)
-    // Never published yet, so linking built and published it, then installed it.
+    // Never published yet, so the link builds and publishes it first, then installs.
     #expect(model.libraries.first?.links.first?.status == .installed)
     await model.sync("@acme/ui")
     #expect(model.actionError == nil)

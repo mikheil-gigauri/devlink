@@ -34,11 +34,11 @@ struct LibraryEditor: View {
         Spacer()
         if loadError != nil {
           // Nothing to add: one way out, not a Cancel beside a button that can never be clicked.
-          Button("Close") { dismiss() }.buttonStyle(.primaryPill).keyboardShortcut(.defaultAction)
+          // Return through the default action, Escape through the exit command below.
+          Button("Close") { dismiss() }.keyboardShortcut(.defaultAction)
         } else {
-          Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction).disabled(saving)
+          Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
           Button(preview?.registered == true ? "Save" : "Add library") { save() }
-            .buttonStyle(.primaryPill)
             .keyboardShortcut(.defaultAction)
             .disabled(preview == nil || publishDir.isEmpty || saving)
         }
@@ -50,6 +50,8 @@ struct LibraryEditor: View {
     .frame(width: 420)
     // Closed mid-save, the save would still finish and then move the window to the library.
     .interactiveDismissDisabled(saving)
+    // The error state has no Cancel to carry Escape.
+    .onExitCommand { if loadError != nil { dismiss() } }
     .task {
       do {
         let found = try await model.inspect(root)
@@ -190,9 +192,8 @@ struct GroupEditor: View {
       }
       HStack(spacing: 8) {
         Spacer()
-        Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction).disabled(saving)
+        Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
         Button(isEditing ? "Save" : "Create group") { save() }
-          .buttonStyle(.primaryPill)
           .keyboardShortcut(.defaultAction)
           .disabled(trimmedName.isEmpty || nameTaken || members.isEmpty || saving)
       }

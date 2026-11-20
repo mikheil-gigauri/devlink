@@ -62,6 +62,9 @@ private func render(_ view: some View, appearance: NSAppearance, size: CGSize?) 
   // Let SwiftUI settle (tasks, ViewThatFits) before drawing.
   RunLoop.main.run(until: .now + 0.05)
   host.layoutSubtreeIfNeeded()
+  liftOutOfGlass(host)
+  RunLoop.main.run(until: .now + 0.05)
+  host.layoutSubtreeIfNeeded()
   drawWithoutBackdrops(host)
 
   let bounds = host.bounds
@@ -73,6 +76,22 @@ private func render(_ view: some View, appearance: NSAppearance, size: CGSize?) 
   NSAppearance.current = appearance
   appearance.performAsCurrentDrawingAppearance { host.cacheDisplay(in: bounds, to: rep) }
   return rep.representation(using: .png, properties: [:])!
+}
+
+/// The sidebar is a glass column, and the window server draws the vibrant labels in it, so they come
+/// out empty: lift the glass's content out onto the window's background.
+@MainActor
+private func liftOutOfGlass(_ view: NSView) {
+  if let glass = view as? NSGlassEffectView, let content = glass.contentView, let parent = glass.superview {
+    let frame = glass.frame
+    glass.contentView = nil
+    glass.removeFromSuperview()
+    content.translatesAutoresizingMaskIntoConstraints = true
+    content.frame = frame
+    parent.addSubview(content)
+    return
+  }
+  for subview in view.subviews { liftOutOfGlass(subview) }
 }
 
 /// `cacheDisplay` can't draw what the window server composites: a selected sidebar row's highlight is

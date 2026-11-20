@@ -162,22 +162,15 @@ struct AppDetail: View {
 
   private func content(_ app: AppSummary) -> some View {
     Page {
-      Text(abbreviatedPath(app.root)).font(DS.caption).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.head)
-      Spacer(minLength: 8)
-      Button { revealInFinder(app.root) } label: { Image(systemName: "folder") }
-        .buttonStyle(.pill)
+      Button("Show in Finder", systemImage: "folder") { revealInFinder(app.root) }
         .help("Show \(app.name) in Finder")
-        .accessibilityLabel("Show in Finder")
-      // Only while there is something to restore: the subtitle already says when there isn't.
       if !app.linked.isEmpty {
         Button {
           Task { await model.restore(app.root) }
         } label: {
-          Label("Restore all", systemImage: "arrow.uturn.backward")
+          Label("Restore all", systemImage: "arrow.uturn.backward").labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.pill(busy: model.isBusy(.restore(app.root, nil))))
-        // Not while one of its libraries is being restored: both would edit the same package.json.
-        .disabled(app.libraries.contains { model.isBusy(.restore(app.root, $0.library)) })
+        .disabled(model.isBusy(.restore(app.root, nil)) || app.libraries.contains { model.isBusy(.restore(app.root, $0.library)) })
         .help("Put every library in \(app.name) back on its release")
       }
     } content: {
@@ -194,20 +187,16 @@ struct AppDetail: View {
         }
       }
       Footnote("Your libraries that \(app.name) depends on. Restore puts that library's release back and keeps the others linked.")
-      HairlineGroup {
-        GroupRow {
-          TwoLine(
-            title: "Hide \(app.name)",
-            caption: app.linked.isEmpty
-              ? "dryfit stops listing it. Nothing in the app changes, and Settings can show it again."
-              : "Restore it first: dryfit only hides apps that use released versions.", wraps: true)
-          Spacer(minLength: 8)
-          Button("Hide app") { Task { await model.hideApp(app.root, navigation: navigation) } }
-            .buttonStyle(.pill(busy: model.isBusy(.hide(app.root))))
-            .disabled(!app.linked.isEmpty)
-        }
+      Divider().padding(.top, 18).padding(.bottom, 10)
+      HStack(spacing: 8) {
+        Button("Hide \(app.name)") { Task { await model.hideApp(app.root, navigation: navigation) } }
+          .buttonStyle(.borderless)
+          .disabled(!app.linked.isEmpty || model.isBusy(.hide(app.root)))
+        Text(app.linked.isEmpty
+          ? "dryfit stops listing it. Settings can show it again."
+          : "Restore it first: dryfit only hides apps on released versions.")
+          .font(DS.caption).foregroundStyle(DS.muted)
       }
-      .padding(.top, 12)
     }
   }
 
@@ -257,7 +246,7 @@ private struct AppLibraryRow: View {
       }
     }
     .contextMenu {
-      Button("Show installed copy in Finder") { revealInFinder(app.root + "/node_modules/" + entry.library) }
+      Button("Show Installed Copy in Finder") { revealInFinder(app.root + "/node_modules/" + entry.library) }
     }
   }
 
