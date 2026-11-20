@@ -266,6 +266,62 @@ describe('dryfit CLI', () => {
     });
   });
 
+  describe('add with one flag keeps the other setting', () => {
+    const inspected = {
+      name: '@acme/ui',
+      version: '1.4.0',
+      root: '/Users/me/repos/ui-lib',
+      detected: 'nx' as const,
+      publishDir: '/Users/me/dist/libs/ui',
+      build: { command: '/Users/me/node_modules/.bin/nx', args: ['build', 'ui'] },
+      registered: false,
+    };
+
+    it('keeps the detected build when only --publish-dir is given', async () => {
+      const client = new FakeClient();
+      client.replies.inspect = inspected;
+      client.replies.register = { library: ui, detected: 'given' };
+
+      await dryfit(['add', '--publish-dir', 'out'], { client });
+
+      expect(client.calls.at(-1)).toEqual({
+        name: 'register',
+        input: { root: inspected.root, publishDir: `${inspected.root}/out`, build: inspected.build },
+      });
+    });
+
+    it('keeps the detected publish folder when only --build is given', async () => {
+      const client = new FakeClient();
+      client.replies.inspect = inspected;
+      client.replies.register = { library: ui, detected: 'given' };
+
+      await dryfit(['add', '--build', 'npm run build:lib'], { client });
+
+      expect(client.calls.at(-1)).toEqual({
+        name: 'register',
+        input: {
+          root: inspected.root,
+          publishDir: inspected.publishDir,
+          build: { command: 'npm', args: ['run', 'build:lib'] },
+        },
+      });
+    });
+
+    it('leaves the build empty when the library has none', async () => {
+      const client = new FakeClient();
+      const { build: _, ...withoutBuild } = inspected;
+      client.replies.inspect = { ...withoutBuild, detected: 'none' };
+      client.replies.register = { library: ui, detected: 'given' };
+
+      await dryfit(['add', '--publish-dir', 'out'], { client });
+
+      expect(client.calls.at(-1)).toEqual({
+        name: 'register',
+        input: { root: inspected.root, publishDir: `${inspected.root}/out` },
+      });
+    });
+  });
+
   it('explains a daemon error in one line with a hint, and exits 1', async () => {
     const client = new FakeClient();
     client.replies.restore = new ApiError(
