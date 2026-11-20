@@ -41,6 +41,8 @@ import Testing
       let restoreGroup: [GroupMemberOutcome]
       let roots: Roots
       let setRoots: Roots
+      let hiddenApps: HiddenApps
+      let hideApps: HiddenApps
       let shutdown: Done
     }
   }
@@ -89,6 +91,7 @@ import Testing
     #expect(fixtures.outputs.inspect.build?.args == ["build", "ui"])
     #expect(fixtures.outputs.inspect.registered == false)
     #expect(fixtures.outputs.setRoots.roots.count == 2)
+    #expect(fixtures.outputs.hideApps.hiddenApps.count == 2)
     #expect(fixtures.errorBody.error.code == .manifestDrifted)
   }
 

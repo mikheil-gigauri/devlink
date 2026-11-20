@@ -128,6 +128,8 @@ export const outputs = {
   ],
   roots: { roots: ['/Users/me/repos'] },
   setRoots: { roots: ['/Users/me/repos', '/Users/me/work'] },
+  hiddenApps: { hiddenApps: ['/Users/me/repos/storybook'] },
+  hideApps: { hiddenApps: ['/Users/me/repos/storybook', '/Users/me/repos/old-shop'] },
   shutdown: { ok: true },
 } satisfies { [K in OperationName]: OperationOutputs[K] };
 

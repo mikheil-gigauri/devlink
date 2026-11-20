@@ -154,6 +154,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     let online = model { model in
       model.connection = .online
       model.roots = ["/Users/me/repos", "/Users/me/work"]
+      model.hiddenApps = ["/Users/me/repos/old-shop"]
       model.status = Status(daemon: health)
     }
     assertSnapshot(

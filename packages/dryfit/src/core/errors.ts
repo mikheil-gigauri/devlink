@@ -11,6 +11,7 @@ export type DryfitErrorCode =
   | 'state-corrupt'
   | 'registry-failed'
   | 'library-linked'
+  | 'consumer-linked'
   | 'group-not-found'
   | 'invalid-group'
   | 'invalid-request'

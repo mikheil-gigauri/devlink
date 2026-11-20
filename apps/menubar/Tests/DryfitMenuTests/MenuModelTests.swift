@@ -386,6 +386,46 @@ import Testing
     #expect(adminApp?.packageManager == "pnpm")
   }
 
+  @Test func hidesAnApp_untilItIsShownAgain() async {
+    await daemon.setDiscovered([
+      DiscoveredConsumer(root: admin, name: "admin", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .npm)
+    ])
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    await model.discoverConsumers()
+    #expect(model.hiddenApps == [])
+    #expect(model.apps.map(\.root).contains(admin))
+    let navigation = AppNavigation()
+    navigation.selection = .app(admin)
+
+    await model.hideApp(admin, navigation: navigation)
+
+    #expect(model.hiddenApps == [admin])
+    #expect(!model.apps.map(\.root).contains(admin))
+    #expect(model.linkCandidates(for: "@acme/ui").isEmpty)
+    #expect(navigation.selection == nil)
+
+    await model.showApp(admin)
+
+    #expect(model.hiddenApps == [])
+    #expect(model.apps.map(\.root).contains(admin))
+    #expect(await daemon.calls.suffix(3) == ["hide \(admin)", "show \(admin)", "discover"])
+  }
+
+  @Test func saysWhyALinkedAppCannotBeHidden() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    await daemon.fail(with: APIError(code: .consumerLinked, message: "\(shop) is still linked; restore it first"))
+
+    await model.hideApp(shop)
+
+    #expect(model.actionError?.contains("restore it first") == true)
+    #expect(model.hiddenApps == [])
+    #expect(model.apps.map(\.root).contains(shop))
+  }
+
   @Test func opensAFolderAsAnApp_aLibrary_orSaysWhyNot() async throws {
     let model = makeModel()
     let task = await started(model)

@@ -26,6 +26,9 @@ through three steps: choose the folders where your apps live, add a library, and
   **Link** for the ones still on their release. **Add App…** (⇧⌘O) adds an app from outside your
   project folders. You can also drop a folder on the window: an app opens its page, a library opens the
   form that adds it.
+- **Hide App**, at the bottom of an app's page or in its row's context menu, stops listing an app you
+  don't work on. Nothing in the app changes, and **Settings** lists hidden apps with **Show** to bring
+  one back. A linked app has to be restored first.
 - **Sync Now** builds, publishes and installs into every linked app. Turn on **Auto-sync** to do that
   every time you save a change in the library.
 - **Restore** on a linked app puts that app back on the release of that one library and keeps its
@@ -50,8 +53,8 @@ It also tells you, in a notification, when an install fails while the menu is cl
 
 ## Settings
 
-**Settings** (⌘,) holds the folders dryfit searches for apps, dryfit's service with its log,
-**Open at login**, and updates.
+**Settings** (⌘,) holds the folders dryfit searches for apps, the apps you hid, dryfit's service with
+its log, **Open at login**, and updates.
 
 ## Install
 

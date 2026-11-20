@@ -15,6 +15,7 @@ public struct APIError: Error, Sendable, Equatable, LocalizedError {
     case stateCorrupt = "state-corrupt"
     case registryFailed = "registry-failed"
     case libraryLinked = "library-linked"
+    case consumerLinked = "consumer-linked"
     case groupNotFound = "group-not-found"
     case invalidGroup = "invalid-group"
     case invalidRequest = "invalid-request"

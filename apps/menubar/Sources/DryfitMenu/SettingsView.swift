@@ -47,6 +47,29 @@ public struct SettingsView: View {
         Text("dryfit looks in these folders, and the folders inside them, for apps that use your libraries.")
       }
 
+      if let hidden = model.hiddenApps, !hidden.isEmpty, model.connection == .online {
+        Section {
+          ForEach(hidden, id: \.self) { root in
+            HStack {
+              Label {
+                Text(projectName(root))
+                Text(abbreviatedPath(root))
+              } icon: {
+                Image(systemName: "eye.slash")
+              }
+              Spacer()
+              Button("Show") { Task { await model.showApp(root) } }
+                .disabled(model.isBusy(.hide(root)))
+                .help("List \(projectName(root)) again")
+            }
+          }
+        } header: {
+          Text("Hidden apps")
+        } footer: {
+          Text("dryfit does not list these apps, even though they use your libraries.")
+        }
+      }
+
       Section("dryfit service") {
         LabeledContent("Status", value: status)
         if let outdated = model.outdatedVersion {

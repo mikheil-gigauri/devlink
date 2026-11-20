@@ -36,6 +36,8 @@ export const operations = {
   restoreGroup: s.object({ group: s.string(), force: s.optional(s.boolean()) }),
   roots: s.object({}),
   setRoots: s.object({ roots: s.array(s.path()) }),
+  hiddenApps: s.object({}),
+  hideApps: s.object({ consumers: s.array(s.path()), hidden: s.boolean() }),
   shutdown: s.object({}),
 } as const;
 
@@ -87,6 +89,14 @@ export interface Roots {
   readonly roots: readonly string[];
 }
 
+/**
+ * Apps the user hid (`hiddenApps` in config.json): `discover` leaves them out, so they stop being
+ * offered for linking. Hiding never touches the app itself, and a linked app cannot be hidden.
+ */
+export interface HiddenApps {
+  readonly hiddenApps: readonly string[];
+}
+
 export interface LinkResult {
   readonly link: LinkRecord;
   readonly guard: 'installed' | 'declined' | 'not-a-repo';
@@ -112,6 +122,8 @@ export interface OperationOutputs {
   restoreGroup: readonly GroupMemberOutcome[];
   roots: Roots;
   setRoots: Roots;
+  hiddenApps: HiddenApps;
+  hideApps: HiddenApps;
   shutdown: Done;
 }
 
@@ -137,6 +149,7 @@ const ERROR_CODES = {
   'state-corrupt': true,
   'registry-failed': true,
   'library-linked': true,
+  'consumer-linked': true,
   'group-not-found': true,
   'invalid-group': true,
   'invalid-request': true,

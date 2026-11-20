@@ -260,6 +260,17 @@
         "/Users/me/work"
       ]
     },
+    "hiddenApps": {
+      "hiddenApps": [
+        "/Users/me/repos/storybook"
+      ]
+    },
+    "hideApps": {
+      "hiddenApps": [
+        "/Users/me/repos/storybook",
+        "/Users/me/repos/old-shop"
+      ]
+    },
     "shutdown": {
       "ok": true
     }

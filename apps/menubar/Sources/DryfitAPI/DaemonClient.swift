@@ -18,6 +18,9 @@ public protocol DaemonAPI: Sendable {
   func restoreGroup(_ group: String) async throws -> [GroupMemberOutcome]
   func roots() async throws -> [String]
   func setRoots(_ roots: [String]) async throws -> [String]
+  func hiddenApps() async throws -> [String]
+  /// Hides apps from discovery, or shows them again; returns every hidden app.
+  func hideApps(_ consumers: [String], hidden: Bool) async throws -> [String]
   func shutdown() async throws -> Done
   /// Follows the daemon's events, first replaying any after `lastEventID`. Ends when the daemon goes away.
   func events(after lastEventID: Int?) -> AsyncThrowingStream<ServerEvent, any Error>
@@ -98,6 +101,16 @@ public struct DaemonClient: DaemonAPI {
   public func setRoots(_ roots: [String]) async throws -> [String] {
     let reply: Roots = try await call(.setRoots, Roots(roots: roots))
     return reply.roots
+  }
+
+  public func hiddenApps() async throws -> [String] {
+    let reply: HiddenApps = try await call(.hiddenApps, Empty())
+    return reply.hiddenApps
+  }
+
+  public func hideApps(_ consumers: [String], hidden: Bool) async throws -> [String] {
+    let reply: HiddenApps = try await call(.hideApps, HideAppsInput(consumers: consumers, hidden: hidden))
+    return reply.hiddenApps
   }
 
   public func shutdown() async throws -> Done { try await call(.shutdown, Empty()) }
@@ -188,6 +201,11 @@ private struct RestoreInput: Encodable {
 private struct SaveGroupInput: Encodable {
   let name: String
   let consumers: [String]
+}
+
+private struct HideAppsInput: Encodable {
+  let consumers: [String]
+  let hidden: Bool
 }
 
 private struct WatchInput: Encodable {

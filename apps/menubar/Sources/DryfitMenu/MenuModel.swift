@@ -71,6 +71,8 @@ public struct LibraryRow: Identifiable, Equatable {
     case linkGroup(String), restoreGroup(String), discover
     case register(String), unregister(String), saveGroup(String), deleteGroup(String)
     case roots, stop, installCLI, updateCLI
+    /// Hiding or showing an app again, by its folder.
+    case hide(String)
   }
 
   public internal(set) var connection = Connection.connecting
@@ -96,6 +98,8 @@ public struct LibraryRow: Identifiable, Equatable {
   public let appVersion: String?
   /// The folders searched for projects; nil until the daemon has said.
   public internal(set) var roots: [String]?
+  /// Apps the user hid, which dryfit no longer lists; nil until the daemon has said.
+  public internal(set) var hiddenApps: [String]?
   /// An app whose restore was refused because its package.json changed since it was linked. The
   /// user decides whether to restore it anyway.
   public var driftedRestore: RestoreRequest?
@@ -164,8 +168,10 @@ public struct LibraryRow: Identifiable, Equatable {
   /// Discovered consumers that depend on `library` and are not linked to it yet.
   public func linkCandidates(for library: String) -> [DiscoveredConsumer] {
     let linked = Set(status?.links.filter { $0.library == library }.map(\.consumer) ?? [])
+    let hidden = Set(hiddenApps ?? [])
     let found = consumers + addedApps.filter { added in !consumers.contains { $0.root == added.root } }
     return found.filter { consumer in
+      !hidden.contains(consumer.root) &&
       consumer.libraries.contains { $0.name == library } && !linked.contains(consumer.root)
     }
   }
@@ -315,6 +321,7 @@ public struct LibraryRow: Identifiable, Equatable {
     // Online once there is something to show, so the menu never flashes an empty daemon.
     await refresh()
     if roots == nil { roots = try? await api.roots() }
+    if hiddenApps == nil { hiddenApps = try? await api.hiddenApps() }
     connection = .online
     startError = nil
     startDeadline = nil
@@ -472,6 +479,25 @@ public struct LibraryRow: Identifiable, Equatable {
   /// Replaces the folders searched for projects, then looks for projects in them.
   public func setRoots(_ next: [String]) async throws {
     try await run(.roots) { api in self.roots = try await api.setRoots(next) }
+    await discoverConsumers()
+  }
+
+  // MARK: Hidden apps
+
+  /// Stops listing an app: it stays on disk, but dryfit no longer offers it. The daemon refuses while
+  /// the app is linked, since it could then only be restored from the command line.
+  public func hideApp(_ root: String, navigation: AppNavigation? = nil) async {
+    await perform(.hide(root)) { api in
+      self.hiddenApps = try await api.hideApps([root], hidden: true)
+      self.consumers.removeAll { $0.root == root }
+      self.addedApps.removeAll { $0.root == root }
+      if navigation?.selection == .app(root) { navigation?.selection = nil }
+    }
+  }
+
+  /// Lists a hidden app again.
+  public func showApp(_ root: String) async {
+    await perform(.hide(root)) { api in self.hiddenApps = try await api.hideApps([root], hidden: false) }
     await discoverConsumers()
   }
 

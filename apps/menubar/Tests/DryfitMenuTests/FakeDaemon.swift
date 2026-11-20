@@ -112,6 +112,18 @@ actor FakeDaemon: DaemonAPI {
     return roots
   }
 
+  var hiddenAppsReply: [String] = []
+
+  func hiddenApps() async throws -> [String] { hiddenAppsReply }
+
+  func hideApps(_ consumers: [String], hidden: Bool) async throws -> [String] {
+    try record("\(hidden ? "hide" : "show") \(consumers.joined(separator: ","))")
+    hiddenAppsReply = hidden
+      ? hiddenAppsReply + consumers.filter { !hiddenAppsReply.contains($0) }
+      : hiddenAppsReply.filter { !consumers.contains($0) }
+    return hiddenAppsReply
+  }
+
   func shutdown() async throws -> Done {
     try record("shutdown")
     return Done()

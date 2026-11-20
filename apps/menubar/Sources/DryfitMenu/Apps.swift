@@ -31,7 +31,8 @@ extension MenuModel {
     guard let status else { return [] }
     let registered = Set(status.libraries.map(\.name))
     var found: [String: DiscoveredConsumer] = [:]
-    for consumer in addedApps + consumers { found[consumer.root] = consumer }
+    let hidden = Set(hiddenApps ?? [])
+    for consumer in addedApps + consumers where !hidden.contains(consumer.root) { found[consumer.root] = consumer }
     let roots = Set(found.keys).union(status.links.map(\.consumer))
     return roots.compactMap { root -> AppSummary? in
       let consumer = found[root]
@@ -71,6 +72,11 @@ extension MenuModel {
     }
     let registered = Set(status?.libraries.map(\.name) ?? [])
     if manifest.dependencies.contains(where: { registered.contains($0.name) }) {
+      // Adding an app the user hid earlier is asking to see it again.
+      if hiddenApps?.contains(root) == true {
+        hiddenApps?.removeAll { $0 == root }
+        Task { await showApp(root) }
+      }
       if !(consumers + addedApps).contains(where: { $0.root == root }) {
         addedApps.append(
           DiscoveredConsumer(
@@ -143,6 +149,7 @@ struct PackageManifest: Decodable {
 struct AppDetail: View {
   let root: String
   let model: MenuModel
+  let navigation: AppNavigation
   let actions: MenuActions
 
   var body: some View {
@@ -179,6 +186,18 @@ struct AppDetail: View {
         Text("Libraries")
       } footer: {
         Text("Your libraries that \(app.name) depends on. Link one to install its dev build. Restore puts that library's release back and keeps the others linked.")
+      }
+      Section {
+        LabeledContent {
+          Button("Hide App") { Task { await model.hideApp(app.root, navigation: navigation) } }
+            .disabled(!app.linked.isEmpty || model.isBusy(.hide(app.root)))
+        } label: {
+          Text("Hide \(app.name)")
+          Text(
+            app.linked.isEmpty
+              ? "dryfit stops listing it. Nothing in the app changes, and Settings can show it again."
+              : "Restore it first: dryfit only hides apps that use released versions.")
+        }
       }
     }
     .formStyle(.grouped)
