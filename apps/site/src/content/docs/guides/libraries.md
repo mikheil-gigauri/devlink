@@ -55,10 +55,9 @@ From the command line, pass the settings to `dryfit add`:
 dryfit add libs/ui --build "npm run build:lib" --publish-dir ../../dist/libs/ui
 ```
 
-Pass both flags together. When you give either one, dryfit skips detection altogether: with only
-`--publish-dir`, the library has no build step, and with only `--build`, it publishes the library
-folder. Running `dryfit add` again with flags replaces both settings. Without flags, it keeps them as they
-are and prints them.
+Each flag changes only its own setting. The other one is detected for a new library, or kept as it is for
+a library already added, so `dryfit add --publish-dir ../../dist/libs/ui` keeps the detected
+`nx build`. Without flags, `dryfit add` on a library already added keeps both settings and prints them.
 
 A relative `--publish-dir` is resolved from the library folder, not from where you run the command or
 from the workspace root. In a workspace, the output usually sits a few levels up, as in the example above.
@@ -81,5 +80,5 @@ folder when it is inside the library folder, along with `node_modules`, `dist`, 
 - **Publishing fails with `workspace:` or `catalog:` ranges.** The publish folder holds the workspace's
   `package.json`, not the one the build writes. See
   [Workspaces](/dryfit/guides/package-managers/#workspaces).
-- **The app gets an old build.** The build command is empty, often because only `--publish-dir` was
-  passed. Run `dryfit add` in the library folder to see its settings, or open its page in the app.
+- **The app gets an old build.** The build command is empty or builds a different project. Run
+  `dryfit add` in the library folder to see its settings, or open its page in the app.

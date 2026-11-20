@@ -68,8 +68,8 @@ export const USAGE = `Usage: dryfit <command> [options]
 Set up
   init [--root <dir>]...        Choose where your projects live and start dryfit
   add [dir]                     Register the library in dir (default: here)
-      --publish-dir <dir>       Folder to publish, when it cannot be detected
-      --build "<command>"       Build command, when it cannot be detected
+      --publish-dir <dir>       Folder to publish, relative to the library. Keeps the build command
+      --build "<command>"       Build command, run in the library. Keeps the publish folder
   remove <library>              Forget a library
 
 Linking
@@ -363,10 +363,20 @@ const COMMANDS: Record<string, Command> = {
       if (build?.[0] === '')
         throw new CliError('--build needs a command, such as --build "npm run build"', 2);
       const client = await ctx.connect();
+      // A flag changes only its own setting. The daemon treats a missing one as "none" once either is
+      // given, so fill it in with what the library already has, or what dryfit detects.
+      const current =
+        (publishDir === undefined) !== (build === undefined)
+          ? await client.call('inspect', { root })
+          : undefined;
       const result = await client.call('register', {
         root,
-        ...(publishDir !== undefined && { publishDir: absolute({ ...ctx, cwd: root }, publishDir) }),
-        ...(build?.[0] !== undefined && { build: { command: build[0], args: build.slice(1) } }),
+        ...(publishDir !== undefined
+          ? { publishDir: absolute({ ...ctx, cwd: root }, publishDir) }
+          : current && { publishDir: current.publishDir }),
+        ...(build?.[0] !== undefined
+          ? { build: { command: build[0], args: build.slice(1) } }
+          : current?.build && { build: { command: current.build.command, args: [...current.build.args] } }),
       });
       if (json) return printJson(out, result);
       const how = result.detected === 'given' ? '' : out.dim(` (detected: ${result.detected})`);
