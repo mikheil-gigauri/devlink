@@ -42,6 +42,18 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     #expect(DevVersion.describe("1.4.0") == "1.4.0")
   }
 
+  @Test func saysWhereAnAppGetsALibraryFrom() {
+    #expect(describeDependency("^1.3.0") == "^1.3.0 from the registry")
+    #expect(describeDependency("file:../../releases/acme-ui-1.0.0.tgz") == "Local file acme-ui-1.0.0.tgz")
+    #expect(describeDependency("link:../ui") == "Linked folder ui")
+    #expect(describeDependency("workspace:*") == "From the workspace")
+    #expect(describeDependency("github:acme/ui#main") == "From git")
+    #expect(describeDependency("git+ssh://git@github.com/acme/ui.git") == "From git")
+    #expect(describeDependency("https://example.com/ui.tgz") == "From a URL")
+    #expect(describeDependency("npm:@acme/ui@^1.0.0") == "@acme/ui@^1.0.0 from the registry")
+    #expect(describeDependency("../ui") == "Local folder ui")
+  }
+
   @Test func comparesReleaseVersions() {
     #expect(ReleaseVersion.isOlder("0.1.0", than: "0.3.0"))
     #expect(ReleaseVersion.isOlder("0.9.0", than: "0.10.0"))
@@ -80,10 +92,16 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
             versions: [.init(consumer: shop, version: version), .init(consumer: admin, version: "1.4.0")])
         ],
         jobs: Jobs(running: Job(id: 3, label: "sync @acme/ui", queuedAt: "")))
-      model.consumers = [DiscoveredConsumer(root: "/r/blog", name: "blog", libraries: [], packageManager: .npm)]
-      model.failures = [Failure(title: "Install of @acme/ui into admin failed", detail: failed, date: at)]
+      model.consumers = [
+        DiscoveredConsumer(
+          root: "/r/storybook", name: "storybook",
+          libraries: [.init(name: "@acme/ui", range: "^1.3.0"), .init(name: "@acme/forms", range: "^2.0.0")],
+          packageManager: .npm)
+      ]
+      model.failures = [
+        Failure(title: "Install of @acme/ui into admin failed", detail: failed, date: at, consumer: admin)
+      ]
       model.activity = "Installing @acme/ui into admin…"
-      model.inFlight = [.sync("@acme/ui")]
     }
     assertSnapshot(of: MenuContent(model: busy, actions: MenuActions()), named: "online")
   }
@@ -118,6 +136,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
           Link(library: "@acme/ui", consumer: admin, status: .failed),
         ],
         groups: [Group(name: "checkout", consumers: [shop, admin])])
+      model.failures = [Failure(title: "Install of @acme/ui into admin failed", detail: "npm ERR! code ERESOLVE", date: at, consumer: admin)]
       model.consumers = [
         DiscoveredConsumer(root: shop, name: "shop", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .npm),
         DiscoveredConsumer(root: admin, name: "admin", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .pnpm),
@@ -157,8 +176,12 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
       model.hiddenApps = ["/Users/me/repos/old-shop"]
       model.status = Status(daemon: health)
     }
+    // A page of the dryfit window, opened from the sidebar's gear or with ⌘,.
+    let navigation = AppNavigation()
+    navigation.selection = .settings
     assertSnapshot(
-      of: SettingsView(model: online, actions: MenuActions(openAtLogin: .constant(true))), named: "settings")
+      of: MainWindow(model: online, navigation: navigation, actions: MenuActions(openAtLogin: .constant(true))),
+      named: "settings", size: CGSize(width: 900, height: 700))
   }
 
   @Test(.enabled(if: Snapshots.comparable, Comment(rawValue: Snapshots.skipped))) func olderDryfit() {

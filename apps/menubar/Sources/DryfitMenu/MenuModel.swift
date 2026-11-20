@@ -103,6 +103,10 @@ public struct LibraryRow: Identifiable, Equatable {
   /// An app whose restore was refused because its package.json changed since it was linked. The
   /// user decides whether to restore it anyway.
   public var driftedRestore: RestoreRequest?
+  /// The order the user put libraries, apps and groups in; kept between launches.
+  public internal(set) var order: ItemOrder {
+    didSet { if order != oldValue { orderStore.save(order) } }
+  }
   private(set) var lastEventID: Int?
 
   @ObservationIgnored private let connect: () async -> Lookup
@@ -111,6 +115,7 @@ public struct LibraryRow: Identifiable, Equatable {
   /// Updates the CLI and restarts the daemon with it; nil when the app cannot (a checkout's CLI).
   @ObservationIgnored private let update: (() async throws -> Void)?
   @ObservationIgnored private let notifier: any Notifier
+  @ObservationIgnored private let orderStore: ItemOrderStore
   /// Tests' clock; nil sleeps for real.
   @ObservationIgnored private let sleep: (@Sendable (Duration) async throws -> Void)?
   @ObservationIgnored private var api: (any DaemonAPI)?
@@ -131,6 +136,7 @@ public struct LibraryRow: Identifiable, Equatable {
     appVersion: String? = nil,
     update: (() async throws -> Void)? = nil,
     notifier: any Notifier,
+    orderStore: ItemOrderStore = .memory,
     // No closure literal as the default: Swift 6.2 on macOS 26 aborts in swift_task_dealloc when a
     // default async closure from this MainActor-by-default module is called ("freed pointer was not
     // the last allocation").
@@ -142,6 +148,8 @@ public struct LibraryRow: Identifiable, Equatable {
     self.appVersion = appVersion
     self.update = update
     self.notifier = notifier
+    self.orderStore = orderStore
+    self.order = orderStore.load()
     self.sleep = sleep
   }
 
@@ -158,10 +166,15 @@ public struct LibraryRow: Identifiable, Equatable {
     return .idle
   }
 
+  /// The libraries in the user's order, each with its links in the user's order of apps.
   public var libraries: [LibraryRow] {
     guard let status else { return [] }
-    return status.libraries.map { library in
-      LibraryRow(library: library, links: status.links.filter { $0.library == library.name })
+    let appRank = Dictionary(apps.enumerated().map { ($1.root, $0) }, uniquingKeysWith: { first, _ in first })
+    return order.sorted(status.libraries, .libraries, by: \.name).map { library in
+      LibraryRow(
+        library: library,
+        links: status.links.filter { $0.library == library.name }
+          .sorted { (appRank[$0.consumer] ?? .max) < (appRank[$1.consumer] ?? .max) })
     }
   }
 
@@ -234,7 +247,7 @@ public struct LibraryRow: Identifiable, Equatable {
         api = nil
         if connection == .starting, let deadline = startDeadline, ContinuousClock.now < deadline { break }
         if connection == .starting {
-          startError = "dryfit did not start within 30 seconds. Open Log to see why."
+          startError = "dryfit did not start within 30 seconds. Open the log to see why."
         }
         connection = .offline
       case .incompatible(let health):

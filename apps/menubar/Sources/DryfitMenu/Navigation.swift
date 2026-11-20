@@ -21,6 +21,8 @@ public enum SidebarItem: Hashable, Sendable {
   case library(String)
   case app(String)
   case group(String)
+  /// Where to look for apps, hidden apps, the service, login and updates.
+  case settings
 }
 
 public struct LibraryEditorRequest: Identifiable, Equatable {
@@ -43,6 +45,15 @@ public enum GroupEditorRequest: Identifiable, Equatable {
 /// The identifier of the dryfit window scene.
 public let mainWindowID = "main"
 
+extension AppNavigation {
+  /// Shows Settings in the dryfit window; `openWindow` brings the window up.
+  public func showSettings(_ openWindow: () -> Void) {
+    selection = .settings
+    openWindow()
+    NSApp.activate()
+  }
+}
+
 /// Asks for folders with the standard Open panel, attached to the key window when there is one.
 public enum FolderPanel {
   public static func choose(
@@ -64,8 +75,21 @@ public enum FolderPanel {
         panel.begin { continuation.resume(returning: $0) }
       }
     }
-    return response == .OK ? panel.urls.map { $0.path(percentEncoded: false) } : []
+    return response == .OK ? panel.urls.map(folderPath) : []
   }
+}
+
+/// A folder's path spelled the way the daemon stores it: no trailing slash. A folder URL's path ends in
+/// one, and `/repos/shop/` next to the daemon's `/repos/shop` listed one app twice and never matched
+/// its link.
+func folderPath(_ url: URL) -> String {
+  normalizedPath(url.path(percentEncoded: false))
+}
+
+func normalizedPath(_ path: String) -> String {
+  var path = path
+  while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+  return path
 }
 
 extension MenuModel {

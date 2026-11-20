@@ -12,7 +12,7 @@ struct DryfitApp: App {
     MenuBarExtra {
       MenuContent(model: delegate.model, navigation: delegate.navigation, actions: delegate.actions)
     } label: {
-      Image(nsImage: MenuBarIcon.image(for: delegate.model.icon))
+      MenuBarLabel(icon: delegate.model.icon, menu: delegate.statusMenu, navigation: delegate.navigation)
     }
     .menuBarExtraStyle(.window)
 
@@ -20,6 +20,8 @@ struct DryfitApp: App {
       MainWindow(model: delegate.model, navigation: delegate.navigation, actions: delegate.actions)
         .onAppear { UserDefaults.standard.set(true, forKey: Self.welcomedKey) }
     }
+    // No title bar: the window's buttons float over the sidebar, and pages run up to the top edge.
+    .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 900, height: 580)
     // Opens by itself only the first time, so a new user sees where to start.
     .defaultLaunchBehavior(UserDefaults.standard.bool(forKey: Self.welcomedKey) ? .suppressed : .presented)
@@ -31,6 +33,7 @@ struct DryfitApp: App {
         }
       }
       SidebarCommands()
+      SettingsCommands(navigation: delegate.navigation)
       CommandGroup(replacing: .newItem) {
         Button("Add Library…") {
           Task { await delegate.model.chooseLibraryFolder(navigation: delegate.navigation) }
@@ -43,10 +46,6 @@ struct DryfitApp: App {
         Button("New Group…") { delegate.navigation.groupEditor = .new }
           .keyboardShortcut("n", modifiers: [.command, .shift])
       }
-    }
-
-    Settings {
-      SettingsView(model: delegate.model, actions: delegate.actions)
     }
   }
 
@@ -61,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   let updates = Updates()
   private let home = DryfitHome.locate()
   private var failureWindow: FailureWindow?
+  /// What a right-click on the menu bar icon shows.
+  private(set) lazy var statusMenu = StatusMenu(model: model, actions: actions)
   private var connection: Task<Void, Never>?
 
   override init() {
@@ -83,7 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // A checkout's CLI ($DRYFIT_CLI) is not npm's to update.
       update: ProcessInfo.processInfo.environment["DRYFIT_CLI", default: ""].isEmpty
         ? { try await launcher.updateCLI() } : nil,
-      notifier: relay)
+      notifier: relay,
+      orderStore: .userDefaults())
     super.init()
     failureWindow = FailureWindow(model: model)
     relay.target = UserNotifier { [weak self] id in self?.failureWindow?.show(selecting: id) } ?? SilentNotifier()
@@ -91,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     connection = Task { [model] in await model.run() }
+    statusMenu.install()
   }
 
   var actions: MenuActions {

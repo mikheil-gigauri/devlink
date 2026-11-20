@@ -1,7 +1,8 @@
 import DryfitAPI
 import SwiftUI
 
-/// dryfit's settings: where to look for apps, the background service, opening at login, and updates.
+/// dryfit's settings, a page of the dryfit window: where to look for apps, the background service,
+/// opening at login, and updates.
 public struct SettingsView: View {
   let model: MenuModel
   let actions: MenuActions
@@ -12,117 +13,131 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
-    Form {
-      Section {
-        if model.connection != .online {
-          Text("Start dryfit to change these.").foregroundStyle(.secondary)
-        } else if let roots = model.roots, !roots.isEmpty {
-          ForEach(roots, id: \.self) { root in
-            HStack {
-              Label(abbreviatedPath(root), systemImage: "folder")
-              Spacer()
-              Button("Remove", systemImage: "minus.circle") {
-                Task {
-                  do {
-                    try await model.setRoots(roots.filter { $0 != root })
-                  } catch {}
+    ScrollView {
+      VStack(alignment: .leading, spacing: 0) {
+        Text("Settings").font(DS.title)
+
+        SectionLabel("Project folders")
+        HairlineGroup {
+          if model.connection != .online {
+            GroupRow { Text("Start dryfit to change these.").foregroundStyle(.secondary) }
+          } else if let roots = model.roots, !roots.isEmpty {
+            ForEach(roots, id: \.self) { root in
+              GroupRow {
+                Image(systemName: "folder").accessibilityHidden(true)
+                Text(abbreviatedPath(root)).lineLimit(1).truncationMode(.head)
+                Spacer(minLength: 8)
+                Button {
+                  Task { try? await model.setRoots(roots.filter { $0 != root }) }
+                } label: {
+                  Image(systemName: "minus.circle").foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
+                .help("Stop looking in \(abbreviatedPath(root))")
+                .accessibilityLabel("Remove \(abbreviatedPath(root))")
               }
-              .labelStyle(.iconOnly)
-              .buttonStyle(.borderless)
-              .help("Stop looking in \(abbreviatedPath(root))")
+            }
+          } else {
+            GroupRow { Text("No folders yet. Add the folders that hold your apps.").foregroundStyle(.secondary) }
+          }
+          GroupRow {
+            Spacer()
+            Button("Add folder…") { Task { await model.chooseProjectFolders() } }
+              .buttonStyle(.pill)
+              .disabled(model.connection != .online)
+          }
+        }
+        Footnote("dryfit looks in these folders for apps that use your libraries.")
+
+        if let hidden = model.hiddenApps, !hidden.isEmpty, model.connection == .online {
+          SectionLabel("Hidden apps")
+          HairlineGroup {
+            ForEach(hidden, id: \.self) { root in
+              GroupRow {
+                Image(systemName: "eye.slash").accessibilityHidden(true)
+                Text(projectName(root)).lineLimit(1)
+                Spacer(minLength: 8)
+                Button("Show") { Task { await model.showApp(root) } }
+                  .buttonStyle(.pill)
+                  .disabled(model.isBusy(.hide(root)))
+                  .help("List \(projectName(root)) again")
+              }
+              .help(abbreviatedPath(root))
             }
           }
-        } else {
-          Text("No folders yet. Add the folders that hold your apps.").foregroundStyle(.secondary)
         }
-        HStack {
-          Spacer()
-          Button("Add Folder…") { Task { await model.chooseProjectFolders() } }
-            .disabled(model.connection != .online)
-        }
-      } header: {
-        Text("Project folders")
-      } footer: {
-        Text("dryfit looks in these folders, and the folders inside them, for apps that use your libraries.")
-      }
 
-      if let hidden = model.hiddenApps, !hidden.isEmpty, model.connection == .online {
-        Section {
-          ForEach(hidden, id: \.self) { root in
-            HStack {
-              Label {
-                Text(projectName(root))
-                Text(abbreviatedPath(root))
-              } icon: {
-                Image(systemName: "eye.slash")
-              }
+        SectionLabel("dryfit service")
+        HairlineGroup {
+          GroupRow {
+            Text("Status")
+            Spacer(minLength: 8)
+            Text(status).foregroundStyle(.secondary)
+          }
+          if let outdated = model.outdatedVersion {
+            GroupRow {
+              Image(systemName: "arrow.up.circle").foregroundStyle(.orange)
+              Text("dryfit \(outdated) is older than this app")
+              Spacer(minLength: 8)
+              UpdateDryfitControl(model: model, prominent: false)
+            }
+          }
+          if let registry = model.status?.daemon.registryUrl, model.connection == .online {
+            GroupRow {
+              Text("Registry")
+              Spacer(minLength: 8)
+              Text(registry).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+          }
+          GroupRow {
+            Button("Open log", action: actions.openLog).buttonStyle(.pill)
+            Spacer()
+            switch model.connection {
+            case .online:
+              Button("Stop") { Task { await model.stopDaemon() } }.buttonStyle(.pill)
+            case .offline:
+              Button("Start") { Task { await model.startDaemon() } }.buttonStyle(.pill)
+            default:
+              EmptyView()
+            }
+          }
+        }
+
+        if let openAtLogin = actions.openAtLogin {
+          SectionLabel("General")
+          HairlineGroup {
+            GroupRow {
+              Text("Open at login")
               Spacer()
-              Button("Show") { Task { await model.showApp(root) } }
-                .disabled(model.isBusy(.hide(root)))
-                .help("List \(projectName(root)) again")
+              Toggle("Open at login", isOn: openAtLogin).toggleStyle(.mini)
             }
           }
-        } header: {
-          Text("Hidden apps")
-        } footer: {
-          Text("dryfit does not list these apps, even though they use your libraries.")
         }
-      }
 
-      Section("dryfit service") {
-        LabeledContent("Status", value: status)
-        if let outdated = model.outdatedVersion {
-          HStack {
-            Label("dryfit \(outdated) is older than this app", systemImage: "arrow.up.circle.fill")
-              .foregroundStyle(.orange)
-            Spacer()
-            UpdateDryfitControl(model: model, prominent: false)
+        if let checkForUpdates = actions.checkForUpdates {
+          SectionLabel("Updates")
+          HairlineGroup {
+            if let installAutomatically = actions.installUpdatesAutomatically {
+              GroupRow {
+                Text("Install updates automatically")
+                Spacer()
+                Toggle("Install updates automatically", isOn: installAutomatically).toggleStyle(.mini)
+              }
+            }
+            GroupRow {
+              Spacer()
+              Button("Check now", action: checkForUpdates).buttonStyle(.pill)
+            }
           }
-        }
-        if let registry = model.status?.daemon.registryUrl, model.connection == .online {
-          LabeledContent("Registry", value: registry)
-        }
-        HStack {
-          Button("Open Log", action: actions.openLog)
-          Spacer()
-          switch model.connection {
-          case .online:
-            Button("Stop") { Task { await model.stopDaemon() } }
-          case .offline:
-            Button("Start") { Task { await model.startDaemon() } }
-          default:
-            EmptyView()
-          }
+          Footnote("dryfit looks for a new version once a day and, when installing automatically, replaces itself while you're not using it.")
         }
       }
-
-      if let openAtLogin = actions.openAtLogin {
-        Section("General") {
-          Toggle("Open at login", isOn: openAtLogin)
-        }
-      }
-
-      if let checkForUpdates = actions.checkForUpdates {
-        Section {
-          if let installAutomatically = actions.installUpdatesAutomatically {
-            Toggle("Install updates automatically", isOn: installAutomatically)
-          }
-          HStack {
-            Spacer()
-            Button("Check Now", action: checkForUpdates)
-          }
-        } header: {
-          Text("Updates")
-        } footer: {
-          Text("dryfit looks for a new version once a day and, when installing automatically, replaces itself while you are not using it.")
-        }
-      }
+      .font(DS.body)
+      .padding(.horizontal, 18)
+      .padding(.top, 16)
+      .padding(.bottom, 16)
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .formStyle(.grouped)
-    .frame(width: 480)
-    .fixedSize(horizontal: false, vertical: true)
-    .showsInDock()
   }
 
   private var status: String {

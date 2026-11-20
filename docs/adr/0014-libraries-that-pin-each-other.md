@@ -58,6 +58,13 @@ are published in name order after everything else.
 step: one snapshot, then one install. Linking one at a time still works: a link whose install failed stays
 in the consumer's set, so the next link installs both together.
 
+**Linking republishes stale dev builds.** Each publish records, as `pinnedSiblings`, the dev version it
+pinned for every registered library it depends on directly. Before installing, `link` publishes again
+every dev build in the consumer's set whose recorded pin is not its sibling's latest dev version, with
+what depends on it, as a sync would. That covers dev builds published before pins were recorded, and those
+left behind when a sync failed partway through the set. A build that fails here fails the link before
+anything is installed. (Added after 0.5.0, whose first link of the syniotec workspace reused 0.4 builds.)
+
 **Restoring one library restores what it is tied to.** `dryfit restore <app> --library ui` restores every
 library linked into the app that is connected to `ui` in the graph, in either direction, because the dev
 builds left behind would pin, or be pinned by, a dev build that is gone. The others are reinstalled

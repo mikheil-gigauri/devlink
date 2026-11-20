@@ -151,6 +151,22 @@ private func health(pid: Int32, apiVersion: Int = 1, name: String = "dryfit") ->
     }
   }
 
+  @Test func explainsWhenNpmMayNotWriteToItsGlobalFolder() async {
+    let denied = DaemonLauncher(
+      agentInstalled: { false }, shell: "/bin/zsh", userID: 501,
+      run: { _, _ in CommandOutput(exitCode: 243, output: "npm error code EACCES\nnpm error syscall mkdir") })
+
+    do {
+      try await denied.installCLI(environment: [:])
+      Issue.record("installing should have failed")
+    } catch let DaemonLauncher.Failure.failed(output) {
+      #expect(output.contains("Terminal"))
+      #expect(output.contains(DaemonLauncher.installCommand))
+    } catch {
+      Issue.record("unexpected \(error)")
+    }
+  }
+
   @Test func runsARealCommandWithLargeOutputWithoutBlocking() async {
     let result = await DaemonLauncher.runProcess(["/bin/sh", "-c", "yes dryfit | head -c 200000; exit 3"], environment: [:])
 

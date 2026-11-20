@@ -2,7 +2,7 @@ import { DryfitError } from '../errors.ts';
 import type { LibraryRecord, Manifest } from '../model.ts';
 import { DEPENDENCY_FIELDS } from '../model.ts';
 import type { CoreDeps } from '../ports.ts';
-import { RUNTIME_DEPENDENCY_FIELDS } from '../project/library-graph.ts';
+import { loadLibraryGraph, RUNTIME_DEPENDENCY_FIELDS } from '../project/library-graph.ts';
 import { formatManifest, readManifest } from '../project/manifest.ts';
 import { isRecord } from '../util/json.ts';
 import { joinPath } from '../util/path.ts';
@@ -81,9 +81,10 @@ export async function publishLibrary(
     await deps.fs.remove(staging);
   }
 
+  const pinnedSiblings = await siblingVersions(deps, libraries, library.name);
   const state = await deps.state.load();
   await deps.state.save(
-    withLibrary(state, { ...requireLibrary(state, name), lastPublishedVersion: version }),
+    withLibrary(state, { ...requireLibrary(state, name), lastPublishedVersion: version, pinnedSiblings }),
   );
   deps.events.emit({ type: 'publish:succeeded', library: library.name, version });
   return { version };
@@ -116,6 +117,23 @@ function withSiblingPins(manifest: Manifest, libraries: readonly LibraryRecord[]
     };
   }
   return pinned;
+}
+
+/**
+ * The dev versions this build pinned for the registered libraries it depends on directly, so a later
+ * link can tell when a sibling has moved on and this build must be published again (`staleBuilds`).
+ */
+async function siblingVersions(
+  deps: CoreDeps,
+  libraries: readonly LibraryRecord[],
+  self: string,
+): Promise<Record<string, string> | undefined> {
+  const graph = await loadLibraryGraph(deps.fs, libraries);
+  const pinned = [...(graph.get(self) ?? [])].flatMap((name) => {
+    const version = libraries.find((library) => library.name === name)?.lastPublishedVersion;
+    return version === undefined ? [] : [[name, version] as const];
+  });
+  return pinned.length === 0 ? undefined : Object.fromEntries(pinned);
 }
 
 /**
