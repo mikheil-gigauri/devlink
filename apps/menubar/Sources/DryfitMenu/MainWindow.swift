@@ -116,6 +116,9 @@ private struct Sidebar: View {
             Button("Show in Finder") { revealInFinder(row.library.root) }
           }
         }
+        .onMove { source, destination in
+          model.move(.libraries, ids: model.libraries.map(\.id), from: source, to: destination)
+        }
         if model.libraries.isEmpty, model.connection == .online {
           Text("No libraries yet").foregroundStyle(.tertiary)
         }
@@ -141,15 +144,22 @@ private struct Sidebar: View {
                 .disabled(!app.linked.isEmpty)
             }
           }
+          .onMove { source, destination in
+            model.move(.apps, ids: apps.map(\.root), from: source, to: destination)
+          }
         }
       }
-      if let groups = model.status?.groups, !groups.isEmpty {
+      let groups = model.groups
+      if !groups.isEmpty {
         Section("Groups") {
           ForEach(groups) { group in
             Label(group.name, systemImage: "square.stack.3d.up")
               .badge(group.consumers.count)
               .help(group.consumers.count == 1 ? "1 app" : "\(group.consumers.count) apps")
               .tag(SidebarItem.group(group.name))
+          }
+          .onMove { source, destination in
+            model.move(.groups, ids: groups.map(\.name), from: source, to: destination)
           }
         }
       }

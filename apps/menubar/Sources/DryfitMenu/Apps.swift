@@ -34,7 +34,7 @@ extension MenuModel {
     let hidden = Set(hiddenApps ?? [])
     for consumer in addedApps + consumers where !hidden.contains(consumer.root) { found[consumer.root] = consumer }
     let roots = Set(found.keys).union(status.links.map(\.consumer))
-    return roots.compactMap { root -> AppSummary? in
+    let sorted = roots.compactMap { root -> AppSummary? in
       let consumer = found[root]
       let links = status.links.filter { $0.consumer == root }
       var names = (consumer?.libraries ?? []).map(\.name).filter(registered.contains)
@@ -49,6 +49,7 @@ extension MenuModel {
       return AppSummary(root: root, packageManager: consumer?.packageManager.name, libraries: entries)
     }
     .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    return order.sorted(sorted, .apps, by: \.root)
   }
 
   /// Asks for an app's folder, then shows it with the libraries it can be linked to.

@@ -195,9 +195,9 @@ private struct OnlineContent: View {
           }
         }
       }
-      if let groups = model.status?.groups, !groups.isEmpty {
+      if !model.groups.isEmpty {
         MenuSection(title: "Groups") {
-          ForEach(groups) { group in
+          ForEach(model.groups) { group in
             GroupRowView(group: group, model: model) { show(.group(group.name)) }
           }
         }

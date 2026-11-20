@@ -26,6 +26,8 @@ through three steps: choose the folders where your apps live, add a library, and
   **Link** for the ones still on their release. **Add App…** (⇧⌘O) adds an app from outside your
   project folders. You can also drop a folder on the window: an app opens its page, a library opens the
   form that adds it.
+- Drag libraries, apps and groups in the sidebar to put them in your own order. The menu lists them,
+  and the apps under each library, in that same order.
 - **Hide App**, at the bottom of an app's page or in its row's context menu, stops listing an app you
   don't work on. Nothing in the app changes, and **Settings** lists hidden apps with **Show** to bring
   one back. A linked app has to be restored first.

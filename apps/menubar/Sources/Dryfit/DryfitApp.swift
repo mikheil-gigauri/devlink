@@ -85,7 +85,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // A checkout's CLI ($DRYFIT_CLI) is not npm's to update.
       update: ProcessInfo.processInfo.environment["DRYFIT_CLI", default: ""].isEmpty
         ? { try await launcher.updateCLI() } : nil,
-      notifier: relay)
+      notifier: relay,
+      orderStore: .userDefaults())
     super.init()
     failureWindow = FailureWindow(model: model)
     relay.target = UserNotifier { [weak self] id in self?.failureWindow?.show(selecting: id) } ?? SilentNotifier()

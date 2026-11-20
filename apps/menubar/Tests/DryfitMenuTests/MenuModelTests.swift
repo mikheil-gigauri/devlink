@@ -467,6 +467,31 @@ import Testing
     #expect(model.actionError == nil)
   }
 
+  @Test func listsLibrariesInTheOrderTheUserDraggedThem_andKeepsIt() async {
+    var kept = ItemOrder()
+    let store = ItemOrderStore(load: { kept }, save: { kept = $0 })
+    let model = MenuModel(
+      connect: { [daemon] in .running(daemon, health) }, launch: {}, notifier: notifier, orderStore: store,
+      sleep: { _ in try await Task.sleep(for: .milliseconds(2)) })
+    let task = await started(model)
+    defer { task.cancel() }
+    #expect(model.libraries.map(\.id) == ["@acme/ui", "@acme/forms"])
+
+    model.move(.libraries, ids: model.libraries.map(\.id), from: [1], to: 0)
+
+    #expect(model.libraries.map(\.id) == ["@acme/forms", "@acme/ui"])
+    #expect(kept.libraries == ["@acme/forms", "@acme/ui"])
+    let relaunched = MenuModel(connect: { .notRunning }, launch: {}, notifier: notifier, orderStore: store)
+    #expect(relaunched.order.libraries == ["@acme/forms", "@acme/ui"])
+  }
+
+  @Test func putsItemsNeverMovedAfterTheMovedOnes_inTheirOwnOrder() {
+    var order = ItemOrder()
+    order.apps = ["/r/c", "/r/a"]
+
+    #expect(order.sorted(["/r/a", "/r/b", "/r/c", "/r/d"], .apps, by: { $0 }) == ["/r/c", "/r/a", "/r/b", "/r/d"])
+  }
+
   @Test func rightClickingTheMenuBarIconOffersWhatTheFootersMenuDid() async {
     let model = makeModel()
     let task = await started(model)
