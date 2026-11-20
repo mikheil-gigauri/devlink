@@ -1,0 +1,5 @@
+✓ Linked @acme/ui into ~/code/acme/shop (snapshot taken, commit guard installed)
+  running 1.4.1-dev.20261120190218
+✓ Linked @acme/ui into ~/code/acme/admin (snapshot taken, commit guard installed)
+  running 1.4.1-dev.20261120190218
+Next: dryfit sync to build and install, or dryfit watch to do it on every change.

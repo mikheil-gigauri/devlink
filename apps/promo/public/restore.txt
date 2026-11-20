@@ -1,0 +1,2 @@
+✓ Restored ~/code/acme/shop
+✓ Restored ~/code/acme/admin

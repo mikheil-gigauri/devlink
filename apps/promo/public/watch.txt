@@ -1,0 +1,10 @@
+✓ Watching @acme/ui: every change builds, publishes and installs
+Following its activity. Ctrl-C stops following; watching continues until `dryfit unwatch`.
+• @acme/ui changed
+• Building @acme/ui…
+✓ Built @acme/ui
+✓ Published @acme/ui@1.4.1-dev.20261120190230
+• Installing into ~/code/acme/shop…
+✓ Installed into ~/code/acme/shop
+• Installing into ~/code/acme/admin…
+✓ Installed into ~/code/acme/admin
