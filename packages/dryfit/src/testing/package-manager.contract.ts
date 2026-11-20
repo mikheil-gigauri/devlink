@@ -76,12 +76,14 @@ export function describePackageManagerContract(adapter: PackageManagerAdapter, s
     const createConsumer = async (
       field: 'dependencies' | 'devDependencies' = 'dependencies',
       otherDependencies: Readonly<Record<string, string>> = {},
+      devDependencies?: Readonly<Record<string, string>>,
     ) => {
       const dir = await sandbox.writePackage(join(sandbox.dir, `consumer-${++consumerCount}`), {
         name: `consumer-${consumerCount}`,
         version: '0.0.0',
         private: true,
         [field]: { [LIB]: `^${RELEASE}`, ...otherDependencies },
+        ...(devDependencies && { devDependencies }),
       });
       await setup.pointScopeAt(dir, sandbox.registry.url);
       await exec({ ...setup.install, cwd: dir });
@@ -219,13 +221,7 @@ export function describePackageManagerContract(adapter: PackageManagerAdapter, s
 
     it('installs dev builds that pin each other exactly in one run, each keeping its own field', async () => {
       // One at a time, either install conflicts with the other package's exact pin.
-      const consumer = await createConsumer('dependencies');
-      const manifest = await manifestOf(consumer);
-      await writeFile(
-        join(consumer, 'package.json'),
-        JSON.stringify({ ...manifest, devDependencies: { [PINNED]: RELEASE } }, null, 2),
-      );
-      await exec({ ...setup.install, cwd: consumer });
+      const consumer = await createConsumer('dependencies', {}, { [PINNED]: RELEASE });
 
       await installDev(consumer, 'dependencies', [
         { name: PINNED, version: DEV, dependencyField: 'devDependencies' },
