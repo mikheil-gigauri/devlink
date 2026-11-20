@@ -5,7 +5,7 @@ import { cachePathsFor } from '../project/cache-paths.ts';
 import { loadProject } from '../project/load-project.ts';
 import { type DependencyDeclaration, findDependency } from '../project/manifest.ts';
 import { joinPath } from '../util/path.ts';
-import { adapterFor, commandOutput, runSafely, sameLink, withLink } from './shared.ts';
+import { adapterFor, commandOutput, failureMessage, runSafely, sameLink, withLink } from './shared.ts';
 
 export type InstallOutcome =
   | {
@@ -40,7 +40,12 @@ export async function installLink(
 ): Promise<{ readonly outcome: InstallOutcome; readonly link: LinkRecord }> {
   const fail = async (output: string) => {
     deps.events.emit({ type: 'install:failed', library: library.name, consumer, version, output });
-    const link = await saveLink(deps, { library: library.name, consumer, status: 'failed' });
+    const link = await saveLink(deps, {
+      library: library.name,
+      consumer,
+      status: 'failed',
+      message: failureMessage(output),
+    });
     return { outcome: { consumer, ok: false as const, version, output }, link };
   };
 
@@ -97,11 +102,12 @@ async function resolveTarget(deps: CoreDeps, library: LibraryRecord, consumer: s
 async function saveLink(deps: CoreDeps, link: LinkRecord): Promise<LinkRecord> {
   const state = await deps.state.load();
   const previous = state.links.find((candidate) => sameLink(candidate, link));
-  // Keep what this function does not own (such as the guard flag); a failure keeps the last good version.
+  // Keep what this function does not own (such as the guard flag); a failure keeps the last good version,
+  // and a success clears the last failure's message.
   const merged: LinkRecord = {
     ...previous,
     ...link,
-    ...(link.status === 'failed' && { installedVersion: previous?.installedVersion }),
+    ...(link.status === 'failed' ? { installedVersion: previous?.installedVersion } : { message: undefined }),
   };
   await deps.state.save(withLink(state, merged));
   return merged;

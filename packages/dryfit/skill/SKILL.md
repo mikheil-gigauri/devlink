@@ -30,8 +30,9 @@ needed. State lives in `~/.dryfit`.
 dryfit status --json
 ```
 
-Shows registered libraries, linked apps (`links`: consumer, library, status, installed version),
-saved groups, and warnings. If it fails with `daemon-unavailable`, run `dryfit doctor --json`.
+Shows registered libraries, linked apps (`links`: consumer, library, status, installed version, and
+for a failed install a `message` with the end of the package manager's output), saved groups, and
+warnings. If it fails with `daemon-unavailable`, run `dryfit doctor --json`.
 If no library is registered, dryfit has not been set up: see "Set up".
 
 ## The usual flow

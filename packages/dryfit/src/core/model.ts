@@ -50,6 +50,8 @@ export interface LinkRecord {
   readonly consumer: string;
   readonly status: LinkStatus;
   readonly installedVersion?: string | undefined;
+  /** Why the last install failed: the end of the package manager's output. Only on failed links. */
+  readonly message?: string | undefined;
   /** Whether the consumer's git pre-commit hook carries the commit guard (ADR 0012). */
   readonly guard?: boolean | undefined;
 }

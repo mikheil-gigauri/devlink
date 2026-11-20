@@ -57,6 +57,21 @@ describe('linkConsumer', () => {
     });
   });
 
+  it('keeps the link but marks it failed, with the reason, when the first install fails', async () => {
+    const { deps, npm, store } = createScenario({ state: published });
+    npm.failIn(SHOP);
+
+    const link = await linkConsumer(deps, { library: '@acme/ui', consumer: SHOP });
+
+    expect(link).toEqual({
+      library: '@acme/ui',
+      consumer: SHOP,
+      status: 'failed',
+      message: 'npm error ERESOLVE could not resolve',
+    });
+    expect(store.current.links).toEqual([link]);
+  });
+
   it('records a consumer without a lockfile so restore can remove the one npm creates', async () => {
     const { deps, fs } = createScenario({ state: registered });
 
