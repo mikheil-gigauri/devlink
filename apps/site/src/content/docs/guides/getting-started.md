@@ -32,7 +32,8 @@ npx @dryfit/cli add
 
 dryfit works out how the library is built and what gets published. It recognises Nx and Angular CLI
 libraries and packages with a `build` script. When it cannot tell, say so with `--build "<command>"` and
-`--publish-dir <dir>`.
+`--publish-dir <dir>`. [Build and publish settings](/dryfit/guides/libraries/) explains which folders to
+choose.
 
 ## Find the apps that use it
 

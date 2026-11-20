@@ -27,6 +27,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Getting started', link: '/guides/getting-started/' },
+            { label: 'Build and publish settings', link: '/guides/libraries/' },
             { label: 'How it works', link: '/guides/how-it-works/' },
             { label: 'Package managers', link: '/guides/package-managers/' },
             { label: 'Frameworks and caches', link: '/guides/frameworks/' },
