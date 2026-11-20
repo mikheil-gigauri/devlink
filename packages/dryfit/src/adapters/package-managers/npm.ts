@@ -39,10 +39,19 @@ export const npm: PackageManagerAdapter = {
 
 /** Publishes every library, whichever package manager it uses: the staged folder is a plain package. */
 export const npmPublisher: Publisher = {
-  publish({ cwd, registryUrl, tag }) {
+  publish({ cwd, packageName, registryUrl, tag }) {
+    // A user's `@scope:registry` beats `--registry` for a scoped package, so a dev build would go to
+    // that registry, often the public one. Pinning the scope too keeps it on the local registry.
+    const scope = scopeOf(packageName);
     return {
       command: 'npm',
-      args: ['publish', `--registry=${registryUrl}`, `--tag=${tag}`, '--provenance=false'],
+      args: [
+        'publish',
+        `--registry=${registryUrl}`,
+        ...(scope === undefined ? [] : [`--${scope}:registry=${registryUrl}`]),
+        `--tag=${tag}`,
+        '--provenance=false',
+      ],
       cwd,
     };
   },
@@ -61,6 +70,10 @@ export const npmPublisher: Publisher = {
  * registry, which proxies everything it does not hold (ADR 0002).
  */
 function registryFlag(packageName: string, registryUrl: string): string {
-  const scope = /^(@[^/]+)\//.exec(packageName)?.[1];
+  const scope = scopeOf(packageName);
   return scope === undefined ? `--registry=${registryUrl}` : `--${scope}:registry=${registryUrl}`;
+}
+
+function scopeOf(packageName: string): string | undefined {
+  return /^(@[^/]+)\//.exec(packageName)?.[1];
 }

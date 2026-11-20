@@ -47,7 +47,7 @@ export async function publishLibrary(
     await deps.fs.copyDir(library.publishDir, staging, { exclude: NOT_PUBLISHED });
     await deps.fs.writeText(
       joinPath(staging, 'package.json'),
-      formatManifest({ ...manifest, version }, text),
+      formatManifest(withoutPublishRegistry({ ...manifest, version }), text),
     );
     const authFiles = deps.publisher.publishAuthFiles({
       registryUrl: deps.registryUrl,
@@ -59,7 +59,12 @@ export async function publishLibrary(
 
     const result = await runSafely(
       deps,
-      deps.publisher.publish({ cwd: staging, registryUrl: deps.registryUrl, tag: DEV_TAG }),
+      deps.publisher.publish({
+        cwd: staging,
+        packageName: library.name,
+        registryUrl: deps.registryUrl,
+        tag: DEV_TAG,
+      }),
     );
     if (result.exitCode !== 0) {
       const output = commandOutput(result);
@@ -79,6 +84,21 @@ export async function publishLibrary(
   );
   deps.events.emit({ type: 'publish:succeeded', library: library.name, version });
   return { version };
+}
+
+/**
+ * `publishConfig.registry` and `publishConfig["@scope:registry"]` override the command line, so a dev
+ * build would go to the library's real registry. The staged copy drops them; the rest of
+ * `publishConfig` (access, directory, …) still applies.
+ */
+function withoutPublishRegistry(manifest: Manifest): Manifest {
+  const { publishConfig } = manifest;
+  if (!isRecord(publishConfig)) return manifest;
+  const kept = Object.fromEntries(
+    Object.entries(publishConfig).filter(([key]) => key !== 'registry' && !/^@[^:]+:registry$/.test(key)),
+  );
+  const { publishConfig: _dropped, ...rest } = manifest;
+  return Object.keys(kept).length === 0 ? rest : { ...rest, publishConfig: kept };
 }
 
 /**

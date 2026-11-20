@@ -27,7 +27,11 @@ async function publishFixtures(sandbox: RegistrySandbox, publisher: Publisher) {
     version: string,
     tag: string,
     code: string,
-    { name = LIB, manifest = {} }: { name?: string; manifest?: object } = {},
+    {
+      name = LIB,
+      manifest = {},
+      env,
+    }: { name?: string; manifest?: object; env?: Readonly<Record<string, string>> } = {},
   ) => {
     const dir = await sandbox.writePackage(
       join(sandbox.dir, `publish-${name.replace('/', '_')}-${version}`),
@@ -40,8 +44,8 @@ async function publishFixtures(sandbox: RegistrySandbox, publisher: Publisher) {
     )) {
       await writeFile(join(dir, file), content);
     }
-    const spec = publisher.publish({ cwd: dir, registryUrl: registry.url, tag });
-    await sandbox.run(spec.command, spec.args, spec.cwd);
+    const spec = publisher.publish({ cwd: dir, packageName: name, registryUrl: registry.url, tag });
+    await sandbox.run(spec.command, spec.args, spec.cwd, env);
   };
   return publish;
 }
@@ -258,6 +262,17 @@ export function describePublisherContract(publisher: Publisher): void {
       expect(await readFile(join(installed, 'index.js'), 'utf8')).toContain('leaky');
       for (const file of authFiles)
         await expect(readFile(join(installed, file), 'utf8')).rejects.toThrow(/ENOENT/);
+    });
+
+    it("publishes to the local registry even when the user's npmrc sends the scope elsewhere", async () => {
+      // The usual setup for a private scope on npmjs.org, which would otherwise receive the dev build.
+      const userconfig = join(sandbox.dir, 'scoped-user.npmrc');
+      await writeFile(userconfig, `@fixture:registry=${DEAD_REGISTRY}\n`);
+      const scoped = `${RELEASE}-scoped.0`;
+
+      await publish(scoped, 'dryfit', '"scoped"', { env: { npm_config_userconfig: userconfig } });
+
+      expect((await distTags(sandbox.registry, LIB)).dryfit).toBe(scoped);
     });
   });
 }

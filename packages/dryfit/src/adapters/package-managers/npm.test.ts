@@ -67,11 +67,26 @@ describe('npm adapter', () => {
 
   describe('publish', () => {
     it('publishes to the local registry under the given dist-tag, never with provenance', () => {
-      expect(npmPublisher.publish({ cwd: '/staging/ui', registryUrl, tag: 'dryfit' })).toEqual({
+      expect(
+        npmPublisher.publish({ cwd: '/staging/ui', packageName: 'ui', registryUrl, tag: 'dryfit' }),
+      ).toEqual({
         command: 'npm',
         args: ['publish', '--registry=http://127.0.0.1:4873/', '--tag=dryfit', '--provenance=false'],
         cwd: '/staging/ui',
       });
+    });
+
+    it("pins a scoped package's scope to the local registry, which beats the user's @scope:registry", () => {
+      expect(
+        npmPublisher.publish({ cwd: '/staging/ui', packageName: '@acme/ui', registryUrl, tag: 'dryfit' })
+          .args,
+      ).toEqual([
+        'publish',
+        '--registry=http://127.0.0.1:4873/',
+        '--@acme:registry=http://127.0.0.1:4873/',
+        '--tag=dryfit',
+        '--provenance=false',
+      ]);
     });
 
     const credentials = { username: 'dryfit', password: 's3cret' };
