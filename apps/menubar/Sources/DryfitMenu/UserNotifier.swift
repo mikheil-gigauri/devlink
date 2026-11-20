@@ -16,16 +16,30 @@ public final class UserNotifier: NSObject, Notifier, UNUserNotificationCenterDel
     center.delegate = self
   }
 
-  public func post(_ failure: Failure) {
+  public func post(_ failure: Failure, quietly: Bool) {
     Task {
       guard await isAuthorized() else { return }
       let content = UNMutableNotificationContent()
       content.title = failure.title
       content.body = Self.summary(of: failure.detail)
-      content.sound = .default
-      try? await center.add(UNNotificationRequest(identifier: failure.id.uuidString, content: content, trigger: nil))
+      content.sound = quietly ? nil : .default
+      content.userInfo = [Self.failureKey: failure.id.uuidString]
+      // One notification per subject: a newer failure of the same build or install replaces it.
+      try? await center.add(UNNotificationRequest(identifier: Self.identifier(failure), content: content, trigger: nil))
     }
   }
+
+  public func recovered(_ failure: Failure, message: String) {
+    Task {
+      guard await isAuthorized() else { return }
+      let content = UNMutableNotificationContent()
+      content.title = message
+      try? await center.add(UNNotificationRequest(identifier: Self.identifier(failure), content: content, trigger: nil))
+    }
+  }
+
+  private nonisolated static let failureKey = "failure"
+  private static func identifier(_ failure: Failure) -> String { failure.subject ?? failure.id.uuidString }
 
   /// The first lines of the output, which usually name the error.
   static func summary(of detail: String) -> String {
@@ -43,7 +57,9 @@ public final class UserNotifier: NSObject, Notifier, UNUserNotificationCenterDel
   public nonisolated func userNotificationCenter(
     _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
   ) async {
-    let id = UUID(uuidString: response.notification.request.identifier)
+    // A recovery has no failure left to show.
+    guard let id = (response.notification.request.content.userInfo[Self.failureKey] as? String).flatMap(UUID.init)
+    else { return }
     await MainActor.run { open(id) }
   }
 
@@ -58,5 +74,6 @@ public final class UserNotifier: NSObject, Notifier, UNUserNotificationCenterDel
 /// Keeps failures in the menu only.
 public final class SilentNotifier: Notifier {
   public init() {}
-  public func post(_ failure: Failure) {}
+  public func post(_ failure: Failure, quietly: Bool) {}
+  public func recovered(_ failure: Failure, message: String) {}
 }
