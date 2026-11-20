@@ -36,7 +36,7 @@ export async function syncLibrary(deps: CoreDeps, { library: name }: SyncLibrary
   const graph = await loadLibraryGraph(deps.fs, before.libraries);
 
   const published: LibraryVersion[] = [];
-  for (const library of dependencyOrder(graph, publishSet(before, graph, name))) {
+  for (const library of dependencyOrder(graph, publishSet(before, graph, [name]))) {
     const { version } = await publishLibrary(deps, { library });
     published.push({ library, version });
   }
@@ -57,16 +57,16 @@ export async function syncLibrary(deps: CoreDeps, { library: name }: SyncLibrary
 }
 
 /**
- * The library asked for, then until nothing changes: every library depending on one in the set that
+ * The libraries asked for, then until nothing changes: every library depending on one in the set that
  * has a dev build or is linked (its dev build pins a version about to be replaced), and every library
  * one in the set depends on that is linked but was never published (so a new set is complete at once).
  */
-function publishSet(state: DryfitState, graph: LibraryGraph, name: string): Set<string> {
+export function publishSet(state: DryfitState, graph: LibraryGraph, names: Iterable<string>): Set<string> {
   const linked = new Set(state.links.map((link) => link.library));
   const published = new Set(
     state.libraries.filter((library) => library.lastPublishedVersion !== undefined).map((l) => l.name),
   );
-  const set = new Set([name]);
+  const set = new Set(names);
   for (let size = 0; size !== set.size; ) {
     size = set.size;
     for (const member of [...set]) {
@@ -79,4 +79,21 @@ function publishSet(state: DryfitState, graph: LibraryGraph, name: string): Set<
     }
   }
   return set;
+}
+
+/**
+ * Those of `names` whose dev build pins a sibling's dev version other than its latest: published before
+ * dryfit recorded pins, or left behind when a sync failed partway through the set. Installing one would
+ * fail, because it demands a sibling version the app is not getting (ADR 0014).
+ */
+export function staleBuilds(state: DryfitState, graph: LibraryGraph, names: Iterable<string>): string[] {
+  const latest = new Map(state.libraries.map((library) => [library.name, library.lastPublishedVersion]));
+  return [...names].filter((name) => {
+    const library = state.libraries.find((candidate) => candidate.name === name);
+    if (library?.lastPublishedVersion === undefined) return false;
+    return [...(graph.get(name) ?? [])].some((sibling) => {
+      const version = latest.get(sibling);
+      return version !== undefined && library.pinnedSiblings?.[sibling] !== version;
+    });
+  });
 }

@@ -1,11 +1,14 @@
 import { DryfitError } from '../errors.ts';
-import type { LinkRecord, SnapshotMeta } from '../model.ts';
+import type { DryfitState, LinkRecord, SnapshotMeta } from '../model.ts';
 import type { CoreDeps, PackageManagerAdapter, ProjectInfo } from '../ports.ts';
+import { dependencyOrder, loadLibraryGraph } from '../project/library-graph.ts';
 import { loadProject } from '../project/load-project.ts';
 import { findDependency } from '../project/manifest.ts';
 import { joinPath } from '../util/path.ts';
 import { installLinks, linkedSet } from './install-link.ts';
+import { publishLibrary } from './publish-library.ts';
 import { adapterFor, requireLibrary, sameLink, snapshotDir, withLink } from './shared.ts';
+import { publishSet, staleBuilds } from './sync-library.ts';
 
 export interface LinkConsumerInput {
   readonly library: string;
@@ -28,7 +31,8 @@ export async function linkConsumer(deps: CoreDeps, input: LinkConsumerInput): Pr
  * Opts a consumer in to receiving dev versions of libraries (ADR 0005). The consumer's manifest and
  * lockfiles are snapshotted before anything changes. If any newly linked library has been published
  * before, the consumer's whole linked set is installed straight away in one run, so libraries that pin
- * each other go in together (ADR 0014). Every library is checked before anything is touched.
+ * each other go in together (ADR 0014); dev builds in the set that pin a sibling's old dev build are
+ * published again first. Every library is checked before anything is touched.
  */
 export async function linkLibraries(deps: CoreDeps, input: LinkLibrariesInput): Promise<LinkRecord[]> {
   // One spelling per folder, so `/repos/shop/` and `/repos/shop` share one link and one snapshot.
@@ -62,6 +66,7 @@ export async function linkLibraries(deps: CoreDeps, input: LinkLibrariesInput): 
     await deps.state.save(latest);
 
     if (added.some((library) => library.lastPublishedVersion !== undefined)) {
+      latest = await republishStaleBuilds(deps, latest, consumer);
       const set = linkedSet(latest, consumer, added.find((library) => library.lastPublishedVersion)?.name);
       await installLinks(deps, { consumer, libraries: set });
     }
@@ -71,6 +76,25 @@ export async function linkLibraries(deps: CoreDeps, input: LinkLibrariesInput): 
   return libraries.flatMap(
     (library) => links.find((link) => sameLink(link, { library: library.name, consumer })) ?? [],
   );
+}
+
+/**
+ * Publishes again, with what depends on them, the dev builds in the consumer's set that pin a sibling's
+ * old dev version, so the set installs together (ADR 0014). Returns the state to install from.
+ */
+async function republishStaleBuilds(
+  deps: CoreDeps,
+  state: DryfitState,
+  consumer: string,
+): Promise<DryfitState> {
+  const graph = await loadLibraryGraph(deps.fs, state.libraries);
+  const set = linkedSet(state, consumer).map((entry) => entry.library.name);
+  const stale = staleBuilds(state, graph, set);
+  if (stale.length === 0) return state;
+  for (const library of dependencyOrder(graph, publishSet(state, graph, stale))) {
+    await publishLibrary(deps, { library });
+  }
+  return deps.state.load();
 }
 
 /**

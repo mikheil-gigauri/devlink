@@ -19,11 +19,18 @@ const lib = (name: string): LibraryRecord => ({
 });
 const [COMMON, UI, ASSETS] = ['@ws/common', '@ws/ui', '@ws/assets'] as const;
 
-function workspace({ links = [] as DryfitState['links'], published = {} as Record<string, string> } = {}) {
+function workspace({
+  links = [] as DryfitState['links'],
+  published = {} as Record<string, string>,
+  pinnedSiblings = {} as Record<string, Record<string, string>>,
+} = {}) {
   const libraries = ['common', 'ui', 'assets'].map((name) => {
     const record = lib(name);
     const version = published[record.name];
-    return version === undefined ? record : { ...record, lastPublishedVersion: version };
+    const pinned = pinnedSiblings[record.name];
+    return version === undefined
+      ? record
+      : { ...record, lastPublishedVersion: version, ...(pinned && { pinnedSiblings: pinned }) };
   });
   const files: Record<string, string> = {
     [`${WS}/libs/common/package.json`]: json({ name: COMMON, version: '19.24.0' }),
@@ -146,9 +153,10 @@ describe('libraries that pin each other (ADR 0014)', () => {
 
   describe('link', () => {
     const published = { [COMMON]: '19.24.1-dev.20261118100000', [UI]: '19.40.1-dev.20261118100001' };
+    const pinnedSiblings = { [UI]: { [COMMON]: published[COMMON] } };
 
     it('links several libraries with one snapshot and installs them in one run', async () => {
-      const { deps, npm, fs } = workspace({ published });
+      const { deps, npm, fs } = workspace({ published, pinnedSiblings });
       const lockfile = await fs.readText(`${APP}/package-lock.json`);
 
       const links = await linkLibraries(deps, { libraries: [COMMON, UI], consumer: APP });
@@ -159,6 +167,38 @@ describe('libraries that pin each other (ADR 0014)', () => {
       ]);
       expect(npm.installs).toEqual([[`${COMMON}@${published[COMMON]}`, `${UI}@${published[UI]}`]]);
       expect(await fs.readText(`${snapshotDir({ home: HOME }, APP)}/package-lock.json`)).toBe(lockfile);
+    });
+
+    it.each([
+      ['published before dryfit recorded its pins', {}],
+      ['pinning an older dev build of its sibling', { [UI]: { [COMMON]: '19.24.1-dev.20261117090000' } }],
+    ])('publishes a dev build again before installing when it was %s', async (_, pinnedSiblings) => {
+      const { deps, npm, store, staged } = workspace({ published, pinnedSiblings });
+
+      const links = await linkLibraries(deps, { libraries: [COMMON, UI], consumer: APP });
+
+      const ui = versionOf(store.current, UI);
+      expect(ui).not.toBe(published[UI]);
+      expect(staged.get(UI)?.peerDependencies).toEqual({ [COMMON]: published[COMMON] });
+      expect([...staged.keys()]).toEqual([UI]);
+      expect(npm.installs).toEqual([[`${COMMON}@${published[COMMON]}`, `${UI}@${ui}`]]);
+      expect(links.map((link) => [link.library, link.status])).toEqual([
+        [COMMON, 'installed'],
+        [UI, 'installed'],
+      ]);
+    });
+
+    it('records the sibling versions a dev build pinned, so the next link reuses it', async () => {
+      const { deps, store, staged } = workspace({ published });
+
+      await linkLibraries(deps, { libraries: [COMMON, UI], consumer: APP });
+      staged.clear();
+      await restoreConsumer(deps, { consumer: APP });
+      await linkLibraries(deps, { libraries: [COMMON, UI], consumer: APP });
+
+      const ui = store.current.libraries.find((library) => library.name === UI);
+      expect(ui?.pinnedSiblings).toEqual({ [COMMON]: published[COMMON] });
+      expect(staged.size).toBe(0);
     });
 
     it('installs both once the second is linked, after linking the first alone failed', async () => {

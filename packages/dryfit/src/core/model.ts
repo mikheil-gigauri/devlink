@@ -38,6 +38,11 @@ export interface LibraryRecord {
   /** Command that produces publishDir. Omitted when the library publishes its sources. */
   readonly build?: CommandSpec | undefined;
   readonly lastPublishedVersion?: string | undefined;
+  /**
+   * The dev version of each registered library this dev build depends on directly, as its manifest
+   * pinned them (ADR 0014). Missing on dev builds published before dryfit recorded it.
+   */
+  readonly pinnedSiblings?: Readonly<Record<string, string>> | undefined;
   /** Whether the daemon rebuilds and syncs the library when its sources change. */
   readonly watch?: boolean | undefined;
 }
