@@ -134,7 +134,7 @@ public struct SettingsView: View {
       }
       .font(DS.body)
       .padding(.horizontal, 18)
-      .padding(.top, 22)
+      .padding(.top, 16)
       .padding(.bottom, 16)
       .frame(maxWidth: .infinity, alignment: .leading)
     }

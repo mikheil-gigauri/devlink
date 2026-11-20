@@ -16,11 +16,15 @@ public struct MainWindow: View {
   public var body: some View {
     NavigationSplitView {
       Sidebar(model: model, navigation: navigation)
+        // No toolbar at all (the window's title bar is hidden too): each page carries its own controls
+        // along its top, and the sidebar is shown and hidden from the View menu (⌃⌘S).
+        .toolbar(removing: .sidebarToggle)
         .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 300)
     } detail: {
       // The minimum size goes on the detail column, not the split view: on the split view it makes
       // the toolbar lag behind the sidebar while it opens, pushing the sidebar button into overflow.
-      detail.frame(minWidth: 480, minHeight: 460)
+      // Up into the title bar: a page's own controls sit level with the window's buttons.
+      detail.frame(minWidth: 480, minHeight: 460).ignoresSafeArea(.container, edges: .top)
     }
     .sheet(item: $navigation.libraryEditor) { request in
       LibraryEditor(root: request.root, model: model, navigation: navigation)
@@ -54,8 +58,6 @@ public struct MainWindow: View {
       model.open(folderPath(folder), navigation: navigation, orAddAsLibrary: true)
       return true
     }
-    // The window has no title bar: each page carries its own controls along its top.
-    .toolbar(removing: .sidebarToggle)
     .showsInDock()
   }
 
@@ -176,8 +178,11 @@ private struct Sidebar: View {
       }
       .font(DS.body)
       .frame(maxWidth: .infinity, alignment: .leading)
+      // Below the window's buttons, which sit over the sidebar now that the window has no toolbar.
+      .padding(.top, 30)
       .padding(.bottom, 8)
     }
+    .ignoresSafeArea(.container, edges: .top)
     // In the sidebar's own bar, not the toolbar, so it stays put when the sidebar is hidden or shown.
     // A bar rather than an inset, so the rows that run on beneath it fall under the scroll edge effect.
     .scrollEdgeEffectStyle(.hard, for: .bottom)

@@ -67,6 +67,7 @@ public struct MenuContent: View {
       }
     }
     .font(DS.body)
+    .environment(\.onGlass, true)
     .frame(width: 340)
     .onAppear { model.menuOpened() }
     // The rest of what the old footer menu held is on the menu bar icon's right-click menu. These keep
@@ -209,7 +210,7 @@ private struct OnlineContent: View {
       if !model.groups.isEmpty {
         Text("Groups")
           .font(DS.caption)
-          .foregroundStyle(.tertiary)
+          .foregroundStyle(.secondary)
           .padding(.horizontal, 2)
           .padding(.top, 6)
           .padding(.bottom, 4)
@@ -235,10 +236,10 @@ private struct Centered<Actions: View>: View {
     VStack(spacing: 0) {
       Image(systemName: symbol)
         .font(.system(size: 24))
-        .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tertiary))
+        .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
         .accessibilityHidden(true)
       Text(title).font(DS.headline).multilineTextAlignment(.center).padding(.top, 6).padding(.bottom, 4)
-      Text(text).font(DS.body).foregroundStyle(.tertiary).multilineTextAlignment(.center)
+      Text(text).font(DS.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
       actions
     }
@@ -337,7 +338,7 @@ private struct LibraryCard: View {
         } label: {
           Image(systemName: isFolded ? "chevron.right" : "chevron.down")
             .font(.system(size: 11))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
             .frame(width: 12, height: 22)
             .contentShape(.rect)
         }
@@ -350,7 +351,7 @@ private struct LibraryCard: View {
         }
         .buttonStyle(.plain)
         .help("Show \(name) in the dryfit window")
-        Text("Auto").font(DS.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+        Text("Auto").font(DS.caption).foregroundStyle(.secondary).accessibilityHidden(true)
         Toggle("Auto-sync \(name)", isOn: watch)
           .toggleStyle(.mini)
           .disabled(model.isBusy(.watch(name)))
@@ -411,7 +412,6 @@ private struct LinkRowView: View {
   let link: DryfitAPI.Link
   let model: MenuModel
   let actions: MenuActions
-  @State private var hovering = false
   @Environment(\.timeZone) private var timeZone
 
   var body: some View {
@@ -427,22 +427,19 @@ private struct LinkRowView: View {
           .foregroundStyle(.red)
       } else {
         Text(link.status == .installed ? shortVersion(link.detail(timeZone: timeZone)) : link.detail(timeZone: timeZone))
-          .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
+          .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
           .lineLimit(1)
-        // Dimmed until the pointer is on the row, so a list of healthy links stays quiet.
         IconButton(
           symbol: "arrow.uturn.backward",
           label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
           busy: busy
         ) { Task { await model.restore(link.consumer, library: link.library) } }
-        .opacity(hovering || busy ? 1 : 0.35)
       }
     }
     .font(DS.body)
     .padding(4)
     .padding(.leading, 20)
     .contentShape(.rect)
-    .onHover { hovering = $0 }
     .help(abbreviatedPath(link.consumer))
   }
 
@@ -459,7 +456,7 @@ private struct LinkChips: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       if !candidates.isEmpty {
-        Text("Also uses it:").font(DS.caption).foregroundStyle(.tertiary)
+        Text("Also uses it:").font(DS.caption).foregroundStyle(.secondary)
       }
       FlowLayout(spacing: 4) {
         ForEach(candidates) { consumer in
@@ -481,7 +478,7 @@ private struct LinkChips: View {
         } label: {
           Text(candidates.isEmpty ? "Link to app…" : "Other…")
             .font(DS.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .contentShape(.rect)
@@ -503,7 +500,7 @@ private struct GroupRowView: View {
 
   var body: some View {
     HStack(spacing: 7) {
-      Image(systemName: "square.stack.3d.up").foregroundStyle(.tertiary).accessibilityHidden(true)
+      Image(systemName: "square.stack.3d.up").foregroundStyle(.secondary).accessibilityHidden(true)
       Button(action: open) {
         TwoLine(title: group.name, caption: subtitle, titleFont: DS.medium)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -593,15 +590,15 @@ struct ServiceUnavailableView: View {
       VStack(spacing: 0) {
         if model.connection == .starting {
           ProgressView().controlSize(.small).padding(.top, 12)
-          Text("Starting…").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
+          Text("Starting…").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
         } else if model.isBusy(.installCLI) {
           ProgressView().controlSize(.small).padding(.top, 12)
-          Text("Installing with npm…").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
+          Text("Installing with npm…").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
         } else if model.cliMissing {
           Button("Install dryfit") { Task { await model.installCLI() } }
             .buttonStyle(.primaryPill)
             .padding(.top, 12)
-          Text("Runs \(DaemonLauncher.installCommand)").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
+          Text("Runs \(DaemonLauncher.installCommand)").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
         } else {
           Button("Start dryfit") { Task { await model.startDaemon() } }
             .buttonStyle(.primaryPill)
@@ -703,14 +700,14 @@ struct UpdateDryfitControl: View {
       if model.isBusy(.updateCLI) {
         ProgressView().controlSize(.small)
         if prominent {
-          Text("Updating with npm…").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
+          Text("Updating with npm…").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
         }
       } else if prominent {
         Button("Update dryfit") { Task { await model.updateCLI() } }
           .buttonStyle(.primaryPill)
         Text("Runs npm install --global @dryfit/cli@latest")
           .font(DS.caption)
-          .foregroundStyle(.tertiary)
+          .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
           .padding(.top, 6)
       } else {

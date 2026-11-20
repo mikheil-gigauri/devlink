@@ -20,7 +20,29 @@ enum DS {
   /// A grey wash that shows on any background: badges, output.
   static let neutralFill = Color.primary.opacity(0.06)
   static let accentTint = Color.accentColor.opacity(0.14)
+  /// Behind a group of rows or a card, so it reads as a surface on the window or the menu's glass.
+  static let groupFill = Color.primary.opacity(0.045)
+  /// Behind a button.
+  static let buttonFill = Color.primary.opacity(0.07)
   static let radius: CGFloat = 8
+}
+
+extension EnvironmentValues {
+  /// True inside the menu bar window, whose glass washes out faint text: captions there use the
+  /// secondary grey, not the tertiary one the window uses.
+  @Entry var onGlass = false
+}
+
+extension View {
+  /// The grey for captions: tertiary in the window, secondary on the menu's glass.
+  func captionStyle() -> some View { modifier(CaptionGrey()) }
+}
+
+private struct CaptionGrey: ViewModifier {
+  @Environment(\.onGlass) private var onGlass
+  func body(content: Content) -> some View {
+    content.foregroundStyle(onGlass ? HierarchicalShapeStyle.secondary : HierarchicalShapeStyle.tertiary)
+  }
 }
 
 /// A one-pixel line across the full width, snapped to the pixel grid so it never fades out.
@@ -29,9 +51,9 @@ struct Hairline: View {
   var body: some View { Rectangle().fill(DS.hairline).frame(height: 1 / scale) }
 }
 
-/// Rows inside a hairline rounded rectangle, with a hairline between each.
+/// Rows on a filled rounded rectangle, with a hairline between each.
 struct HairlineGroup<Content: View>: View {
-  var border = DS.hairline
+  var border: Color? = nil
   @ViewBuilder var content: Content
 
   var body: some View {
@@ -44,7 +66,11 @@ struct HairlineGroup<Content: View>: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .overlay { RoundedRectangle(cornerRadius: DS.radius).strokeBorder(border, lineWidth: 0.5) }
+    .background(DS.groupFill, in: .rect(cornerRadius: DS.radius))
+    .overlay {
+      // Only a warning group is outlined, in its colour; others are a fill, as macOS draws them.
+      if let border { RoundedRectangle(cornerRadius: DS.radius).strokeBorder(border, lineWidth: 1) }
+    }
   }
 }
 
@@ -77,7 +103,7 @@ struct Footnote: View {
   init(_ text: String) { self.text = text }
 
   var body: some View {
-    Text(text).font(DS.caption).foregroundStyle(.tertiary).padding(.top, 4)
+    Text(text).font(DS.caption).captionStyle().padding(.top, 4)
       .fixedSize(horizontal: false, vertical: true)
   }
 }
@@ -87,7 +113,6 @@ struct TwoLine: View {
   let title: String
   let caption: String?
   var titleFont = DS.body
-  var captionColor: Color? = nil
   /// Whether the caption wraps onto more lines instead of being cut short.
   var wraps = false
 
@@ -95,7 +120,7 @@ struct TwoLine: View {
     VStack(alignment: .leading, spacing: 1) {
       Text(title).font(titleFont).lineLimit(1)
       if let caption {
-        Text(caption).font(DS.caption).foregroundStyle(captionColor.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tertiary))
+        Text(caption).font(DS.caption).captionStyle()
           .lineLimit(wraps ? nil : 1)
           .fixedSize(horizontal: false, vertical: wraps)
       }
@@ -111,14 +136,14 @@ struct TwoLineView<Title: View>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 1) {
       title
-      Text(caption).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1)
+      Text(caption).font(DS.caption).captionStyle().lineLimit(1)
     }
   }
 }
 
 // MARK: Buttons
 
-/// The app's button: 11 pt text in a small rounded rectangle with a hairline. One per screen is
+/// The app's button: 11 pt text on a small filled rounded rectangle. One per screen is
 /// `.primary`, filled; `.accent` and `.danger` colour the text for Link and for removing things.
 struct PillButtonStyle: ButtonStyle {
   enum Kind { case normal, primary, accent, danger }
@@ -152,12 +177,7 @@ struct PillLabel<Label: View>: View {
       .padding(.horizontal, 8)
       .padding(.vertical, 2)
       .foregroundStyle(foreground)
-      .background(kind == .primary ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.clear), in: .rect(cornerRadius: DS.radius))
-      .overlay {
-        if kind != .primary {
-          RoundedRectangle(cornerRadius: DS.radius).strokeBorder(DS.strongBorder, lineWidth: 0.5)
-        }
-      }
+      .background(kind == .primary ? AnyShapeStyle(Color.primary) : AnyShapeStyle(DS.buttonFill), in: .rect(cornerRadius: DS.radius))
       .contentShape(.rect)
       .opacity(isEnabled ? (pressed ? 0.7 : 1) : 0.35)
   }
@@ -358,7 +378,7 @@ extension View {
   func card() -> some View {
     padding(.horizontal, 8)
       .padding(.vertical, 6)
-      .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 0.5) }
+      .background(DS.groupFill, in: .rect(cornerRadius: 10))
   }
 }
 
