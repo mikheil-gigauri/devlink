@@ -632,7 +632,7 @@ private struct SuggestedAppRow: View {
       Image(systemName: "macwindow").foregroundStyle(.secondary).accessibilityHidden(true)
       TwoLineView(
         title: NameAndBadge(name: projectName(consumer.root), badge: consumer.packageManager.name),
-        caption: consumer.libraries.first(where: { $0.name == library }).map { "\($0.range) from the registry" }
+        caption: consumer.libraries.first(where: { $0.name == library }).map { describeDependency($0.range) }
           ?? abbreviatedPath(consumer.root))
       Spacer(minLength: 8)
       Button("Link") { Task { await model.link(library, into: consumer.root) } }

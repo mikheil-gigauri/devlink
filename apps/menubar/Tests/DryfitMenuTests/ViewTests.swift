@@ -42,6 +42,18 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
     #expect(DevVersion.describe("1.4.0") == "1.4.0")
   }
 
+  @Test func saysWhereAnAppGetsALibraryFrom() {
+    #expect(describeDependency("^1.3.0") == "^1.3.0 from the registry")
+    #expect(describeDependency("file:../../releases/acme-ui-1.0.0.tgz") == "Local file acme-ui-1.0.0.tgz")
+    #expect(describeDependency("link:../ui") == "Linked folder ui")
+    #expect(describeDependency("workspace:*") == "From the workspace")
+    #expect(describeDependency("github:acme/ui#main") == "From git")
+    #expect(describeDependency("git+ssh://git@github.com/acme/ui.git") == "From git")
+    #expect(describeDependency("https://example.com/ui.tgz") == "From a URL")
+    #expect(describeDependency("npm:@acme/ui@^1.0.0") == "@acme/ui@^1.0.0 from the registry")
+    #expect(describeDependency("../ui") == "Local folder ui")
+  }
+
   @Test func comparesReleaseVersions() {
     #expect(ReleaseVersion.isOlder("0.1.0", than: "0.3.0"))
     #expect(ReleaseVersion.isOlder("0.9.0", than: "0.10.0"))

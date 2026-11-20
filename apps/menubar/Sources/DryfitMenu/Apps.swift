@@ -260,6 +260,6 @@ private struct AppLibraryRow: View {
 
   private var detail: String {
     if let link = entry.link { return link.detail(timeZone: timeZone) }
-    return entry.range.map { "\($0) from the registry" } ?? "Released version"
+    return entry.range.map(describeDependency) ?? "Released version"
   }
 }
