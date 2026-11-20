@@ -1,5 +1,20 @@
 # @dryfit/cli
 
+## 0.5.0
+
+### Minor Changes
+
+- ff4f9ec: Hide the apps you don't work on: `dryfit hide <app>` (or Hide App in the menu bar app) stops listing an app, even though it uses your libraries, and `dryfit unhide` (or Show in Settings) lists it again. Nothing in the app changes, and a linked app has to be restored first.
+- 649ed40: Libraries from one workspace that pin each other exactly, such as an Nx workspace with independent releases, now work together. `dryfit link <app> --library a --library b` links several libraries in one step, each dev build pins the other registered libraries' dev builds, a sync also republishes the libraries that depend on the one that changed, and every install into an app puts all of its linked libraries in with one package manager run. Restoring one library also restores the linked libraries tied to it. A failed install names the libraries to link along.
+
+### Patch Changes
+
+- d5af514: `dryfit link` now exits 1 when the install into a consumer fails, with `--json` too, and `link --group`
+  reports that member as failed instead of done. A failed link keeps the end of the package manager's
+  output as `message`, so `link --json`, `status --json` and `dryfit status` show why (such as npm's
+  `ERESOLVE`) without rerunning the install, and the daemon log records it.
+- b30b0aa: In the menu bar app's window, a long sidebar no longer shows through the Add button at its bottom: the rows now stop at the bar's edge.
+
 ## 0.4.2
 
 ### Patch Changes
