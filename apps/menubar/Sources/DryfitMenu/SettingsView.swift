@@ -1,7 +1,8 @@
 import DryfitAPI
 import SwiftUI
 
-/// dryfit's settings: where to look for apps, the background service, opening at login, and updates.
+/// dryfit's settings, a page of the dryfit window: where to look for apps, the background service,
+/// opening at login, and updates.
 public struct SettingsView: View {
   let model: MenuModel
   let actions: MenuActions
@@ -120,9 +121,7 @@ public struct SettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .frame(width: 480)
-    .fixedSize(horizontal: false, vertical: true)
-    .showsInDock()
+    .navigationTitle("Settings")
   }
 
   private var status: String {

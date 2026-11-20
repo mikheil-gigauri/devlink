@@ -29,6 +29,7 @@ public struct MenuActions {
 
 /// The menu bar window (ADR 0013): what dryfit is doing at a glance, with the everyday controls —
 /// watch, sync, link, restore. Adding and changing things happens in the dryfit window, one click away.
+/// The window itself is system glass; what it lists is content, drawn with hairlines rather than glass.
 public struct MenuContent: View {
   let model: MenuModel
   let navigation: AppNavigation
@@ -51,7 +52,7 @@ public struct MenuContent: View {
       }
       switch model.connection {
       case .online:
-        OnlineContent(model: model, actions: actions, show: show)
+        OnlineContent(model: model, actions: actions, show: show, addLibrary: addLibrary)
       case .offline, .starting:
         ServiceUnavailableView(model: model, actions: actions, compact: true)
       case .connecting:
@@ -59,14 +60,25 @@ public struct MenuContent: View {
       case .incompatible(let daemonVersion):
         IncompatibleView(model: model, actions: actions, daemonVersion: daemonVersion)
       }
-      Divider()
-      Footer(model: model, actions: actions) {
-        navigation.wantsNewLibrary = true
-        show(nil)
+      // Only when it has something to say: what dryfit is doing, or a way to add a library.
+      if model.activity != nil || (model.connection == .online && !model.libraries.isEmpty) {
+        Divider()
+        Footer(model: model, addLibrary: addLibrary)
       }
     }
     .frame(width: 340)
     .onAppear { model.menuOpened() }
+    // The rest of what the old footer menu held is on the menu bar icon's right-click menu. These keep
+    // its shortcuts working while the window is open.
+    .background {
+      Group {
+        Button("Settings…") { navigation.showSettings { openWindow(id: mainWindowID) } }
+          .keyboardShortcut(",")
+        Button("Quit", action: actions.quit).keyboardShortcut("q")
+      }
+      .opacity(0)
+      .accessibilityHidden(true)
+    }
   }
 
   /// Opens the dryfit window, at `item` when given.
@@ -74,6 +86,11 @@ public struct MenuContent: View {
     if let item { navigation.selection = item }
     openWindow(id: mainWindowID)
     NSApp.activate()
+  }
+
+  private func addLibrary() {
+    navigation.wantsNewLibrary = true
+    show(nil)
   }
 }
 
@@ -101,7 +118,7 @@ private struct Header: View {
 
   private var dot: Color {
     switch model.connection {
-    case .online: .green
+    case .online: model.failures.isEmpty ? .green : .orange
     case .connecting, .starting: .yellow
     case .offline: .secondary
     case .incompatible: .orange
@@ -110,27 +127,29 @@ private struct Header: View {
 
   private var subtitle: String {
     switch model.connection {
-    case .online: model.status.map { "Running, version \($0.daemon.version)" } ?? "Running"
-    case .connecting: "Looking for dryfit…"
-    case .starting: "Starting…"
-    case .offline: "Not running"
-    case .incompatible: "Needs an update"
+    case .online:
+      if !model.failures.isEmpty {
+        return model.failures.count == 1 ? "Running · 1 failure" : "Running · \(model.failures.count) failures"
+      }
+      return model.status.map { "Running, version \($0.daemon.version)" } ?? "Running"
+    case .connecting: return "Looking for dryfit…"
+    case .starting: return "Starting…"
+    case .offline: return "Not running"
+    case .incompatible: return "Needs an update"
     }
   }
 }
 
 private struct Footer: View {
   let model: MenuModel
-  let actions: MenuActions
   let addLibrary: () -> Void
-  @Environment(\.openSettings) private var openSettings
 
   var body: some View {
     HStack(spacing: 8) {
       if let activity = model.activity {
         ProgressView().controlSize(.mini)
         Text(activity).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
-      } else if model.connection == .online {
+      } else {
         Button("Add Library…", systemImage: "plus", action: addLibrary)
           .buttonStyle(.borderless)
       }
@@ -139,20 +158,6 @@ private struct Footer: View {
     .font(.callout)
     .padding(.horizontal, 14)
     .padding(.vertical, 8)
-    // The rest of what the footer's menu held is on the menu bar icon's right-click menu. These keep
-    // its shortcuts working while the window is open.
-    .background {
-      Group {
-        Button("Settings…") {
-          openSettings()
-          NSApp.activate()
-        }
-        .keyboardShortcut(",")
-        Button("Quit", action: actions.quit).keyboardShortcut("q")
-      }
-      .opacity(0)
-      .accessibilityHidden(true)
-    }
   }
 }
 
@@ -162,6 +167,7 @@ private struct OnlineContent: View {
   let model: MenuModel
   let actions: MenuActions
   let show: (SidebarItem?) -> Void
+  let addLibrary: () -> Void
 
   var body: some View {
     // As tall as its content, scrolling past what fits under the menu bar.
@@ -170,13 +176,13 @@ private struct OnlineContent: View {
       .frame(maxHeight: 540)
       .fixedSize(horizontal: false, vertical: true)
       .task {
-        // The Link menus offer projects that use each library; finding them reads the disk once.
+        // The link chips offer projects that use each library; finding them reads the disk once.
         if model.consumers.isEmpty { await model.discoverConsumers() }
       }
   }
 
   private var sections: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 10) {
       if let failure = model.failures.first {
         FailureBanner(failure: failure, more: model.failures.count - 1, model: model, actions: actions)
       }
@@ -187,43 +193,27 @@ private struct OnlineContent: View {
         ErrorBanner(message: error) { model.dismissActionError() }
       }
       if model.libraries.isEmpty {
-        GetStarted(model: model) { show(nil) }
+        GetStarted(addLibrary: addLibrary)
       } else {
-        MenuSection(title: "Libraries") {
-          ForEach(model.libraries) { row in
-            LibraryRowView(row: row, model: model) { show(.library(row.library.name)) }
-          }
+        ForEach(model.libraries) { row in
+          LibraryCard(row: row, model: model, actions: actions) { show(.library(row.library.name)) }
         }
       }
       if !model.groups.isEmpty {
-        MenuSection(title: "Groups") {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Groups")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.top, 4)
           ForEach(model.groups) { group in
             GroupRowView(group: group, model: model) { show(.group(group.name)) }
           }
         }
       }
-      if let warnings = model.status?.warnings, !warnings.isEmpty {
-        ForEach(Array(warnings.enumerated()), id: \.offset) { _, warning in WarningRow(warning: warning) }
-      }
     }
     .padding(.horizontal, 10)
-    .padding(.vertical, 12)
-  }
-}
-
-private struct MenuSection<Content: View>: View {
-  let title: String
-  @ViewBuilder let content: Content
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(title)
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 6)
-        .padding(.bottom, 2)
-      content
-    }
+    .padding(.vertical, 10)
   }
 }
 
@@ -241,20 +231,19 @@ private struct HoverHighlight: ViewModifier {
 }
 
 private struct GetStarted: View {
-  let model: MenuModel
-  let openWindow: () -> Void
+  let addLibrary: () -> Void
 
   var body: some View {
     VStack(spacing: 10) {
       Tile(symbol: "shippingbox", tint: .teal, size: 44)
       Text("Test your library in your apps").font(.headline)
-      Text("Add a library you are working on, and dryfit installs each change into the apps that use it.")
+      Text("Add a library you're working on, and dryfit installs each change into the apps that use it.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
-      Button("Get Started", action: openWindow)
-        .buttonStyle(.borderedProminent)
+      Button("Add Library…", action: addLibrary)
+        .buttonStyle(.glassProminent)
         .padding(.top, 2)
     }
     .frame(maxWidth: .infinity)
@@ -322,25 +311,45 @@ struct DriftedRestoreBanner: View {
   }
 }
 
-private struct LibraryRowView: View {
+
+/// A library as a card: its state and controls on top, then, unless folded, the apps it is linked
+/// into and one-click links for the apps that use it. A card is content, so a hairline, not glass.
+private struct LibraryCard: View {
   let row: LibraryRow
   let model: MenuModel
+  let actions: MenuActions
   let open: () -> Void
+  /// Folded libraries, by name, one per line; kept between launches.
+  @AppStorage("foldedLibraries") private var folded = ""
   @Environment(\.timeZone) private var timeZone
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 8) {
+    let candidates = model.linkCandidates(for: name)
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        Button {
+          withAnimation(.snappy) { isFolded.toggle() }
+        } label: {
+          Image(systemName: "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(isFolded ? 0 : 90))
+            .frame(width: 14, height: 22)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isFolded ? "Show \(name)'s apps" : "Hide \(name)'s apps")
         Button(action: open) {
           VStack(alignment: .leading, spacing: 1) {
-            Text(row.library.name).font(.body.weight(.medium)).lineLimit(1)
-            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(name).font(.body.weight(.medium)).lineLimit(1)
+            Text(subtitle(candidates: candidates.count)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
           }
           .frame(maxWidth: .infinity, alignment: .leading)
           .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .help("Show \(name) in the dryfit window")
+        Text("Auto").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
         Toggle("Auto-sync \(name)", isOn: watch)
           .toggleStyle(.switch)
           .controlSize(.mini)
@@ -351,27 +360,49 @@ private struct LibraryRowView: View {
           symbol: "arrow.triangle.2.circlepath", label: "Sync \(name) now", busy: model.isBusy(.sync(name))
         ) { Task { await model.sync(name) } }
       }
-      .modifier(HoverHighlight())
-      ForEach(row.links) { link in LinkRowView(link: link, model: model) }
-      Menu {
-        LinkMenuItems(library: name, model: model)
-      } label: {
-        Label("Link to App", systemImage: "plus").font(.caption)
+      if syncing {
+        ProgressView().progressViewStyle(.linear).controlSize(.mini).padding(.leading, 20)
+          .accessibilityLabel("Syncing \(name)")
       }
-      .menuStyle(.button)
-      .buttonStyle(.borderless)
-      .menuIndicator(.hidden)
-      .controlSize(.small)
-      .fixedSize()
-      .padding(.leading, 20)
-      .padding(.vertical, 2)
+      if !isFolded {
+        ForEach(row.links) { link in LinkRowView(link: link, model: model, actions: actions) }
+        LinkChips(library: name, candidates: candidates, model: model)
+          .padding(.leading, 20)
+          .padding(.top, 2)
+      }
     }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator, lineWidth: 0.5) }
   }
 
   private var name: String { row.library.name }
 
-  private var subtitle: String {
-    row.library.published(timeZone: timeZone) + (row.library.isWatched ? " · Auto-sync on" : "")
+  private var isFolded: Bool {
+    get { folded.split(separator: "\n").contains { $0 == name } }
+    nonmutating set {
+      var names = folded.split(separator: "\n").map(String.init).filter { $0 != name }
+      if newValue { names.append(name) }
+      folded = names.joined(separator: "\n")
+    }
+  }
+
+  /// Syncing now: the user asked, or the daemon is running a job for this library.
+  private var syncing: Bool {
+    model.isBusy(.sync(name)) || model.status?.jobs.running?.label == "sync \(name)"
+  }
+
+  private func subtitle(candidates: Int) -> String {
+    let count = row.links.count
+    guard count > 0 else {
+      switch candidates {
+      case 0: return "Not linked"
+      case 1: return "Not linked · 1 app uses it"
+      default: return "Not linked · \(candidates) apps use it"
+      }
+    }
+    let apps = count == 1 ? "1 app" : "\(count) apps"
+    return row.library.published(timeZone: timeZone) + " · " + apps
   }
 
   private var watch: Binding<Bool> {
@@ -382,6 +413,8 @@ private struct LibraryRowView: View {
 private struct LinkRowView: View {
   let link: DryfitAPI.Link
   let model: MenuModel
+  let actions: MenuActions
+  @State private var hovering = false
   @Environment(\.timeZone) private var timeZone
 
   var body: some View {
@@ -392,19 +425,78 @@ private struct LinkRowView: View {
         .frame(width: 16)
       Text(projectName(link.consumer)).lineLimit(1)
       Spacer(minLength: 8)
-      Text(link.detail(timeZone: timeZone))
-        .font(.caption)
-        .foregroundStyle(link.status == .failed ? .red : .secondary)
-        .lineLimit(1)
+      if link.status == .failed, let failure = model.installFailure(in: link.consumer) {
+        Button("Failed · Show Output") { actions.showFailures(failure.id) }
+          .buttonStyle(.link)
+          .font(.caption)
+          .foregroundStyle(.red)
+      } else {
+        Text(link.detail(timeZone: timeZone))
+          .font(.caption)
+          .foregroundStyle(link.status == .failed ? .red : .secondary)
+          .lineLimit(1)
+      }
+      // Shown under the pointer only, so a list of healthy links stays quiet.
       IconButton(
         symbol: "arrow.uturn.backward",
         label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
-        busy: model.isBusy(.restore(link.consumer, link.library))
+        busy: busy
       ) { Task { await model.restore(link.consumer, library: link.library) } }
+      .opacity(hovering || busy ? 1 : 0)
     }
     .padding(.leading, 14)
     .modifier(HoverHighlight())
+    .onHover { hovering = $0 }
     .help(abbreviatedPath(link.consumer))
+  }
+
+  private var busy: Bool { model.isBusy(.restore(link.consumer, link.library)) }
+}
+
+/// Apps that use the library and are not linked to it, each linked with one click, then a menu for
+/// any other folder.
+private struct LinkChips: View {
+  let library: String
+  let candidates: [DiscoveredConsumer]
+  let model: MenuModel
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      if !candidates.isEmpty {
+        Text("Also uses it:").font(.caption).foregroundStyle(.secondary)
+      }
+      FlowLayout(spacing: 4) {
+        ForEach(candidates) { consumer in
+          let busy = model.isBusy(.link(library, consumer.root))
+          Button {
+            Task { await model.link(library, into: consumer.root) }
+          } label: {
+            HStack(spacing: 3) {
+              if busy { ProgressView().controlSize(.mini) } else { Image(systemName: "link") }
+              Text(projectName(consumer.root)).lineLimit(1)
+            }
+            .font(.caption)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .foregroundStyle(.tint)
+            .background(.tint.opacity(0.14), in: .rect(cornerRadius: 6))
+          }
+          .buttonStyle(.plain)
+          .disabled(busy)
+          .help("Install the dev build of \(library) into \(projectName(consumer.root))")
+        }
+        Menu {
+          LinkMenuItems(library: library, model: model)
+        } label: {
+          Text(candidates.isEmpty ? "Link to App…" : "Other…").font(.caption)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .menuIndicator(.hidden)
+        .controlSize(.small)
+        .fixedSize()
+      }
+    }
   }
 }
 
@@ -415,10 +507,11 @@ private struct GroupRowView: View {
 
   var body: some View {
     HStack(spacing: 8) {
+      Image(systemName: "square.stack.3d.up").foregroundStyle(.secondary).frame(width: 16)
       Button(action: open) {
         VStack(alignment: .leading, spacing: 1) {
           Text(group.name).font(.body.weight(.medium))
-          Text(group.consumers.map(projectName).joined(separator: ", "))
+          Text(subtitle)
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -429,22 +522,22 @@ private struct GroupRowView: View {
       .buttonStyle(.plain)
       Menu {
         Section("Link into every app in \(group.name)") {
-          ForEach(model.status?.libraries ?? []) { library in
-            Button(library.name) { Task { await model.linkGroup(group.name, library: library.name) } }
+          ForEach(model.libraries) { row in
+            Button(row.library.name) { Task { await model.linkGroup(group.name, library: row.library.name) } }
           }
         }
       } label: {
         if model.isBusy(.linkGroup(group.name)) {
-          ProgressView().controlSize(.small)
+          ProgressView().controlSize(.mini)
         } else {
-          Image(systemName: "link.badge.plus")
+          Text("Link…")
         }
       }
-      .menuStyle(.borderlessButton)
+      .menuStyle(.button)
       .menuIndicator(.hidden)
+      .controlSize(.small)
       .fixedSize()
       .help("Link a library into every app in \(group.name)")
-      .accessibilityLabel("Link a library into \(group.name)")
       IconButton(
         symbol: "arrow.uturn.backward", label: "Put every app in \(group.name) back on released versions",
         busy: model.isBusy(.restoreGroup(group.name))
@@ -452,27 +545,52 @@ private struct GroupRowView: View {
     }
     .modifier(HoverHighlight())
   }
+
+  private var subtitle: String {
+    let apps = group.consumers.map(projectName).joined(separator: ", ")
+    let differs = model.status?.warnings.contains { $0.group == group.name } == true
+    return differs ? apps + " · versions differ" : apps
+  }
 }
 
-private struct WarningRow: View {
-  let warning: CoherenceWarning
-  @Environment(\.timeZone) private var timeZone
+/// Lays its views out in rows, wrapping to a new row when the next one does not fit.
+struct FlowLayout: Layout {
+  var spacing: CGFloat = 4
 
-  var body: some View {
-    Label {
-      Text("\(warning.group) has \(warning.library) at different versions: \(versions)")
-    } icon: {
-      Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-    }
-    .font(.caption)
-    .foregroundStyle(.secondary)
-    .padding(.horizontal, 6)
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let rows = rows(width: proposal.width ?? .infinity, subviews: subviews)
+    let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+    return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
   }
 
-  private var versions: String {
-    warning.versions
-      .map { "\(projectName($0.consumer)) \(DevVersion.describe($0.version, timeZone: timeZone))" }
-      .joined(separator: ", ")
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    var y = bounds.minY
+    for row in rows(width: bounds.width, subviews: subviews) {
+      var x = bounds.minX
+      for index in row.indices {
+        let size = subviews[index].sizeThatFits(.unspecified)
+        subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: .unspecified)
+        x += size.width + spacing
+      }
+      y += row.height + spacing
+    }
+  }
+
+  private func rows(width: CGFloat, subviews: Subviews) -> [(indices: [Int], width: CGFloat, height: CGFloat)] {
+    var rows: [(indices: [Int], width: CGFloat, height: CGFloat)] = []
+    var current: (indices: [Int], width: CGFloat, height: CGFloat) = ([], 0, 0)
+    for index in subviews.indices {
+      let size = subviews[index].sizeThatFits(.unspecified)
+      let needed = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+      if needed > width, !current.indices.isEmpty {
+        rows.append(current)
+        current = ([index], size.width, size.height)
+      } else {
+        current = (current.indices + [index], needed, max(current.height, size.height))
+      }
+    }
+    if !current.indices.isEmpty { rows.append(current) }
+    return rows
   }
 }
 
@@ -501,12 +619,12 @@ struct ServiceUnavailableView: View {
         ProgressView("Installing with npm…").controlSize(.small).padding(.top, 4)
       } else if model.cliMissing {
         Button("Install dryfit") { Task { await model.installCLI() } }
-          .buttonStyle(.borderedProminent)
+          .buttonStyle(.glassProminent)
           .padding(.top, 4)
         Text("Runs \(DaemonLauncher.installCommand)").font(.caption).foregroundStyle(.tertiary)
       } else {
         Button("Start dryfit") { Task { await model.startDaemon() } }
-          .buttonStyle(.borderedProminent)
+          .buttonStyle(.glassProminent)
           .padding(.top, 4)
       }
       // Shown while the CLI is missing too: a failed install would otherwise just offer the button
@@ -564,7 +682,7 @@ struct IncompatibleView: View {
         UpdateDryfitControl(model: model, prominent: true).padding(.top, 4)
       } else if model.appIsOlder, let checkForUpdates = actions.checkForUpdates {
         Button("Check for Updates…", action: checkForUpdates)
-          .buttonStyle(.borderedProminent)
+          .buttonStyle(.glassProminent)
           .padding(.top, 4)
       }
     }
@@ -616,7 +734,7 @@ struct UpdateDryfitControl: View {
         ProgressView(prominent ? "Updating with npm…" : "").controlSize(.small)
       } else if prominent {
         Button("Update dryfit") { Task { await model.updateCLI() } }
-          .buttonStyle(.borderedProminent)
+          .buttonStyle(.glassProminent)
         Text("Runs npm install --global @dryfit/cli@latest, then restarts dryfit")
           .font(.caption)
           .foregroundStyle(.tertiary)

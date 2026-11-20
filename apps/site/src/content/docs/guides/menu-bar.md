@@ -45,8 +45,11 @@ through three steps: choose the folders where your apps live, add a library, and
 
 From the menu you can:
 
-- turn Auto-sync on or off for each library, or sync it once;
-- link a library to more apps, and restore an app;
+- turn Auto-sync on or off for each library, or sync it once, and watch a sync's progress on its card;
+- link a library to the apps that use it with one click, from the chips under it, or to any other
+  app with **Other…**;
+- restore an app: its button shows when you point at the row;
+- fold a library's card with its arrow to keep the menu short;
 - see each app's installed version, and why an install failed, with the full output a click away;
 - link and restore saved groups, and see when a group's apps disagree on a version;
 - start or stop dryfit, and open its log.
@@ -58,8 +61,9 @@ Right-click (or Control-click) the menu bar icon for **Settings…**, the log, *
 
 ## Settings
 
-**Settings** (⌘,) holds the folders dryfit searches for apps, the apps you hid, dryfit's service with
-its log, **Open at login**, and updates.
+**Settings** is a page of the window: open it with the gear at the bottom of the sidebar, with ⌘, or
+from the menu bar icon's right-click menu. It holds the folders dryfit searches for apps, the apps you
+hid, dryfit's service with its log, **Open at login**, and updates.
 
 ## Install
 

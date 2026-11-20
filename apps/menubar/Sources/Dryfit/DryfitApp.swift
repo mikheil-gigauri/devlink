@@ -12,7 +12,7 @@ struct DryfitApp: App {
     MenuBarExtra {
       MenuContent(model: delegate.model, navigation: delegate.navigation, actions: delegate.actions)
     } label: {
-      MenuBarLabel(icon: delegate.model.icon, menu: delegate.statusMenu)
+      MenuBarLabel(icon: delegate.model.icon, menu: delegate.statusMenu, navigation: delegate.navigation)
     }
     .menuBarExtraStyle(.window)
 
@@ -31,6 +31,7 @@ struct DryfitApp: App {
         }
       }
       SidebarCommands()
+      SettingsCommands(navigation: delegate.navigation)
       CommandGroup(replacing: .newItem) {
         Button("Add Library…") {
           Task { await delegate.model.chooseLibraryFolder(navigation: delegate.navigation) }
@@ -43,10 +44,6 @@ struct DryfitApp: App {
         Button("New Group…") { delegate.navigation.groupEditor = .new }
           .keyboardShortcut("n", modifiers: [.command, .shift])
       }
-    }
-
-    Settings {
-      SettingsView(model: delegate.model, actions: delegate.actions)
     }
   }
 

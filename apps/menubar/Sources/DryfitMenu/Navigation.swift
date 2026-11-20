@@ -21,6 +21,8 @@ public enum SidebarItem: Hashable, Sendable {
   case library(String)
   case app(String)
   case group(String)
+  /// Where to look for apps, hidden apps, the service, login and updates.
+  case settings
 }
 
 public struct LibraryEditorRequest: Identifiable, Equatable {
@@ -42,6 +44,15 @@ public enum GroupEditorRequest: Identifiable, Equatable {
 
 /// The identifier of the dryfit window scene.
 public let mainWindowID = "main"
+
+extension AppNavigation {
+  /// Shows Settings in the dryfit window; `openWindow` brings the window up.
+  public func showSettings(_ openWindow: () -> Void) {
+    selection = .settings
+    openWindow()
+    NSApp.activate()
+  }
+}
 
 /// Asks for folders with the standard Open panel, attached to the key window when there is one.
 public enum FolderPanel {

@@ -12,7 +12,7 @@ public final class StatusMenu: NSObject {
   let actions: MenuActions
   /// Set by the menu bar icon, which is always on screen, so the menu can open SwiftUI's windows.
   var openWindow: (() -> Void)?
-  var openSettings: (() -> Void)?
+  var navigation: AppNavigation?
   private var monitor: Any?
 
   public init(model: MenuModel, actions: MenuActions) {
@@ -87,8 +87,8 @@ public final class StatusMenu: NSObject {
   }
 
   @objc private func showSettings() {
-    openSettings?()
-    NSApp.activate()
+    guard let openWindow else { return }
+    navigation?.showSettings(openWindow)
   }
 
   @objc private func openLog() { actions.openLog() }
@@ -103,19 +103,37 @@ public final class StatusMenu: NSObject {
 public struct MenuBarLabel: View {
   let icon: MenuModel.Icon
   let menu: StatusMenu
+  let navigation: AppNavigation
   @Environment(\.openWindow) private var openWindow
-  @Environment(\.openSettings) private var openSettings
 
-  public init(icon: MenuModel.Icon, menu: StatusMenu) {
+  public init(icon: MenuModel.Icon, menu: StatusMenu, navigation: AppNavigation) {
     self.icon = icon
     self.menu = menu
+    self.navigation = navigation
   }
 
   public var body: some View {
     Image(nsImage: MenuBarIcon.image(for: icon))
       .onAppear {
         menu.openWindow = { openWindow(id: mainWindowID) }
-        menu.openSettings = { openSettings() }
+        menu.navigation = navigation
       }
+  }
+}
+
+/// Settings… (⌘,) in the app menu, opening the dryfit window at Settings.
+public struct SettingsCommands: Commands {
+  let navigation: AppNavigation
+  @Environment(\.openWindow) private var openWindow
+
+  public init(navigation: AppNavigation) {
+    self.navigation = navigation
+  }
+
+  public var body: some Commands {
+    CommandGroup(replacing: .appSettings) {
+      Button("Settings…") { navigation.showSettings { openWindow(id: mainWindowID) } }
+        .keyboardShortcut(",")
+    }
   }
 }

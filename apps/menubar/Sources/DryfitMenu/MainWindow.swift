@@ -58,6 +58,15 @@ public struct MainWindow: View {
   }
 
   @ViewBuilder private var detail: some View {
+    // Settings shows whatever the connection, so dryfit can be started or its log opened from there.
+    if navigation.selection == .settings {
+      SettingsView(model: model, actions: actions)
+    } else {
+      connectedDetail
+    }
+  }
+
+  @ViewBuilder private var connectedDetail: some View {
     switch model.connection {
     case .online:
       switch navigation.selection {
@@ -187,6 +196,15 @@ private struct Sidebar: View {
         .disabled(model.connection != .online)
         .help("Add a library, an app or a group")
         Spacer()
+        Button {
+          navigation.selection = .settings
+        } label: {
+          Label("Settings", systemImage: "gearshape")
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .foregroundStyle(navigation.selection == .settings ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        .help("Settings (⌘,)")
       }
       .padding(.horizontal, 14)
       .padding(.vertical, 10)
@@ -242,7 +260,7 @@ private struct WelcomeView: View {
             done: !model.libraries.isEmpty
           ) {
             Button("Add Library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
-              .buttonStyle(.borderedProminent)
+              .buttonStyle(.glassProminent)
           }
           Step(
             number: 3, title: "Link it to an app",
@@ -410,6 +428,11 @@ private struct LibraryDetail: View {
     }
     .toolbar {
       ToolbarItem {
+        Button("Show in Finder", systemImage: "folder") { revealInFinder(library.root) }
+          .help("Show \(name) in Finder")
+      }
+      ToolbarSpacer(.fixed)
+      ToolbarItem {
         AutoSyncSwitch(library: library, model: model)
       }
       ToolbarSpacer(.fixed)
@@ -435,6 +458,7 @@ private struct AppRow: View {
   let link: DryfitAPI.Link
   let model: MenuModel
   let actions: MenuActions
+  @State private var hovering = false
   @Environment(\.timeZone) private var timeZone
 
   var body: some View {
@@ -462,7 +486,10 @@ private struct AppRow: View {
         .controlSize(.small)
         .disabled(model.isBusy(.restore(link.consumer, link.library)))
         .help("Put \(projectName(link.consumer)) back on the release of \(link.library)")
+        // A healthy link shows Restore under the pointer only; a failed one always offers the way back.
+        .opacity(hovering || link.status == .failed || model.isBusy(.restore(link.consumer, link.library)) ? 1 : 0)
     }
+    .onHover { hovering = $0 }
     .contextMenu {
       Button("Show in Finder") { revealInFinder(link.consumer) }
     }
@@ -521,6 +548,7 @@ private struct SuggestedAppRow: View {
       }
       Button("Link") { Task { await model.link(library, into: consumer.root) } }
         .controlSize(.small)
+        .foregroundStyle(.tint)
         .disabled(model.isBusy(.link(library, consumer.root)))
         .help("Install the dev build of \(library) into \(projectName(consumer.root))")
     }
@@ -597,9 +625,18 @@ private struct GroupDetail: View {
       if let warnings = model.status?.warnings.filter({ $0.group == name }), !warnings.isEmpty {
         Section {
           ForEach(Array(warnings.enumerated()), id: \.offset) { _, warning in
-            Label(
-              "These apps run different builds of \(warning.library). Sync it, or restore the group.",
-              systemImage: "exclamationmark.triangle.fill")
+            Label {
+              VStack(alignment: .leading, spacing: 2) {
+                Text("These apps run different builds of \(warning.library). Sync it, or restore the group.")
+                Text(warning.versions
+                  .map { "\(projectName($0.consumer)) \(DevVersion.describe($0.version, timeZone: timeZone))" }
+                  .joined(separator: ", "))
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+            } icon: {
+              Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            }
           }
         }
       }
