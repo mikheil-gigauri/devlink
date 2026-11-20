@@ -64,6 +64,56 @@ describe('discoverConsumers', () => {
     expect(roots).not.toContain(`${SHOP}/projects/widget`);
   });
 
+  it('keeps searching below a package.json that is not a consumer', async () => {
+    const dependent = json({ name: 'nested', dependencies: { '@acme/ui': '1.4.0' } });
+    const { deps } = createScenario({
+      state: registered,
+      files: {
+        ...scenarioFiles(),
+        '/repos/package.json': json({ name: 'stray', dependencies: { lodash: '^4.17.21' } }),
+        '/repos/blog/packages/widget/package.json': dependent,
+      },
+    });
+
+    const roots = (await discoverConsumers(deps, { roots: ['/repos'] })).map((consumer) => consumer.root);
+
+    expect(roots).toEqual([ADMIN, '/repos/blog/packages/widget', SHOP]);
+  });
+
+  it('keeps searching below an unreadable package.json', async () => {
+    const dependent = json({ name: 'app', dependencies: { '@acme/ui': '1.4.0' } });
+    const { deps } = createScenario({
+      state: registered,
+      files: { '/code/package.json': '{ nope', '/code/app/package.json': dependent },
+    });
+
+    const roots = (await discoverConsumers(deps, { roots: ['/code'] })).map((consumer) => consumer.root);
+
+    expect(roots).toEqual(['/code/app']);
+  });
+
+  it('does not search inside a registered library', async () => {
+    const dependent = json({ name: 'demo', dependencies: { '@acme/ui': '1.4.0' } });
+    const { deps } = createScenario({
+      state: registered,
+      files: { ...scenarioFiles(), [`${LIB}/projects/demo/package.json`]: dependent },
+    });
+
+    const roots = (await discoverConsumers(deps, { roots: ['/repos'] })).map((consumer) => consumer.root);
+
+    expect(roots).toEqual([ADMIN, SHOP]);
+  });
+
+  it('lists a project once when roots overlap or are spelled differently', async () => {
+    const { deps } = createScenario({ state: registered });
+
+    const roots = (await discoverConsumers(deps, { roots: ['/repos', '/repos/', SHOP] })).map(
+      (consumer) => consumer.root,
+    );
+
+    expect(roots).toEqual([ADMIN, SHOP]);
+  });
+
   it('does not search deeper than maxDepth', async () => {
     const dependent = json({ name: 'deep', dependencies: { '@acme/ui': '1.4.0' } });
     const { deps } = createScenario({ state: registered, files: { '/code/a/b/c/package.json': dependent } });

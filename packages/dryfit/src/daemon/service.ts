@@ -195,7 +195,7 @@ export class DaemonService {
 
       discover: async ({ library }) => {
         const [found, hidden] = await Promise.all([
-          discoverConsumers(deps, { roots: await this.#options.roots() }),
+          discoverConsumers(deps, { roots: await this.#searchRoots() }),
           this.#options.hiddenApps(),
         ]);
         const consumers = found.filter((consumer) => !hidden.includes(consumer.root));
@@ -302,6 +302,18 @@ export class DaemonService {
         return { ok: true };
       },
     };
+  }
+
+  /**
+   * The configured folders, or, when there are none (`dryfit init` never ran, or the menu bar user
+   * skipped choosing folders), the folders holding the registered libraries: an app next to its
+   * library is the likeliest consumer, and searching nothing would look like finding nothing.
+   */
+  async #searchRoots(): Promise<readonly string[]> {
+    const roots = await this.#options.roots();
+    if (roots.length > 0) return roots;
+    const { libraries } = await this.#deps.state.load();
+    return [...new Set(libraries.map((library) => joinPath(library.root, '..')))];
   }
 
   #startWatching(library: LibraryRecord): void {
