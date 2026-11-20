@@ -345,6 +345,55 @@ import Testing
     #expect(model.icon == .idle)
   }
 
+  @Test func aBuildThatKeepsFailingIsOneFailure_heardOnce() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(.buildFailed(library: "@acme/ui", output: "TS2304: Cannot find name 'Butto'."), id: 1)
+    daemon.channel.send(.buildFailed(library: "@acme/ui", output: "TS2304: Cannot find name 'Buton'."), id: 2)
+    await eventually { notifier.posted.count == 2 }
+
+    #expect(model.failures.map(\.detail) == ["TS2304: Cannot find name 'Buton'."])
+    #expect(notifier.quiet.map(\.detail) == ["TS2304: Cannot find name 'Buton'."])
+  }
+
+  @Test func aBuildOrInstallThatWorksAgainClearsItsFailureAndSaysSo() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(.buildFailed(library: "@acme/ui", output: "TS2304"), id: 1)
+    daemon.channel.send(
+      .installFailed(library: "@acme/ui", consumer: admin, version: version, output: "npm ERR! ERESOLVE"), id: 2)
+    daemon.channel.send(.watchFailed(library: "@acme/forms", message: "EMFILE"), id: 3)
+    await eventually { model.failures.count == 3 }
+
+    daemon.channel.send(.buildSucceeded(library: "@acme/ui"), id: 4)
+    daemon.channel.send(.installSucceeded(library: "@acme/ui", consumer: shop, version: version), id: 5)
+    daemon.channel.send(.installSucceeded(library: "@acme/ui", consumer: admin, version: version), id: 6)
+    await eventually { model.failures.count == 1 }
+
+    #expect(model.failures.map(\.title) == ["Auto-sync of @acme/forms stopped"])
+    #expect(notifier.recoveries == ["@acme/ui builds again", "@acme/ui installs into admin again"])
+    #expect(model.icon == .attention)
+  }
+
+  @Test func restoringAnAppClearsItsFailedInstalls_andNothingIsLeftToSee() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(
+      .installFailed(library: "@acme/ui", consumer: admin, version: version, output: "npm ERR! ERESOLVE"), id: 1)
+    await eventually { model.failures.count == 1 }
+    daemon.channel.send(.consumerRestored(consumer: admin, library: nil, ok: true), id: 2)
+    await eventually { model.failures.isEmpty }
+
+    #expect(!model.hasUnseenFailure)
+    #expect(notifier.recoveries.isEmpty)
+  }
+
   @Test func reportsFailedInstallsAndJobsWithoutOwnEvents() async {
     let model = makeModel()
     let task = await started(model)

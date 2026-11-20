@@ -176,7 +176,13 @@ final class EventChannel: @unchecked Sendable {
 
 @MainActor final class RecordingNotifier: Notifier {
   var posted: [Failure] = []
-  func post(_ failure: Failure) { posted.append(failure) }
+  var quiet: [Failure] = []
+  var recoveries: [String] = []
+  func post(_ failure: Failure, quietly: Bool) {
+    posted.append(failure)
+    if quietly { quiet.append(failure) }
+  }
+  func recovered(_ failure: Failure, message: String) { recoveries.append(message) }
 }
 
 /// Waits until `condition` holds, failing after a second.

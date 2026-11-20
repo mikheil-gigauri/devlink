@@ -116,5 +116,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private final class NotifierRelay: Notifier {
   var target: (any Notifier)?
-  func post(_ failure: Failure) { target?.post(failure) }
+  func post(_ failure: Failure, quietly: Bool) { target?.post(failure, quietly: quietly) }
+  func recovered(_ failure: Failure, message: String) { target?.recovered(failure, message: message) }
 }

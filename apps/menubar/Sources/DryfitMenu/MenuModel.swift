@@ -11,19 +11,30 @@ public struct Failure: Identifiable, Equatable, Sendable {
   public let date: Date
   /// The app an install failed in, so its row can show the output.
   public let consumer: String?
+  /// What failed, such as the build of one library, so a newer failure of it replaces this one and a
+  /// success clears it. Nil for one-off failures, which stay until dismissed.
+  public let subject: String?
 
-  public init(id: UUID = UUID(), title: String, detail: String, date: Date = .now, consumer: String? = nil) {
+  public init(
+    id: UUID = UUID(), title: String, detail: String, date: Date = .now, consumer: String? = nil,
+    subject: String? = nil
+  ) {
     self.id = id
     self.title = title
     self.detail = detail
     self.date = date
     self.consumer = consumer
+    self.subject = subject
   }
 }
 
 /// Posts failures where the user will see them: a system notification in the app.
 public protocol Notifier: AnyObject {
-  func post(_ failure: Failure)
+  /// `quietly` when the same thing was failing already: the user has heard, so it replaces the last
+  /// notification of it without a sound.
+  func post(_ failure: Failure, quietly: Bool)
+  /// What `failure` was about works again; `message` says so in place of its notification.
+  func recovered(_ failure: Failure, message: String)
 }
 
 /// A restore to retry once the user agrees: an app, and the one library in it or nil for all.
@@ -386,17 +397,28 @@ public struct LibraryRow: Identifiable, Equatable {
     case .buildStarted(let library):
       activity = "Building \(library)…"
     case .buildFailed(let library, let output):
-      fail("Build of \(library) failed", output)
+      fail("Build of \(library) failed", output, subject: Self.buildSubject(library))
+    case .buildSucceeded(let library):
+      recover(Self.buildSubject(library), "\(library) builds again")
     case .publishSucceeded(let library, let version):
       activity = "Published \(library) \(DevVersion.describe(version))"
     case .installStarted(let library, let consumer, _):
       activity = "Installing \(library) into \(projectName(consumer))…"
     case .installFailed(let library, let consumer, _, let output):
-      fail("Install of \(library) into \(projectName(consumer)) failed", output, consumer: consumer)
+      fail(
+        "Install of \(library) into \(projectName(consumer)) failed", output, consumer: consumer,
+        subject: Self.installSubject(library, consumer))
+    case .installSucceeded(let library, let consumer, _):
+      recover(Self.installSubject(library, consumer), "\(library) installs into \(projectName(consumer)) again")
     case .consumerRestored(let consumer, let library, _):
       activity = library.map { "Restored \($0) in \(projectName(consumer))" } ?? "Restored \(projectName(consumer))"
       // Back on its releases, the app has no dev build left to restart for.
       if library == nil { restartNeeded.remove(consumer) }
+      // Nor a failed install to show: its row is gone, and the failure would turn into a banner.
+      failures.removeAll { failure in
+        failure.consumer == consumer && (library.map { failure.subject == Self.installSubject($0, consumer) } ?? true)
+      }
+      if failures.isEmpty { hasUnseenFailure = false }
     case .cachesCleared(let consumer, _):
       restartNeeded.insert(consumer)
     case .jobStarted(let job):
@@ -411,18 +433,34 @@ public struct LibraryRow: Identifiable, Equatable {
       if let error, Self.unseenFailureCodes.contains(error.code) { fail(error.message, error.message) }
       Task { await refresh(clearingActivityWhenIdle: true) }
     case .watchFailed(let library, let message):
-      fail("Auto-sync of \(library) stopped", message)
+      fail("Auto-sync of \(library) stopped", message, subject: "watch \(library)")
       scheduleRefresh()
-    case .buildSucceeded, .installSucceeded, .libraryChanged, .unknown:
+    case .libraryChanged, .unknown:
       break
     }
   }
 
-  private func fail(_ title: String, _ detail: String, consumer: String? = nil) {
-    let failure = Failure(title: title, detail: detail, consumer: consumer)
-    failures = Array(([failure] + failures).prefix(20))
+  private static func buildSubject(_ library: String) -> String { "build \(library)" }
+  private static func installSubject(_ library: String, _ consumer: String) -> String {
+    "install \(library) into \(consumer)"
+  }
+
+  /// Records a failure. One of something already failing takes its place, so saving a broken file again
+  /// and again shows one failure, not a pile, and notifies once with a sound.
+  private func fail(_ title: String, _ detail: String, consumer: String? = nil, subject: String? = nil) {
+    let failure = Failure(title: title, detail: detail, consumer: consumer, subject: subject)
+    let repeated = subject != nil && failures.contains { $0.subject == subject }
+    failures = Array(([failure] + failures.filter { subject == nil || $0.subject != subject }).prefix(20))
     hasUnseenFailure = true
-    notifier.post(failure)
+    notifier.post(failure, quietly: repeated)
+  }
+
+  /// What failed works again: its failure is gone from the menu, and its notification says so.
+  private func recover(_ subject: String, _ message: String) {
+    guard let failure = failures.first(where: { $0.subject == subject }) else { return }
+    failures.removeAll { $0.subject == subject }
+    if failures.isEmpty { hasUnseenFailure = false }
+    notifier.recovered(failure, message: message)
   }
 
   private func scheduleRefresh() {
