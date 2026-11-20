@@ -45,10 +45,10 @@ public struct MenuContent: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       Header(model: model) { show(nil) }
-      Divider()
+      Hairline()
       if model.connection == .online, let outdated = model.outdatedVersion {
         OutdatedBanner(model: model, version: outdated)
-        Divider()
+        Hairline()
       }
       switch model.connection {
       case .online:
@@ -60,12 +60,13 @@ public struct MenuContent: View {
       case .incompatible(let daemonVersion):
         IncompatibleView(model: model, actions: actions, daemonVersion: daemonVersion)
       }
-      // Only when it has something to say: what dryfit is doing, or a way to add a library.
-      if model.activity != nil || (model.connection == .online && !model.libraries.isEmpty) {
-        Divider()
-        Footer(model: model, addLibrary: addLibrary)
+      // Only while dryfit is doing something.
+      if let activity = model.activity {
+        Hairline()
+        Footer(activity: activity)
       }
     }
+    .font(DS.body)
     .frame(width: 340)
     .onAppear { model.menuOpened() }
     // The rest of what the old footer menu held is on the menu bar icon's right-click menu. These keep
@@ -102,25 +103,22 @@ private struct Header: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      Circle().fill(dot).frame(width: 8, height: 8).accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 0) {
-        Text("dryfit").font(.headline)
-        Text(subtitle).font(.caption).foregroundStyle(.secondary)
-      }
-      Spacer()
+      Circle().fill(dot).frame(width: 7, height: 7).accessibilityHidden(true)
+      TwoLine(title: "dryfit", caption: subtitle, titleFont: DS.medium)
+      Spacer(minLength: 8)
       Button("Open", action: openWindow)
-        .controlSize(.small)
+        .buttonStyle(.pill)
         .help("Open the dryfit window to add libraries, link apps and manage groups")
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 9)
   }
 
   private var dot: Color {
     switch model.connection {
-    case .online: model.failures.isEmpty ? .green : .orange
+    case .online: .green
     case .connecting, .starting: .yellow
-    case .offline: .secondary
+    case .offline: Color.primary.opacity(0.2)
     case .incompatible: .orange
     }
   }
@@ -141,23 +139,18 @@ private struct Header: View {
 }
 
 private struct Footer: View {
-  let model: MenuModel
-  let addLibrary: () -> Void
+  let activity: String
 
   var body: some View {
-    HStack(spacing: 8) {
-      if let activity = model.activity {
-        ProgressView().controlSize(.mini)
-        Text(activity).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
-      } else {
-        Button("Add Library…", systemImage: "plus", action: addLibrary)
-          .buttonStyle(.borderless)
-      }
-      Spacer(minLength: 8)
+    HStack(spacing: 6) {
+      ProgressView().controlSize(.mini)
+      Text(activity).lineLimit(1).truncationMode(.middle)
+      Spacer(minLength: 0)
     }
-    .font(.callout)
-    .padding(.horizontal, 14)
-    .padding(.vertical, 8)
+    .font(DS.body)
+    .foregroundStyle(.secondary)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 7)
   }
 }
 
@@ -170,63 +163,88 @@ private struct OnlineContent: View {
   let addLibrary: () -> Void
 
   var body: some View {
-    // As tall as its content, scrolling past what fits under the menu bar.
-    ScrollView { sections }
-      .scrollBounceBehavior(.basedOnSize)
-      .frame(maxHeight: 540)
-      .fixedSize(horizontal: false, vertical: true)
-      .task {
-        // The link chips offer projects that use each library; finding them reads the disk once.
-        if model.consumers.isEmpty { await model.discoverConsumers() }
-      }
+    if model.libraries.isEmpty && model.groups.isEmpty && banners.isEmpty {
+      GetStarted(addLibrary: addLibrary)
+    } else {
+      // As tall as its content, scrolling past what fits under the menu bar.
+      ScrollView { sections }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: 540)
+        .fixedSize(horizontal: false, vertical: true)
+        .task {
+          // The link chips offer projects that use each library; finding them reads the disk once.
+          if model.consumers.isEmpty { await model.discoverConsumers() }
+        }
+    }
+  }
+
+  /// Failures a link row does not already show as "Failed · Show output".
+  private var banners: [Failure] {
+    let shown = Set(
+      model.libraries.flatMap(\.links).filter { $0.status == .failed }.compactMap {
+        model.installFailure(in: $0.consumer)?.id
+      })
+    return model.failures.filter { !shown.contains($0.id) }
   }
 
   private var sections: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      if let failure = model.failures.first {
-        FailureBanner(failure: failure, more: model.failures.count - 1, model: model, actions: actions)
+    VStack(alignment: .leading, spacing: 0) {
+      if let failure = banners.first {
+        FailureBanner(failure: failure, more: banners.count - 1, model: model, actions: actions)
+          .padding(.bottom, 8)
       }
       if let request = model.driftedRestore {
-        DriftedRestoreBanner(request: request, model: model)
+        DriftedRestoreBanner(request: request, model: model).padding(.bottom, 8)
       }
       if let error = model.actionError {
-        ErrorBanner(message: error) { model.dismissActionError() }
+        ErrorBanner(message: error) { model.dismissActionError() }.padding(.bottom, 8)
       }
       if model.libraries.isEmpty {
         GetStarted(addLibrary: addLibrary)
-      } else {
-        ForEach(model.libraries) { row in
-          LibraryCard(row: row, model: model, actions: actions) { show(.library(row.library.name)) }
-        }
+      }
+      ForEach(model.libraries) { row in
+        LibraryCard(row: row, model: model, actions: actions) { show(.library(row.library.name)) }
+          .padding(.bottom, 8)
       }
       if !model.groups.isEmpty {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Groups")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.top, 4)
-          ForEach(model.groups) { group in
-            GroupRowView(group: group, model: model) { show(.group(group.name)) }
-          }
+        Text("Groups")
+          .font(DS.caption)
+          .foregroundStyle(.tertiary)
+          .padding(.horizontal, 2)
+          .padding(.top, 6)
+          .padding(.bottom, 4)
+        ForEach(model.groups) { group in
+          GroupRowView(group: group, model: model) { show(.group(group.name)) }
         }
       }
     }
     .padding(.horizontal, 10)
-    .padding(.vertical, 10)
+    .padding(.vertical, 8)
   }
 }
 
-/// A row that highlights under the pointer, like a menu item.
-private struct HoverHighlight: ViewModifier {
-  @State private var hovering = false
+/// A centred message: a symbol, a title, a line of text and the one thing to do.
+private struct Centered<Actions: View>: View {
+  let symbol: String
+  var tint: Color? = nil
+  let title: String
+  let text: String
+  @ViewBuilder var actions: Actions
 
-  func body(content: Content) -> some View {
-    content
-      .padding(.horizontal, 6)
-      .padding(.vertical, 4)
-      .background(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 8))
-      .onHover { hovering = $0 }
+  var body: some View {
+    VStack(spacing: 0) {
+      Image(systemName: symbol)
+        .font(.system(size: 24))
+        .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tertiary))
+        .accessibilityHidden(true)
+      Text(title).font(DS.headline).multilineTextAlignment(.center).padding(.top, 6).padding(.bottom, 4)
+      Text(text).font(DS.body).foregroundStyle(.tertiary).multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+      actions
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.horizontal, 16)
+    .padding(.vertical, 18)
   }
 }
 
@@ -234,24 +252,16 @@ private struct GetStarted: View {
   let addLibrary: () -> Void
 
   var body: some View {
-    VStack(spacing: 10) {
-      Tile(symbol: "shippingbox", tint: .teal, size: 44)
-      Text("Test your library in your apps").font(.headline)
-      Text("Add a library you're working on, and dryfit installs each change into the apps that use it.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
-      Button("Add Library…", action: addLibrary)
-        .buttonStyle(.glassProminent)
-        .padding(.top, 2)
+    Centered(
+      symbol: "shippingbox", title: "Test your library in your apps",
+      text: "Add a library you're working on, and dryfit installs each change into the apps that use it."
+    ) {
+      Button("Add library", action: addLibrary).buttonStyle(.primaryPill).padding(.top, 12)
     }
-    .frame(maxWidth: .infinity)
-    .padding(.vertical, 12)
-    .padding(.horizontal, 16)
   }
 }
 
+/// A failure no link row shows: a build, or an auto-sync that stopped.
 private struct FailureBanner: View {
   let failure: Failure
   let more: Int
@@ -259,23 +269,21 @@ private struct FailureBanner: View {
   let actions: MenuActions
 
   var body: some View {
-    HStack(alignment: .top, spacing: 8) {
-      Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+    HStack(alignment: .top, spacing: 7) {
+      Image(systemName: "xmark.circle").foregroundStyle(.red)
       VStack(alignment: .leading, spacing: 2) {
-        Text(failure.title).font(.callout.weight(.medium))
-        Text(firstLine).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(2)
-        HStack(spacing: 12) {
-          Button(more > 0 ? "Show All \(more + 1)…" : "Show Output…") { actions.showFailures(failure.id) }
-          Button("Dismiss") { model.clearFailures() }
+        Text(failure.title).font(DS.medium)
+        Text(firstLine).font(DS.mono).foregroundStyle(.secondary).lineLimit(2)
+        HStack(spacing: 6) {
+          Button(more > 0 ? "Show all \(more + 1)" : "Show output") { actions.showFailures(failure.id) }
+            .buttonStyle(.pill)
+          Button("Dismiss") { model.clearFailures() }.buttonStyle(.pill)
         }
-        .buttonStyle(.link)
-        .font(.caption)
-        .padding(.top, 2)
+        .padding(.top, 4)
       }
       Spacer(minLength: 0)
     }
-    .padding(10)
-    .background(.red.opacity(0.1), in: .rect(cornerRadius: 10))
+    .card()
   }
 
   private var firstLine: String {
@@ -290,27 +298,24 @@ struct DriftedRestoreBanner: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Label {
+      HStack(alignment: .top, spacing: 7) {
+        Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
         Text("\(projectName(request.consumer))'s package.json changed after it was linked. Restoring puts back the version from before linking, and drops those changes.")
-      } icon: {
-        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
       }
-      .font(.callout)
-      .fixedSize(horizontal: false, vertical: true)
-      HStack {
+      HStack(spacing: 6) {
         Spacer()
-        Button("Cancel") { model.driftedRestore = nil }
-        Button("Restore Anyway") {
+        Button("Cancel") { model.driftedRestore = nil }.buttonStyle(.pill)
+        Button("Restore anyway") {
           Task { await model.restore(request.consumer, library: request.library, force: true) }
         }
+        .buttonStyle(.dangerPill)
       }
-      .controlSize(.small)
     }
-    .padding(10)
-    .background(.orange.opacity(0.1), in: .rect(cornerRadius: 10))
+    .font(DS.body)
+    .card()
   }
 }
-
 
 /// A library as a card: its state and controls on top, then, unless folded, the apps it is linked
 /// into and one-click links for the apps that use it. A card is content, so a hairline, not glass.
@@ -325,55 +330,46 @@ private struct LibraryCard: View {
 
   var body: some View {
     let candidates = model.linkCandidates(for: name)
-    VStack(alignment: .leading, spacing: 2) {
-      HStack(spacing: 6) {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 7) {
         Button {
           withAnimation(.snappy) { isFolded.toggle() }
         } label: {
-          Image(systemName: "chevron.right")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .rotationEffect(.degrees(isFolded ? 0 : 90))
-            .frame(width: 14, height: 22)
+          Image(systemName: isFolded ? "chevron.right" : "chevron.down")
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+            .frame(width: 12, height: 22)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isFolded ? "Show \(name)'s apps" : "Hide \(name)'s apps")
         Button(action: open) {
-          VStack(alignment: .leading, spacing: 1) {
-            Text(name).font(.body.weight(.medium)).lineLimit(1)
-            Text(subtitle(candidates: candidates.count)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .contentShape(.rect)
+          TwoLine(title: name, caption: subtitle(candidates: candidates.count), titleFont: DS.medium)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .help("Show \(name) in the dryfit window")
-        Text("Auto").font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+        Text("Auto").font(DS.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
         Toggle("Auto-sync \(name)", isOn: watch)
-          .toggleStyle(.switch)
-          .controlSize(.mini)
-          .labelsHidden()
+          .toggleStyle(.mini)
           .disabled(model.isBusy(.watch(name)))
           .help(row.library.isWatched ? "Auto-sync is on: every change you save is synced" : "Auto-sync: sync every change you save")
         IconButton(
-          symbol: "arrow.triangle.2.circlepath", label: "Sync \(name) now", busy: model.isBusy(.sync(name))
+          symbol: "arrow.clockwise", label: "Sync \(name) now",
+          busy: model.isBusy(.sync(name)) || model.status?.jobs.running?.label == "sync \(name)"
         ) { Task { await model.sync(name) } }
       }
-      if syncing {
-        ProgressView().progressViewStyle(.linear).controlSize(.mini).padding(.leading, 20)
-          .accessibilityLabel("Syncing \(name)")
-      }
+      .padding(4)
       if !isFolded {
         ForEach(row.links) { link in LinkRowView(link: link, model: model, actions: actions) }
         LinkChips(library: name, candidates: candidates, model: model)
           .padding(.leading, 20)
-          .padding(.top, 2)
+          .padding(.horizontal, 4)
+          .padding(.vertical, 2)
       }
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 6)
-    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator, lineWidth: 0.5) }
+    .card()
   }
 
   private var name: String { row.library.name }
@@ -387,11 +383,6 @@ private struct LibraryCard: View {
     }
   }
 
-  /// Syncing now: the user asked, or the daemon is running a job for this library.
-  private var syncing: Bool {
-    model.isBusy(.sync(name)) || model.status?.jobs.running?.label == "sync \(name)"
-  }
-
   private func subtitle(candidates: Int) -> String {
     let count = row.links.count
     guard count > 0 else {
@@ -402,12 +393,18 @@ private struct LibraryCard: View {
       }
     }
     let apps = count == 1 ? "1 app" : "\(count) apps"
-    return row.library.published(timeZone: timeZone) + " · " + apps
+    return shortVersion(row.library.published(timeZone: timeZone)) + " · " + apps
   }
 
   private var watch: Binding<Bool> {
     Binding(get: { row.library.isWatched }, set: { enabled in Task { await model.setWatch(name, enabled: enabled) } })
   }
+}
+
+/// "dev 14:32" for "1.4.1 · dev 14:32": the menu is narrow, and the window has the rest.
+func shortVersion(_ described: String) -> String {
+  guard let range = described.range(of: " · dev ") else { return described }
+  return "dev " + described[range.upperBound...]
 }
 
 private struct LinkRowView: View {
@@ -418,34 +415,33 @@ private struct LinkRowView: View {
   @Environment(\.timeZone) private var timeZone
 
   var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: link.symbol)
-        .font(.caption)
+    HStack(spacing: 7) {
+      Image(systemName: link.status == .failed ? "xmark.circle" : link.status == .pending ? "clock" : "checkmark.circle")
         .foregroundStyle(link.tint)
-        .frame(width: 16)
+        .accessibilityHidden(true)
       Text(projectName(link.consumer)).lineLimit(1)
       Spacer(minLength: 8)
       if link.status == .failed, let failure = model.installFailure(in: link.consumer) {
-        Button("Failed · Show Output") { actions.showFailures(failure.id) }
-          .buttonStyle(.link)
-          .font(.caption)
+        Button("Failed · Show output") { actions.showFailures(failure.id) }
+          .buttonStyle(.plain)
           .foregroundStyle(.red)
       } else {
-        Text(link.detail(timeZone: timeZone))
-          .font(.caption)
-          .foregroundStyle(link.status == .failed ? .red : .secondary)
+        Text(link.status == .installed ? shortVersion(link.detail(timeZone: timeZone)) : link.detail(timeZone: timeZone))
+          .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
           .lineLimit(1)
+        // Dimmed until the pointer is on the row, so a list of healthy links stays quiet.
+        IconButton(
+          symbol: "arrow.uturn.backward",
+          label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
+          busy: busy
+        ) { Task { await model.restore(link.consumer, library: link.library) } }
+        .opacity(hovering || busy ? 1 : 0.35)
       }
-      // Shown under the pointer only, so a list of healthy links stays quiet.
-      IconButton(
-        symbol: "arrow.uturn.backward",
-        label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
-        busy: busy
-      ) { Task { await model.restore(link.consumer, library: link.library) } }
-      .opacity(hovering || busy ? 1 : 0)
     }
-    .padding(.leading, 14)
-    .modifier(HoverHighlight())
+    .font(DS.body)
+    .padding(4)
+    .padding(.leading, 20)
+    .contentShape(.rect)
     .onHover { hovering = $0 }
     .help(abbreviatedPath(link.consumer))
   }
@@ -461,9 +457,9 @@ private struct LinkChips: View {
   let model: MenuModel
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 3) {
+    VStack(alignment: .leading, spacing: 0) {
       if !candidates.isEmpty {
-        Text("Also uses it:").font(.caption).foregroundStyle(.secondary)
+        Text("Also uses it:").font(DS.caption).foregroundStyle(.tertiary)
       }
       FlowLayout(spacing: 4) {
         ForEach(candidates) { consumer in
@@ -473,29 +469,29 @@ private struct LinkChips: View {
           } label: {
             HStack(spacing: 3) {
               if busy { ProgressView().controlSize(.mini) } else { Image(systemName: "link") }
-              Text(projectName(consumer.root)).lineLimit(1)
+              Text(projectName(consumer.root))
             }
-            .font(.caption)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .foregroundStyle(.tint)
-            .background(.tint.opacity(0.14), in: .rect(cornerRadius: 6))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(ChipButtonStyle())
           .disabled(busy)
           .help("Install the dev build of \(library) into \(projectName(consumer.root))")
         }
         Menu {
           LinkMenuItems(library: library, model: model)
         } label: {
-          Text(candidates.isEmpty ? "Link to App…" : "Other…").font(.caption)
+          Text(candidates.isEmpty ? "Link to app…" : "Other…")
+            .font(DS.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .contentShape(.rect)
         }
         .menuStyle(.button)
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .controlSize(.small)
         .fixedSize()
       }
+      .padding(.top, 2)
     }
   }
 }
@@ -506,44 +502,31 @@ private struct GroupRowView: View {
   let open: () -> Void
 
   var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: "square.stack.3d.up").foregroundStyle(.secondary).frame(width: 16)
+    HStack(spacing: 7) {
+      Image(systemName: "square.stack.3d.up").foregroundStyle(.tertiary).accessibilityHidden(true)
       Button(action: open) {
-        VStack(alignment: .leading, spacing: 1) {
-          Text(group.name).font(.body.weight(.medium))
-          Text(subtitle)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(.rect)
+        TwoLine(title: group.name, caption: subtitle, titleFont: DS.medium)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(.rect)
       }
       .buttonStyle(.plain)
-      Menu {
+      PillMenu {
         Section("Link into every app in \(group.name)") {
           ForEach(model.libraries) { row in
             Button(row.library.name) { Task { await model.linkGroup(group.name, library: row.library.name) } }
           }
         }
       } label: {
-        if model.isBusy(.linkGroup(group.name)) {
-          ProgressView().controlSize(.mini)
-        } else {
-          Text("Link…")
-        }
+        if model.isBusy(.linkGroup(group.name)) { ProgressView().controlSize(.mini) } else { Text("Link…") }
       }
-      .menuStyle(.button)
-      .menuIndicator(.hidden)
-      .controlSize(.small)
-      .fixedSize()
       .help("Link a library into every app in \(group.name)")
       IconButton(
         symbol: "arrow.uturn.backward", label: "Put every app in \(group.name) back on released versions",
         busy: model.isBusy(.restoreGroup(group.name))
       ) { Task { await model.restoreGroup(group.name) } }
     }
-    .modifier(HoverHighlight())
+    .font(DS.body)
+    .padding(4)
   }
 
   private var subtitle: String {
@@ -603,54 +586,55 @@ struct ServiceUnavailableView: View {
   var compact = false
 
   var body: some View {
-    VStack(spacing: 10) {
-      Image(systemName: model.cliMissing ? "arrow.down.circle" : "power")
-        .font(.system(size: compact ? 28 : 40, weight: .light))
-        .foregroundStyle(.tertiary)
-      Text(model.cliMissing ? "Install dryfit" : "dryfit is not running").font(compact ? .headline : .title2.bold())
-      Text(explanation)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
-      if model.connection == .starting {
-        ProgressView("Starting…").controlSize(.small).padding(.top, 4)
-      } else if model.isBusy(.installCLI) {
-        ProgressView("Installing with npm…").controlSize(.small).padding(.top, 4)
-      } else if model.cliMissing {
-        Button("Install dryfit") { Task { await model.installCLI() } }
-          .buttonStyle(.glassProminent)
-          .padding(.top, 4)
-        Text("Runs \(DaemonLauncher.installCommand)").font(.caption).foregroundStyle(.tertiary)
-      } else {
-        Button("Start dryfit") { Task { await model.startDaemon() } }
-          .buttonStyle(.glassProminent)
-          .padding(.top, 4)
-      }
-      // Shown while the CLI is missing too: a failed install would otherwise just offer the button
-      // again, with no word of why.
-      if let error = model.startError, !model.isBusy(.installCLI) {
-        Text(error)
-          .font(.caption)
-          .foregroundStyle(.red)
-          .multilineTextAlignment(.center)
-          .textSelection(.enabled)
-          .fixedSize(horizontal: false, vertical: true)
-        if model.cliMissing {
-          Button("Copy Install Command") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(DaemonLauncher.installCommand, forType: .string)
-          }
-          .buttonStyle(.link)
-          .font(.caption)
+    Centered(
+      symbol: model.cliMissing ? "arrow.down.circle" : "power",
+      title: model.cliMissing ? "Install dryfit" : "dryfit is not running", text: explanation
+    ) {
+      VStack(spacing: 0) {
+        if model.connection == .starting {
+          ProgressView().controlSize(.small).padding(.top, 12)
+          Text("Starting…").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
+        } else if model.isBusy(.installCLI) {
+          ProgressView().controlSize(.small).padding(.top, 12)
+          Text("Installing with npm…").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
+        } else if model.cliMissing {
+          Button("Install dryfit") { Task { await model.installCLI() } }
+            .buttonStyle(.primaryPill)
+            .padding(.top, 12)
+          Text("Runs \(DaemonLauncher.installCommand)").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
         } else {
-          Button("Open Log", action: actions.openLog).buttonStyle(.link).font(.caption)
+          Button("Start dryfit") { Task { await model.startDaemon() } }
+            .buttonStyle(.primaryPill)
+            .padding(.top, 12)
+        }
+        // Shown while the CLI is missing too: a failed install would otherwise just offer the button
+        // again, with no word of why.
+        if let error = model.startError, !model.isBusy(.installCLI) {
+          Text(error)
+            .font(DS.caption)
+            .foregroundStyle(.red)
+            .multilineTextAlignment(.center)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 8)
+          Group {
+            if model.cliMissing {
+              Button("Copy install command") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(DaemonLauncher.installCommand, forType: .string)
+              }
+            } else {
+              Button("Open log", action: actions.openLog)
+            }
+          }
+          .buttonStyle(.plain)
+          .font(DS.caption)
+          .foregroundStyle(Color.accentColor)
+          .padding(.top, 4)
         }
       }
     }
     .frame(maxWidth: compact ? .infinity : 380)
-    .padding(.horizontal, 24)
-    .padding(.vertical, 20)
   }
 
   private var explanation: String {
@@ -667,35 +651,23 @@ struct IncompatibleView: View {
   let daemonVersion: String
 
   var body: some View {
-    VStack(spacing: 8) {
-      Image(systemName: "exclamationmark.triangle")
-        .font(.system(size: 26, weight: .light))
-        .foregroundStyle(.orange)
-      Text("This app and dryfit \(daemonVersion) do not match").font(.headline)
-        .multilineTextAlignment(.center)
-      Text(explanation)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
+    Centered(
+      symbol: "exclamationmark.triangle", tint: .orange,
+      title: "This app and dryfit \(daemonVersion) don't match", text: explanation
+    ) {
       if model.outdatedVersion != nil {
-        UpdateDryfitControl(model: model, prominent: true).padding(.top, 4)
+        UpdateDryfitControl(model: model, prominent: true).padding(.top, 12)
       } else if model.appIsOlder, let checkForUpdates = actions.checkForUpdates {
-        Button("Check for Updates…", action: checkForUpdates)
-          .buttonStyle(.glassProminent)
-          .padding(.top, 4)
+        Button("Check for updates…", action: checkForUpdates)
+          .buttonStyle(.primaryPill)
+          .padding(.top, 12)
       }
     }
-    .frame(maxWidth: .infinity)
-    .padding(.horizontal, 24)
-    .padding(.vertical, 20)
   }
 
   private var explanation: String {
-    if model.outdatedVersion != nil {
-      return "They speak different versions of dryfit's API. dryfit is the older one."
-    }
-    if model.appIsOlder { return "They speak different versions of dryfit's API. This app is the older one." }
+    if model.outdatedVersion != nil { return "dryfit is the older one." }
+    if model.appIsOlder { return "This app is the older one." }
     return "They speak different versions of dryfit's API. Update the one that is older."
   }
 }
@@ -707,18 +679,16 @@ private struct OutdatedBanner: View {
   let version: String
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: "arrow.up.circle.fill").foregroundStyle(.orange).accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        Text("dryfit \(version) is older than this app").font(.callout.weight(.medium))
-        Text("Update it to \(model.appVersion ?? "the newest version") to get what is new.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
+    HStack(alignment: .center, spacing: 8) {
+      Image(systemName: "arrow.up.circle").foregroundStyle(.orange).accessibilityHidden(true)
+      TwoLine(
+        title: "dryfit \(version) is older than this app",
+        caption: "Update it to \(model.appVersion ?? "the newest version") to get what is new.", titleFont: DS.medium,
+        wraps: true)
       Spacer(minLength: 8)
       UpdateDryfitControl(model: model, prominent: false)
     }
-    .padding(.horizontal, 14)
+    .padding(.horizontal, 12)
     .padding(.vertical, 8)
   }
 }
@@ -729,28 +699,33 @@ struct UpdateDryfitControl: View {
   let prominent: Bool
 
   var body: some View {
-    VStack(alignment: prominent ? .center : .trailing, spacing: 4) {
+    VStack(alignment: prominent ? .center : .trailing, spacing: 0) {
       if model.isBusy(.updateCLI) {
-        ProgressView(prominent ? "Updating with npm…" : "").controlSize(.small)
+        ProgressView().controlSize(.small)
+        if prominent {
+          Text("Updating with npm…").font(DS.caption).foregroundStyle(.tertiary).padding(.top, 6)
+        }
       } else if prominent {
         Button("Update dryfit") { Task { await model.updateCLI() } }
-          .buttonStyle(.glassProminent)
-        Text("Runs npm install --global @dryfit/cli@latest, then restarts dryfit")
-          .font(.caption)
+          .buttonStyle(.primaryPill)
+        Text("Runs npm install --global @dryfit/cli@latest")
+          .font(DS.caption)
           .foregroundStyle(.tertiary)
           .multilineTextAlignment(.center)
+          .padding(.top, 6)
       } else {
         Button("Update") { Task { await model.updateCLI() } }
-          .controlSize(.small)
+          .buttonStyle(.pill)
           .help("Runs npm install --global @dryfit/cli@latest, then restarts dryfit")
       }
       if let error = model.updateError {
         Text(error)
-          .font(.caption)
+          .font(DS.caption)
           .foregroundStyle(.red)
           .multilineTextAlignment(prominent ? .center : .trailing)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
+          .padding(.top, 6)
       }
     }
   }

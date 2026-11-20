@@ -80,10 +80,16 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
             versions: [.init(consumer: shop, version: version), .init(consumer: admin, version: "1.4.0")])
         ],
         jobs: Jobs(running: Job(id: 3, label: "sync @acme/ui", queuedAt: "")))
-      model.consumers = [DiscoveredConsumer(root: "/r/blog", name: "blog", libraries: [], packageManager: .npm)]
-      model.failures = [Failure(title: "Install of @acme/ui into admin failed", detail: failed, date: at)]
+      model.consumers = [
+        DiscoveredConsumer(
+          root: "/r/storybook", name: "storybook",
+          libraries: [.init(name: "@acme/ui", range: "^1.3.0"), .init(name: "@acme/forms", range: "^2.0.0")],
+          packageManager: .npm)
+      ]
+      model.failures = [
+        Failure(title: "Install of @acme/ui into admin failed", detail: failed, date: at, consumer: admin)
+      ]
       model.activity = "Installing @acme/ui into admin…"
-      model.inFlight = [.sync("@acme/ui")]
     }
     assertSnapshot(of: MenuContent(model: busy, actions: MenuActions()), named: "online")
   }
@@ -118,6 +124,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
           Link(library: "@acme/ui", consumer: admin, status: .failed),
         ],
         groups: [Group(name: "checkout", consumers: [shop, admin])])
+      model.failures = [Failure(title: "Install of @acme/ui into admin failed", detail: "npm ERR! code ERESOLVE", date: at, consumer: admin)]
       model.consumers = [
         DiscoveredConsumer(root: shop, name: "shop", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .npm),
         DiscoveredConsumer(root: admin, name: "admin", libraries: [.init(name: "@acme/ui", range: "^1.4.0")], packageManager: .pnpm),

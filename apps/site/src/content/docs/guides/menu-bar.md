@@ -14,12 +14,12 @@ or newer and talks to the same background service as the CLI, so you can use bot
 Open it from the menu with **Open**. The first time the app starts, it opens by itself and walks you
 through three steps: choose the folders where your apps live, add a library, and link it to an app.
 
-- **Add Library** (the **+** button at the bottom of the sidebar, or ⌘O) asks for the library's folder,
+- **Add library** (the **+** button at the bottom of the sidebar, or ⌘O) asks for the library's folder,
   then shows how dryfit will build it and which folder it publishes. Change either before adding it,
   or later with **Change…**. [Build and publish settings](/dryfit/guides/libraries/) explains what to
   choose.
 - A library's page lists the apps it is linked into, with the version each one runs, and below them the
-  apps in your project folders that use the library, each with a **Link** button. **Choose App…** links
+  apps in your project folders that use the library, each with a **Link** button. **Choose app…** links
   an app from anywhere else.
 - **Apps** in the sidebar lists every app that uses one of your libraries, found in your project
   folders. An app's page shows each of those libraries as a **Dev build** or a **Release**, with
@@ -28,13 +28,13 @@ through three steps: choose the folders where your apps live, add a library, and
   form that adds it.
 - Drag libraries, apps and groups in the sidebar to put them in your own order. The menu lists them,
   and the apps under each library, in that same order.
-- **Hide App**, at the bottom of an app's page or in its row's context menu, stops listing an app you
+- **Hide app**, at the bottom of an app's page or in its row's context menu, stops listing an app you
   don't work on. Nothing in the app changes, and **Settings** lists hidden apps with **Show** to bring
   one back. A linked app has to be restored first.
-- **Sync Now** builds, publishes and installs into every linked app. Turn on **Auto-sync** to do that
+- **Sync now** builds, publishes and installs into every linked app. Turn on **Auto-sync** to do that
   every time you save a change in the library.
 - **Restore** on a linked app puts that app back on the release of that one library and keeps its
-  other libraries linked. **Restore All** on an app's page puts every library back. When the app's
+  other libraries linked. **Restore all** on an app's page puts every library back. When the app's
   `package.json` changed after linking, dryfit asks before overwriting the change.
 - **New Group** (⇧⌘N) saves apps you test together, so a library can be linked into, or restored from,
   all of them at once.
@@ -56,8 +56,8 @@ From the menu you can:
 
 It also tells you, in a notification, when an install fails while the menu is closed.
 
-Right-click (or Control-click) the menu bar icon for **Settings…**, the log, **Open at Login**,
-**Check for Updates…**, stopping dryfit, and quitting.
+Right-click (or Control-click) the menu bar icon for **Settings…**, the log, **Open at login**,
+**Check for updates…**, stopping dryfit, and quitting.
 
 ## Settings
 
@@ -94,5 +94,5 @@ it is older than the app, the menu says so and offers **Update**: it runs
 links and watches carry over. Settings shows the same.
 
 To choose when, turn off **Install updates automatically** in Settings: the app then asks before
-installing. **Check for Updates…** in the icon's right-click menu looks right away. Versions from before 0.3.0 do not
+installing. **Check for updates…** in the icon's right-click menu looks right away. Versions from before 0.3.0 do not
 update themselves; download the newest once more.

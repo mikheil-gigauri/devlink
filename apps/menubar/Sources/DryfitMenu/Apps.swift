@@ -161,66 +161,49 @@ struct AppDetail: View {
   }
 
   private func content(_ app: AppSummary) -> some View {
-    Form {
+    Page {
+      Text(abbreviatedPath(app.root)).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+      Spacer(minLength: 8)
+      Button { revealInFinder(app.root) } label: { Image(systemName: "folder") }
+        .buttonStyle(.pill)
+        .help("Show \(app.name) in Finder")
+        .accessibilityLabel("Show in Finder")
+      Button {
+        Task { await model.restore(app.root) }
+      } label: {
+        Label("Restore all", systemImage: "arrow.uturn.backward")
+      }
+      .buttonStyle(.pill)
+      .disabled(app.linked.isEmpty || model.isBusy(.restore(app.root, nil)))
+      .help(app.linked.isEmpty ? "\(app.name) already uses released versions" : "Put every library in \(app.name) back on its release")
+    } content: {
       if let error = model.actionError {
-        ErrorBanner(message: error) { model.dismissActionError() }
-          .listRowInsets(EdgeInsets())
-          .listRowBackground(Color.clear)
+        ErrorBanner(message: error) { model.dismissActionError() }.padding(.bottom, 12)
       }
-      Section {
-        HStack(spacing: 14) {
-          Tile(symbol: "macwindow", tint: .indigo, size: 48)
-          VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-              Text(app.name).font(.title2.bold()).textSelection(.enabled)
-              if let manager = app.packageManager { Badge(text: manager) }
-            }
-            Text(summary(app)).foregroundStyle(.secondary)
-          }
-        }
-        .padding(.vertical, 4)
+      PageHeader(symbol: "macwindow", tint: .purple, title: app.name, subtitle: summary(app)) {
+        if let manager = app.packageManager { Badge(text: manager) }
       }
-      Section {
+      SectionLabel("Libraries")
+      HairlineGroup {
         ForEach(app.libraries) { entry in
           AppLibraryRow(app: app, entry: entry, model: model, actions: actions)
         }
-      } header: {
-        Text("Libraries")
-      } footer: {
-        Text("Your libraries that \(app.name) depends on. Link one to install its dev build. Restore puts that library's release back and keeps the others linked.")
       }
-      Section {
-        LabeledContent {
-          Button("Hide App") { Task { await model.hideApp(app.root, navigation: navigation) } }
-            .disabled(!app.linked.isEmpty || model.isBusy(.hide(app.root)))
-        } label: {
-          Text("Hide \(app.name)")
-          Text(
-            app.linked.isEmpty
+      Footnote("Your libraries that \(app.name) depends on. Restore puts that library's release back and keeps the others linked.")
+      HairlineGroup {
+        GroupRow {
+          TwoLine(
+            title: "Hide \(app.name)",
+            caption: app.linked.isEmpty
               ? "dryfit stops listing it. Nothing in the app changes, and Settings can show it again."
-              : "Restore it first: dryfit only hides apps that use released versions.")
+              : "Restore it first: dryfit only hides apps that use released versions.", wraps: true)
+          Spacer(minLength: 8)
+          Button("Hide app") { Task { await model.hideApp(app.root, navigation: navigation) } }
+            .buttonStyle(.pill)
+            .disabled(!app.linked.isEmpty || model.isBusy(.hide(app.root)))
         }
       }
-    }
-    .formStyle(.grouped)
-    .navigationTitle(app.name)
-    .navigationSubtitle(abbreviatedPath(app.root))
-    .toolbar {
-      ToolbarItem {
-        Button("Show in Finder", systemImage: "folder") { revealInFinder(app.root) }
-          .help("Show \(app.name) in Finder")
-      }
-      ToolbarSpacer(.fixed)
-      ToolbarItem {
-        Button {
-          Task { await model.restore(app.root) }
-        } label: {
-          Label("Restore All", systemImage: "arrow.uturn.backward")
-        }
-        .labelStyle(.titleAndIcon)
-        .disabled(app.linked.isEmpty || model.isBusy(.restore(app.root, nil)))
-        .help(app.linked.isEmpty ? "\(app.name) already uses released versions" : "Put every library in \(app.name) back on its release")
-      }
+      .padding(.top, 12)
     }
   }
 
@@ -241,35 +224,37 @@ private struct AppLibraryRow: View {
   @Environment(\.timeZone) private var timeZone
 
   var body: some View {
-    HStack(spacing: 10) {
+    GroupRow {
       VStack(alignment: .leading, spacing: 1) {
-        Text(entry.library)
+        Text(entry.library).lineLimit(1)
         if let link = entry.link, link.status == .failed, let failure = model.installFailure(in: app.root) {
-          Button("Install failed") { actions.showFailures(failure.id) }
-            .buttonStyle(.link)
+          Button("Install failed · Show output") { actions.showFailures(failure.id) }
+            .buttonStyle(.plain)
             .foregroundStyle(.red)
-            .font(.caption)
-            .help("Show the install's output")
+            .font(DS.caption)
         } else {
-          Text(detail).font(.caption).foregroundStyle(entry.link?.status == .failed ? .red : .secondary)
+          Text(detail)
+            .font(DS.caption)
+            .foregroundStyle(entry.link?.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
+            .lineLimit(1)
         }
       }
-      Spacer()
+      Spacer(minLength: 8)
       BuildChip(dev: entry.link != nil)
       if entry.link == nil {
         Button("Link") { Task { await model.link(entry.library, into: app.root) } }
-          .controlSize(.small)
+          .buttonStyle(.accentPill)
           .disabled(model.isBusy(.link(entry.library, app.root)))
           .help("Install the dev build of \(entry.library) into \(app.name)")
       } else {
         Button("Restore") { Task { await model.restore(app.root, library: entry.library) } }
-          .controlSize(.small)
+          .buttonStyle(.pill)
           .disabled(model.isBusy(.restore(app.root, entry.library)) || model.isBusy(.restore(app.root, nil)))
           .help("Put \(app.name) back on the release of \(entry.library)")
       }
     }
     .contextMenu {
-      Button("Show Installed Copy in Finder") { revealInFinder(app.root + "/node_modules/" + entry.library) }
+      Button("Show installed copy in Finder") { revealInFinder(app.root + "/node_modules/" + entry.library) }
     }
   }
 

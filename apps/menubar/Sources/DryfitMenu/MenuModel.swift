@@ -247,7 +247,7 @@ public struct LibraryRow: Identifiable, Equatable {
         api = nil
         if connection == .starting, let deadline = startDeadline, ContinuousClock.now < deadline { break }
         if connection == .starting {
-          startError = "dryfit did not start within 30 seconds. Open Log to see why."
+          startError = "dryfit did not start within 30 seconds. Open the log to see why."
         }
         connection = .offline
       case .incompatible(let health):

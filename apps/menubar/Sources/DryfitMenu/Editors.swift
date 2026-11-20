@@ -20,27 +20,29 @@ struct LibraryEditor: View {
       if let preview {
         form(preview)
       } else if let loadError {
-        ContentUnavailableView {
-          Label("Not a library", systemImage: "shippingbox")
-        } description: {
-          Text(loadError)
-        }
-        .frame(height: 220)
+        SheetHeader(symbol: "shippingbox", title: "Not a library", subtitle: abbreviatedPath(root))
+        Text(loadError).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true).padding(.top, 12)
       } else {
-        ProgressView("Reading \(projectName(root))’s package.json…").frame(maxWidth: .infinity, minHeight: 220)
+        HStack(spacing: 8) {
+          ProgressView().controlSize(.small)
+          Text("Reading \(projectName(root))'s package.json…").foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 120)
       }
-      Divider()
-      HStack {
+      HStack(spacing: 8) {
         if saving { ProgressView().controlSize(.small) }
         Spacer()
-        Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-        Button(preview?.registered == true ? "Save" : "Add Library") { save() }
+        Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction)
+        Button(preview?.registered == true ? "Save" : "Add library") { save() }
+          .buttonStyle(.primaryPill)
           .keyboardShortcut(.defaultAction)
           .disabled(preview == nil || publishDir.isEmpty || saving)
       }
-      .padding(16)
+      .padding(.top, 14)
     }
-    .frame(width: 520)
+    .font(DS.body)
+    .padding(14)
+    .frame(width: 420)
     .task {
       do {
         let found = try await model.inspect(root)
@@ -53,42 +55,35 @@ struct LibraryEditor: View {
     }
   }
 
-  private func form(_ preview: LibraryPreview) -> some View {
-    Form {
-      Section {
-        HStack(spacing: 12) {
-          Tile(symbol: "shippingbox", tint: .teal, size: 40)
-          VStack(alignment: .leading, spacing: 1) {
-            Text(preview.registered ? "Build settings for \(preview.name)" : "Add \(preview.name)")
-              .font(.title3.bold())
-            Text("\(preview.version) · \(abbreviatedPath(preview.root))").foregroundStyle(.secondary).lineLimit(1)
-          }
-        }
-      }
-      Section {
-        TextField("Build command", text: $buildLine, prompt: Text("No build step"))
-      } footer: {
-        Text("Runs in the library's folder before each publish." + (preview.registered ? "" : " \(detectedNote(preview))"))
-      }
-      Section {
-        LabeledContent("Publish folder") {
-          HStack {
-            Text(abbreviatedPath(publishDir)).lineLimit(1).truncationMode(.head)
-            Button("Choose…") { Task { await choosePublishDir() } }
-          }
-        }
-      } footer: {
-        Text("The folder whose package.json gets published, usually where the build writes its output.")
-      }
-      if let saveError {
-        Section {
-          Label(saveError, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
-        }
+  @ViewBuilder private func form(_ preview: LibraryPreview) -> some View {
+    SheetHeader(
+      symbol: "shippingbox", title: preview.registered ? "Build settings for \(preview.name)" : preview.name,
+      subtitle: "\(preview.version) · \(abbreviatedPath(preview.root))")
+    SheetLabel("Build command")
+    TextField("Build command", text: $buildLine, prompt: Text("No build step"))
+      .field(monospaced: true)
+    Footnote("Runs in the library's folder before each publish." + (preview.registered ? "" : " \(detectedNote(preview))"))
+    SheetLabel("Publish folder")
+    HairlineGroup {
+      GroupRow {
+        Text(publishDir == preview.root ? "The library's folder" : relative(publishDir, to: preview.root))
+          .foregroundStyle(.tertiary)
+          .lineLimit(1)
+          .truncationMode(.head)
+        Spacer(minLength: 8)
+        Button("Choose…") { Task { await choosePublishDir() } }.buttonStyle(.pill)
       }
     }
-    .formStyle(.grouped)
-    .scrollDisabled(true)
-    .fixedSize(horizontal: false, vertical: true)
+    Footnote("The folder whose package.json gets published, usually where the build writes its output.")
+    if let saveError {
+      Text(saveError).font(DS.caption).foregroundStyle(.red).padding(.top, 8)
+    }
+  }
+
+  /// "dist/ui" for a folder inside the library, the full path otherwise.
+  private func relative(_ path: String, to root: String) -> String {
+    let prefix = root.hasSuffix("/") ? root : root + "/"
+    return path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : abbreviatedPath(path)
   }
 
   private func detectedNote(_ preview: LibraryPreview) -> String {
@@ -136,52 +131,58 @@ struct GroupEditor: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      Form {
-        Section {
-          TextField("Name", text: $name, prompt: Text("storefront"))
-            .disabled(isEditing)
-        } footer: {
-          Text("A group links a library into all of its apps at once.")
-        }
-        Section("Apps") {
+      SheetLabel("Name", top: 0)
+      TextField("Name", text: $name, prompt: Text("storefront"))
+        .field()
+        .disabled(isEditing)
+      Footnote("A group links a library into all of its apps at once.")
+      SheetLabel("Apps")
+      ScrollView {
+        HairlineGroup {
           if projects.isEmpty {
-            Text("No apps found in your project folders. Add one below.").foregroundStyle(.secondary)
+            GroupRow { Text("No apps found in your project folders. Add one below.").foregroundStyle(.tertiary) }
           }
           ForEach(projects, id: \.self) { project in
-            Toggle(isOn: Binding(
-              get: { members.contains(project) },
-              set: { on in
-                if on { members.append(project) } else { members.removeAll { $0 == project } }
-              })
-            ) {
-              VStack(alignment: .leading, spacing: 1) {
+            GroupRow {
+              Toggle(isOn: Binding(
+                get: { members.contains(project) },
+                set: { on in
+                  if on { members.append(project) } else { members.removeAll { $0 == project } }
+                })
+              ) {
                 Text(projectName(project))
-                Text(abbreviatedPath(project)).font(.caption).foregroundStyle(.secondary)
               }
+              .toggleStyle(.checkbox13)
+              Spacer(minLength: 8)
+              Text(abbreviatedPath(project)).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1)
+                .truncationMode(.head)
             }
           }
-          HStack {
+          GroupRow {
             Spacer()
-            Button("Add App…") { Task { await addFolder() } }
+            Button("Add app…") { Task { await addFolder() } }.buttonStyle(.pill)
           }
         }
-        if let saveError {
-          Section { Label(saveError, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red) }
-        }
       }
-      .formStyle(.grouped)
-      .frame(minHeight: 280, maxHeight: 460)
-      Divider()
-      HStack {
+      .scrollBounceBehavior(.basedOnSize)
+      .frame(maxHeight: 320)
+      .fixedSize(horizontal: false, vertical: true)
+      if let saveError {
+        Text(saveError).font(DS.caption).foregroundStyle(.red).padding(.top, 8)
+      }
+      HStack(spacing: 8) {
         Spacer()
-        Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-        Button(isEditing ? "Save" : "Create Group") { save() }
+        Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction)
+        Button(isEditing ? "Save" : "Create group") { save() }
+          .buttonStyle(.primaryPill)
           .keyboardShortcut(.defaultAction)
           .disabled(trimmedName.isEmpty || members.isEmpty || saving)
       }
-      .padding(16)
+      .padding(.top, 14)
     }
-    .frame(width: 460)
+    .font(DS.body)
+    .padding(14)
+    .frame(width: 420)
     .onAppear {
       if case .edit(let group) = request {
         name = group.name
@@ -222,5 +223,36 @@ struct GroupEditor: View {
       }
       saving = false
     }
+  }
+}
+
+/// A sheet's tile, title and one line about what it shows.
+private struct SheetHeader: View {
+  let symbol: String
+  let title: String
+  let subtitle: String
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Tile(symbol: symbol, tint: .teal, size: 30)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(title).font(DS.sheetTitle).lineLimit(1)
+        Text(subtitle).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+      }
+    }
+  }
+}
+
+/// The label above a field in a sheet: 11 pt, 12 pt above it.
+private struct SheetLabel: View {
+  let text: String
+  let top: CGFloat
+  init(_ text: String, top: CGFloat = 12) {
+    self.text = text
+    self.top = top
+  }
+
+  var body: some View {
+    Text(text).font(DS.caption).foregroundStyle(.secondary).padding(.top, top).padding(.bottom, 4)
   }
 }

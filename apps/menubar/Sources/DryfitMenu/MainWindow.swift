@@ -16,7 +16,7 @@ public struct MainWindow: View {
   public var body: some View {
     NavigationSplitView {
       Sidebar(model: model, navigation: navigation)
-        .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 320)
+        .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 300)
     } detail: {
       // The minimum size goes on the detail column, not the split view: on the split view it makes
       // the toolbar lag behind the sidebar while it opens, pushing the sidebar button into overflow.
@@ -32,7 +32,7 @@ public struct MainWindow: View {
       "Restore \(model.driftedRestore.map { projectName($0.consumer) } ?? "the app") anyway?",
       isPresented: Binding(get: { model.driftedRestore != nil }, set: { if !$0 { model.driftedRestore = nil } })
     ) {
-      Button("Restore Anyway", role: .destructive) {
+      Button("Restore anyway", role: .destructive) {
         if let request = model.driftedRestore {
           Task { await model.restore(request.consumer, library: request.library, force: true) }
         }
@@ -54,6 +54,8 @@ public struct MainWindow: View {
       model.open(folderPath(folder), navigation: navigation, orAddAsLibrary: true)
       return true
     }
+    // The window has no title bar: each page carries its own controls along its top.
+    .toolbar(removing: .sidebarToggle)
     .showsInDock()
   }
 
@@ -61,8 +63,19 @@ public struct MainWindow: View {
     // Settings shows whatever the connection, so dryfit can be started or its log opened from there.
     if navigation.selection == .settings {
       SettingsView(model: model, actions: actions)
+    } else if model.connection == .online, navigation.selection == nil || !exists(navigation.selection) {
+      WelcomeView(model: model, navigation: navigation)
     } else {
       connectedDetail
+    }
+  }
+
+  private func exists(_ item: SidebarItem?) -> Bool {
+    switch item {
+    case .library(let name): model.libraries.contains { $0.id == name }
+    case .app(let root): model.apps.contains { $0.root == root }
+    case .group(let name): model.status?.groups.contains { $0.name == name } == true
+    case .settings, nil: false
     }
   }
 
@@ -92,122 +105,126 @@ public struct MainWindow: View {
 
 // MARK: Sidebar
 
+/// The sidebar: libraries, apps and groups, each list in the order the user dragged it into. Drawn
+/// to the app's own measurements rather than as a system list: 11 pt section names, rows 4 by 10 pt
+/// inside a 6 pt rounded rectangle, and an accent wash for the one that is open.
 private struct Sidebar: View {
   let model: MenuModel
   @Bindable var navigation: AppNavigation
-  @Environment(\.timeZone) private var timeZone
 
   var body: some View {
-    List(selection: $navigation.selection) {
-      Section("Libraries") {
+    let apps = model.apps
+    let groups = model.groups
+    ScrollView {
+      VStack(alignment: .leading, spacing: 0) {
+        SidebarHeader(title: "Libraries")
         ForEach(model.libraries) { row in
-          // One line per row, the system's own height: the details are in the badge (apps linked)
-          // and the tooltip, so a long list stays scannable.
-          Label {
-            HStack(spacing: 4) {
-              Text(row.library.name).lineLimit(1)
-              if row.library.isWatched {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                  .font(.caption2)
-                  .foregroundStyle(.secondary)
-                  .accessibilityLabel("Auto-sync on")
-              }
-            }
-          } icon: {
-            Image(systemName: row.links.contains { $0.status == .failed } ? "exclamationmark.triangle.fill" : "shippingbox")
-              .foregroundStyle(row.links.contains { $0.status == .failed } ? .red : .teal)
-          }
-          .badge(row.links.count)
+          let failed = row.links.contains { $0.status == .failed }
+          SidebarRow(
+            item: .library(row.library.name), navigation: navigation,
+            symbol: failed ? "exclamationmark.triangle" : "shippingbox", symbolTint: failed ? .red : nil,
+            name: row.library.name, watched: row.library.isWatched, count: row.links.count,
+            reorder: Reorder(kind: .libraries, id: row.id, ids: model.libraries.map(\.id), model: model)
+          )
           .help(caption(row))
-          .tag(SidebarItem.library(row.library.name))
           .contextMenu {
-            Button("Sync Now") { Task { await model.sync(row.library.name) } }
+            Button("Sync now") { Task { await model.sync(row.library.name) } }
             Button("Show in Finder") { revealInFinder(row.library.root) }
           }
         }
-        .onMove { source, destination in
-          model.move(.libraries, ids: model.libraries.map(\.id), from: source, to: destination)
-        }
         if model.libraries.isEmpty, model.connection == .online {
-          Text("No libraries yet").foregroundStyle(.tertiary)
+          Text("No libraries yet").foregroundStyle(.tertiary).padding(.horizontal, 14).padding(.vertical, 4)
         }
-      }
-      let apps = model.apps
-      if !apps.isEmpty {
-        Section("Apps") {
+        if !apps.isEmpty {
+          SidebarHeader(title: "Apps")
           ForEach(apps) { app in
-            Label {
-              Text(app.name).lineLimit(1)
-            } icon: {
-              Image(systemName: app.hasFailedInstall ? "exclamationmark.triangle.fill" : "macwindow")
-                .foregroundStyle(app.hasFailedInstall ? Color.red : app.linked.isEmpty ? Color.secondary : Color.devBuild)
-            }
-            .badge(app.linked.count)
+            SidebarRow(
+              item: .app(app.root), navigation: navigation,
+              symbol: app.hasFailedInstall ? "exclamationmark.triangle" : "macwindow",
+              symbolTint: app.hasFailedInstall ? .red : app.linked.isEmpty ? Color.secondary : nil,
+              name: app.name, watched: false, count: app.linked.count,
+              reorder: Reorder(kind: .apps, id: app.root, ids: apps.map(\.root), model: model)
+            )
             .help(caption(app))
-            .tag(SidebarItem.app(app.root))
             .contextMenu {
               Button("Show in Finder") { revealInFinder(app.root) }
               Divider()
               // Linked apps stay listed: hidden, they could only be restored from the command line.
-              Button("Hide App") { Task { await model.hideApp(app.root, navigation: navigation) } }
+              Button("Hide app") { Task { await model.hideApp(app.root, navigation: navigation) } }
                 .disabled(!app.linked.isEmpty)
             }
           }
-          .onMove { source, destination in
-            model.move(.apps, ids: apps.map(\.root), from: source, to: destination)
-          }
         }
-      }
-      let groups = model.groups
-      if !groups.isEmpty {
-        Section("Groups") {
+        if !groups.isEmpty {
+          SidebarHeader(title: "Groups")
           ForEach(groups) { group in
-            Label(group.name, systemImage: "square.stack.3d.up")
-              .badge(group.consumers.count)
-              .help(group.consumers.count == 1 ? "1 app" : "\(group.consumers.count) apps")
-              .tag(SidebarItem.group(group.name))
-          }
-          .onMove { source, destination in
-            model.move(.groups, ids: groups.map(\.name), from: source, to: destination)
+            SidebarRow(
+              item: .group(group.name), navigation: navigation, symbol: "square.stack.3d.up", symbolTint: nil,
+              name: group.name, watched: false, count: group.consumers.count,
+              reorder: Reorder(kind: .groups, id: group.name, ids: groups.map(\.name), model: model)
+            )
+            .help(group.consumers.count == 1 ? "1 app" : "\(group.consumers.count) apps")
           }
         }
+        if model.libraries.count + apps.count + groups.count > 1 {
+          Text("Drag rows to reorder")
+            .font(DS.caption)
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
       }
+      .font(DS.body)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.bottom, 8)
     }
-    .listStyle(.sidebar)
-    // In the sidebar's own bar, not the toolbar: a toolbar item there sits beside the sidebar
-    // button and jumps about whenever the sidebar is hidden or shown. A bar rather than an inset, so
-    // the rows that run on beneath it fall under the scroll edge effect instead of showing through
-    // the button; the hard style keeps that edge solid even before the list is scrolled.
+    // In the sidebar's own bar, not the toolbar, so it stays put when the sidebar is hidden or shown.
+    // A bar rather than an inset, so the rows that run on beneath it fall under the scroll edge effect.
     .scrollEdgeEffectStyle(.hard, for: .bottom)
     .safeAreaBar(edge: .bottom, spacing: 0) {
-      HStack {
-        Menu {
-          Button("Add Library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
-          Button("Add App…") { Task { await model.chooseApp(navigation: navigation) } }
-          Divider()
-          Button("New Group…") { navigation.groupEditor = .new }
-        } label: {
-          Label("Add", systemImage: "plus")
+      VStack(spacing: 0) {
+        Hairline()
+        HStack(spacing: 6) {
+          Menu {
+            Button("Add library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
+            Button("Add app…") { Task { await model.chooseApp(navigation: navigation) } }
+            Divider()
+            Button("New group…") { navigation.groupEditor = .new }
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "plus")
+              Text("Add")
+            }
+            .font(DS.body)
+            .foregroundStyle(.secondary)
+            .contentShape(.rect)
+          }
+          .menuStyle(.button)
+          .buttonStyle(.plain)
+          .menuIndicator(.hidden)
+          .fixedSize()
+          .disabled(model.connection != .online)
+          .help("Add a library, an app or a group")
+          Spacer()
+          Button {
+            navigation.selection = .settings
+          } label: {
+            Image(systemName: "gearshape")
+              .font(DS.body)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 3)
+              .foregroundStyle(navigation.selection == .settings ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+              .background(
+                navigation.selection == .settings ? DS.accentTint : .clear, in: .rect(cornerRadius: DS.radius))
+              .contentShape(.rect)
+          }
+          .buttonStyle(.plain)
+          .help("Settings (⌘,)")
+          .accessibilityLabel("Settings")
         }
-        .menuStyle(.button)
-        .buttonStyle(.borderless)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .disabled(model.connection != .online)
-        .help("Add a library, an app or a group")
-        Spacer()
-        Button {
-          navigation.selection = .settings
-        } label: {
-          Label("Settings", systemImage: "gearshape")
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .foregroundStyle(navigation.selection == .settings ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-        .help("Settings (⌘,)")
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
       }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 10)
     }
   }
 
@@ -228,6 +245,92 @@ private struct Sidebar: View {
   }
 }
 
+private struct SidebarHeader: View {
+  let title: String
+
+  var body: some View {
+    Text(title)
+      .font(DS.caption)
+      .foregroundStyle(.tertiary)
+      .padding(.horizontal, 12)
+      .padding(.top, 10)
+      .padding(.bottom, 4)
+      .accessibilityAddTraits(.isHeader)
+  }
+}
+
+/// Where a sidebar row sits in its list, so another row of the same list can be dropped on it.
+private struct Reorder {
+  let kind: ItemOrder.Kind
+  let id: String
+  let ids: [String]
+  let model: MenuModel
+
+  /// What a dragged row carries: its list and its id.
+  var payload: String { "\(kind)\u{1F}\(id)" }
+
+  /// Moves the dragged row to this row's place. False for a row from another list.
+  func drop(_ payload: String) -> Bool {
+    let parts = payload.split(separator: "\u{1F}", maxSplits: 1).map(String.init)
+    guard parts.count == 2, parts[0] == "\(kind)", let from = ids.firstIndex(of: parts[1]),
+      let to = ids.firstIndex(of: id), from != to
+    else { return false }
+    model.move(kind, ids: ids, from: IndexSet(integer: from), to: to > from ? to + 1 : to)
+    return true
+  }
+}
+
+/// One row: its symbol, name and the number of links, 4 by 10 pt inside a 6 pt rounded rectangle.
+private struct SidebarRow: View {
+  let item: SidebarItem
+  let navigation: AppNavigation
+  let symbol: String
+  let symbolTint: Color?
+  let name: String
+  let watched: Bool
+  let count: Int
+  let reorder: Reorder
+  @State private var targeted = false
+
+  var body: some View {
+    let selected = navigation.selection == item
+    Button {
+      navigation.selection = item
+    } label: {
+      HStack(spacing: 7) {
+        Image(systemName: symbol)
+          .frame(width: 14)
+          .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : symbolTint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary))
+        Text(name).lineLimit(1)
+        if watched {
+          Image(systemName: "arrow.clockwise").font(DS.caption).accessibilityLabel("Auto-sync on")
+        }
+        Spacer(minLength: 4)
+        Text("\(count)").font(DS.caption).foregroundStyle(.tertiary).monospacedDigit()
+      }
+      .font(DS.body)
+      .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
+      .padding(.horizontal, 10)
+      .padding(.vertical, 4)
+      .background(selected ? DS.accentTint : .clear, in: .rect(cornerRadius: 6))
+      .contentShape(.rect)
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(selected ? .isSelected : [])
+    .padding(.horizontal, 4)
+    // Drop marker: where the dragged row will land.
+    .overlay(alignment: .top) {
+      if targeted { Capsule().fill(Color.accentColor).frame(height: 2).padding(.horizontal, 8) }
+    }
+    .draggable(reorder.payload) {
+      Text(name).font(DS.body).padding(.horizontal, 10).padding(.vertical, 4)
+    }
+    .dropDestination(for: String.self) { payloads, _ in
+      payloads.first.map(reorder.drop) ?? false
+    } isTargeted: { targeted = $0 }
+  }
+}
+
 // MARK: Welcome
 
 private struct WelcomeView: View {
@@ -236,49 +339,41 @@ private struct WelcomeView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 28) {
-        VStack(alignment: .leading, spacing: 8) {
-          Tile(symbol: "shippingbox", tint: .teal, size: 56)
-          Text("Test your library in your apps").font(.largeTitle.bold()).padding(.top, 6)
-          Text("dryfit publishes each change to a private registry on this Mac and installs it into your apps the way a release would. When you are done, it puts every app back exactly as it was.")
-            .font(.title3)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+      VStack(alignment: .leading, spacing: 0) {
+        Tile(symbol: "shippingbox", tint: .teal)
+        Text("Test your library in your apps").font(DS.title).padding(.top, 10).padding(.bottom, 4)
+        Text("dryfit publishes each change to a private registry on this Mac and installs it into your apps the way a release would. When you're done, it puts every app back exactly as it was.")
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.bottom, 12)
+        Step(number: 1, title: "Tell dryfit where your apps live", detail: rootsDetail, done: !(model.roots ?? []).isEmpty) {
+          Button("Add folders…") { Task { await model.chooseProjectFolders() } }.buttonStyle(.pill)
         }
-        VStack(alignment: .leading, spacing: 18) {
-          Step(
-            number: 1, title: "Tell dryfit where your apps live",
-            detail: rootsDetail, done: !(model.roots ?? []).isEmpty
-          ) {
-            Button(model.roots?.isEmpty == false ? "Add Folders…" : "Choose Folders…") {
-              Task { await model.chooseProjectFolders() }
-            }
-          }
-          Step(
-            number: 2, title: "Add a library you are working on",
-            detail: "Choose its folder. dryfit works out how to build it.",
-            done: !model.libraries.isEmpty
-          ) {
-            Button("Add Library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
-              .buttonStyle(.glassProminent)
-          }
-          Step(
-            number: 3, title: "Link it to an app",
-            detail: "dryfit lists the apps that use your library under Apps. Link one, then sync, or turn on Auto-sync to sync every change you save.",
-            done: !(model.status?.links.isEmpty ?? true)
-          ) {
-            EmptyView()
-          }
+        Step(
+          number: 2, title: "Add a library you're working on",
+          detail: "Choose its folder. dryfit works out how to build it.", done: !model.libraries.isEmpty
+        ) {
+          Button("Add library…") { Task { await model.chooseLibraryFolder(navigation: navigation) } }
+            .buttonStyle(.primaryPill)
+        }
+        Step(
+          number: 3, title: "Link it to an app",
+          detail: "dryfit lists the apps that use your library under Apps. Link one, then sync, or turn on Auto-sync.",
+          done: !(model.status?.links.isEmpty ?? true)
+        ) {
+          EmptyView()
         }
         if let error = model.actionError {
-          ErrorBanner(message: error) { model.dismissActionError() }
+          ErrorBanner(message: error) { model.dismissActionError() }.padding(.top, 12)
         }
       }
+      .font(DS.body)
       .frame(maxWidth: 560, alignment: .leading)
-      .padding(40)
-      .frame(maxWidth: .infinity)
+      .padding(.horizontal, 18)
+      .padding(.top, 22)
+      .padding(.bottom, 16)
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .navigationTitle("dryfit")
   }
 
   private var rootsDetail: String {
@@ -297,22 +392,25 @@ private struct Step<Actions: View>: View {
   @ViewBuilder let actions: Actions
 
   var body: some View {
-    HStack(alignment: .top, spacing: 14) {
-      ZStack {
-        Circle().fill(done ? AnyShapeStyle(.green) : AnyShapeStyle(.quaternary))
-        if done {
-          Image(systemName: "checkmark").font(.caption.bold()).foregroundStyle(.white)
-        } else {
-          Text("\(number)").font(.callout.weight(.semibold).monospacedDigit())
+    VStack(spacing: 0) {
+      Hairline()
+      HStack(alignment: .top, spacing: 12) {
+        ZStack {
+          if done {
+            Circle().fill(.green)
+            Image(systemName: "checkmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
+          } else {
+            Circle().strokeBorder(DS.strongBorder, lineWidth: 0.5)
+            Text("\(number)").font(DS.caption).monospacedDigit()
+          }
         }
+        .frame(width: 22, height: 22)
+        .accessibilityLabel(done ? "Done" : "Step \(number)")
+        TwoLine(title: title, caption: detail, titleFont: DS.medium, wraps: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        actions
       }
-      .frame(width: 26, height: 26)
-      .accessibilityLabel(done ? "Done" : "Step \(number)")
-      VStack(alignment: .leading, spacing: 4) {
-        Text(title).font(.headline)
-        Text(detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        actions.padding(.top, 4)
-      }
+      .padding(.vertical, 10)
     }
   }
 }
@@ -335,87 +433,114 @@ private struct LibraryDetail: View {
 
   private func content(_ row: LibraryRow) -> some View {
     let library = row.library
-    return Form {
-      if let error = model.actionError {
-        ErrorBanner(message: error) { model.dismissActionError() }
-          .listRowInsets(EdgeInsets())
-          .listRowBackground(Color.clear)
+    let candidates = model.linkCandidates(for: name)
+    return Page {
+      Text(abbreviatedPath(library.root)).font(DS.caption).foregroundStyle(.tertiary).lineLimit(1)
+        .truncationMode(.head)
+      Spacer(minLength: 8)
+      Text("Auto-sync").font(DS.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+      Toggle("Auto-sync", isOn: Binding(
+        get: { library.isWatched },
+        set: { enabled in Task { await model.setWatch(name, enabled: enabled) } }))
+        .toggleStyle(.mini)
+        .disabled(model.isBusy(.watch(name)))
+        .help(library.isWatched
+          ? "Auto-sync is on: every change you save to \(name) is synced to its apps"
+          : "Turn on to sync every change you save to \(name)")
+      Button { revealInFinder(library.root) } label: { Image(systemName: "folder") }
+        .buttonStyle(.pill)
+        .help("Show \(name) in Finder")
+        .accessibilityLabel("Show in Finder")
+      Button {
+        Task { await model.sync(name) }
+      } label: {
+        Label("Sync now", systemImage: "arrow.clockwise")
+          .symbolEffect(.rotate, options: .repeat(.continuous), isActive: model.isBusy(.sync(name)))
       }
-      Section {
-        HStack(spacing: 14) {
-          Tile(symbol: "shippingbox", tint: .teal, size: 48)
-          VStack(alignment: .leading, spacing: 2) {
-            Text(library.name).font(.title2.bold()).textSelection(.enabled)
-            Text(library.published(timeZone: timeZone) + (library.isWatched ? " · Auto-sync on" : ""))
-              .foregroundStyle(.secondary)
+      .buttonStyle(.pill)
+      .disabled(model.isBusy(.sync(name)) || row.links.isEmpty)
+      .help(row.links.isEmpty ? "Link an app first" : "Build, publish and install into every linked app")
+    } content: {
+      if let error = model.actionError {
+        ErrorBanner(message: error) { model.dismissActionError() }.padding(.bottom, 12)
+      }
+      PageHeader(
+        symbol: "shippingbox", tint: .teal, title: library.name,
+        subtitle: library.published(timeZone: timeZone).replacingOccurrences(of: " · dev ", with: " · dev build ")
+          + (library.isWatched ? " · Auto-sync on" : ""))
+
+      SectionLabel("Linked apps")
+      HairlineGroup {
+        if row.links.isEmpty {
+          GroupRow {
+            Text("No app is linked yet. Link one below to install the dev build.").foregroundStyle(.tertiary)
           }
         }
-        .padding(.vertical, 4)
-      }
-
-      Section {
-        if row.links.isEmpty {
-          Text("No app is linked yet. Link one below to install the dev build.")
-            .foregroundStyle(.secondary)
-        }
         ForEach(row.links) { link in AppRow(link: link, model: model, actions: actions) }
-      } header: {
-        Text("Linked apps")
       }
 
-      Section {
-        let candidates = model.linkCandidates(for: name)
+      SectionLabel("Apps that use \(name)")
+      HairlineGroup {
         if candidates.isEmpty {
-          Text(model.isBusy(.discover) ? "Looking for apps…" : "No other app in your project folders uses \(name).")
-            .foregroundStyle(.secondary)
+          GroupRow {
+            Text(model.isBusy(.discover) ? "Looking for apps…" : "No other app in your project folders uses \(name).")
+              .foregroundStyle(.tertiary)
+          }
         }
         ForEach(candidates) { consumer in
           SuggestedAppRow(library: name, consumer: consumer, model: model)
         }
-        HStack {
-          Button("Look Again") { Task { await model.discoverConsumers() } }
+        GroupRow {
+          Button("Choose app…") { Task { await model.chooseAppAndLink(name) } }.buttonStyle(.pill)
+          Button("Look again") { Task { await model.discoverConsumers() } }
+            .buttonStyle(.pill)
             .disabled(model.isBusy(.discover))
-          Spacer()
-          Button("Choose App…") { Task { await model.chooseAppAndLink(name) } }
         }
-      } header: {
-        Text("Apps that use \(name)")
-      } footer: {
-        Text("Found in your project folders. You can change those in Settings.")
       }
+      Footnote("Found in your project folders. You can change those in Settings.")
 
-      Section("Build") {
-        LabeledContent("Folder") { PathText(path: library.root) }
-        LabeledContent("Build command") {
-          Text(library.build.map { BuildCommand(command: $0.command, args: $0.args).line } ?? "None")
-            .font(.body.monospaced())
-            .foregroundStyle(library.build == nil ? .secondary : .primary)
+      SectionLabel("Build")
+      HairlineGroup {
+        GroupRow {
+          Text("Folder")
+          Spacer(minLength: 8)
+          Text(abbreviatedPath(library.root)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
             .textSelection(.enabled)
         }
-        LabeledContent("Publish folder") { PathText(path: library.publishDir) }
-        HStack {
+        GroupRow {
+          Text("Build command")
+          Spacer(minLength: 8)
+          Text(library.build.map { BuildCommand(command: $0.command, args: $0.args).line } ?? "None")
+            .font(DS.mono)
+            .foregroundStyle(library.build == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+            .lineLimit(1)
+            .textSelection(.enabled)
+        }
+        GroupRow {
+          Text("Publish folder")
+          Spacer(minLength: 8)
+          Text(publishFolder(library)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+            .textSelection(.enabled)
+        }
+        GroupRow {
           Spacer()
-          Button("Change…") { navigation.libraryEditor = LibraryEditorRequest(root: library.root) }
+          Button("Change…") { navigation.libraryEditor = LibraryEditorRequest(root: library.root) }.buttonStyle(.pill)
         }
       }
 
-      Section {
-        HStack {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Remove from dryfit")
-            Text(row.links.isEmpty ? "Your library's files are not touched." : "Restore its apps first.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
-          Button("Remove…", role: .destructive) { confirmingRemoval = true }
+      HairlineGroup {
+        GroupRow {
+          TwoLine(
+            title: "Remove from dryfit",
+            caption: row.links.isEmpty ? "Your library's files are not touched." : "Restore its linked apps first.")
+          Spacer(minLength: 8)
+          Button("Remove…") { confirmingRemoval = true }
+            .buttonStyle(.dangerPill)
             .disabled(!row.links.isEmpty || model.isBusy(.unregister(name)))
         }
       }
+      .padding(.top, 12)
     }
-    .formStyle(.grouped)
-    .navigationTitle(library.name)
-    .navigationSubtitle(abbreviatedPath(library.root))
     .confirmationDialog("Remove \(name) from dryfit?", isPresented: $confirmingRemoval) {
       Button("Remove", role: .destructive) {
         Task {
@@ -426,34 +551,17 @@ private struct LibraryDetail: View {
     } message: {
       Text("Its dev builds stay in dryfit's registry until they are replaced. Your library's files are not touched.")
     }
-    .toolbar {
-      ToolbarItem {
-        Button("Show in Finder", systemImage: "folder") { revealInFinder(library.root) }
-          .help("Show \(name) in Finder")
-      }
-      ToolbarSpacer(.fixed)
-      ToolbarItem {
-        AutoSyncSwitch(library: library, model: model)
-      }
-      ToolbarSpacer(.fixed)
-      ToolbarItem {
-        // The label stays put while syncing (its symbol spins), so the toolbar does not reflow.
-        Button {
-          Task { await model.sync(name) }
-        } label: {
-          Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
-            .symbolEffect(.rotate, options: .repeat(.continuous), isActive: model.isBusy(.sync(name)))
-        }
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(.glassProminent)
-        .disabled(model.isBusy(.sync(name)) || row.links.isEmpty)
-        .help(row.links.isEmpty ? "Link an app first" : "Build, publish and install into every linked app")
-      }
-    }
+  }
+
+  /// "dist/ui" when the publish folder is inside the library, the full path otherwise.
+  private func publishFolder(_ library: Library) -> String {
+    let root = library.root.hasSuffix("/") ? library.root : library.root + "/"
+    if library.publishDir == library.root { return "The library's folder" }
+    return library.publishDir.hasPrefix(root) ? String(library.publishDir.dropFirst(root.count)) : abbreviatedPath(library.publishDir)
   }
 }
 
-/// An app linked to a library: where it is, what it runs, and a way back to the release.
+/// An app linked to a library: what it runs, and a way back to the release.
 private struct AppRow: View {
   let link: DryfitAPI.Link
   let model: MenuModel
@@ -462,67 +570,49 @@ private struct AppRow: View {
   @Environment(\.timeZone) private var timeZone
 
   var body: some View {
-    HStack(spacing: 10) {
-      Image(systemName: link.symbol).foregroundStyle(link.tint).frame(width: 18)
+    GroupRow {
+      Image(systemName: link.status == .failed ? "xmark.circle" : link.status == .pending ? "clock" : "checkmark.circle")
+        .foregroundStyle(link.tint)
+        .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 1) {
-        HStack(spacing: 6) {
-          Text(projectName(link.consumer))
-          if let manager = packageManager { Badge(text: manager) }
+        NameAndBadge(name: projectName(link.consumer), badge: packageManager)
+        if link.status == .failed, let failure = model.installFailure(in: link.consumer) {
+          Button("Install failed · Show output") { actions.showFailures(failure.id) }
+            .buttonStyle(.plain)
+            .font(DS.caption)
+            .foregroundStyle(.red)
+        } else {
+          Text(detail)
+            .font(DS.caption)
+            .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
+            .lineLimit(1)
         }
-        Text(abbreviatedPath(link.consumer)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
       }
-      Spacer()
-      if link.status == .failed, let failure = model.installFailure(in: link.consumer) {
-        Button("Install failed") { actions.showFailures(failure.id) }
-          .buttonStyle(.link)
-          .foregroundStyle(.red)
-          .help("Show the install's output")
-      } else {
-        Text(link.detail(timeZone: timeZone))
-          .font(.callout)
-          .foregroundStyle(link.status == .failed ? .red : .secondary)
-      }
+      Spacer(minLength: 8)
       Button("Restore") { Task { await model.restore(link.consumer, library: link.library) } }
-        .controlSize(.small)
-        .disabled(model.isBusy(.restore(link.consumer, link.library)))
+        .buttonStyle(.pill)
+        .disabled(busy)
         .help("Put \(projectName(link.consumer)) back on the release of \(link.library)")
-        // A healthy link shows Restore under the pointer only; a failed one always offers the way back.
-        .opacity(hovering || link.status == .failed || model.isBusy(.restore(link.consumer, link.library)) ? 1 : 0)
+        // A healthy link shows Restore dimmed until the pointer is on it; a failed one always offers it.
+        .opacity(hovering || link.status == .failed || busy ? 1 : 0.35)
     }
+    .contentShape(.rect)
     .onHover { hovering = $0 }
+    .help(abbreviatedPath(link.consumer))
     .contextMenu {
       Button("Show in Finder") { revealInFinder(link.consumer) }
     }
   }
 
+  private var busy: Bool { model.isBusy(.restore(link.consumer, link.library)) }
+
+  private var detail: String {
+    let described = link.detail(timeZone: timeZone)
+    return link.status == .installed && link.guarded == true ? described + " · commit guard on" : described
+  }
+
   private var packageManager: String? {
     model.consumers.first { $0.root == link.consumer }?.packageManager.name
-  }
-}
-
-/// The Auto-sync switch, with its name beside it: when on, every change saved in the library is
-/// built and installed into its linked apps.
-struct AutoSyncSwitch: View {
-  let library: Library
-  let model: MenuModel
-
-  var body: some View {
-    // A toolbar hides a toggle's own label, so the name is a separate Text beside the switch.
-    HStack(spacing: 8) {
-      Text("Auto-sync").accessibilityHidden(true)
-      Toggle("Auto-sync", isOn: Binding(
-        get: { library.isWatched },
-        set: { enabled in Task { await model.setWatch(library.name, enabled: enabled) } }))
-        .toggleStyle(.switch)
-        .controlSize(.small)
-        .labelsHidden()
-    }
-    .padding(.leading, 10)
-    .padding(.trailing, 4)
-    .disabled(model.isBusy(.watch(library.name)))
-    .help(library.isWatched
-      ? "Auto-sync is on: every change you save to \(library.name) is synced to its apps"
-      : "Turn on to sync every change you save to \(library.name)")
   }
 }
 
@@ -533,42 +623,21 @@ private struct SuggestedAppRow: View {
   let model: MenuModel
 
   var body: some View {
-    HStack(spacing: 10) {
-      Image(systemName: "macwindow").foregroundStyle(.secondary).frame(width: 18)
-      VStack(alignment: .leading, spacing: 1) {
-        HStack(spacing: 6) {
-          Text(projectName(consumer.root))
-          if let manager = consumer.packageManager.name { Badge(text: manager) }
-        }
-        Text(abbreviatedPath(consumer.root)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-      }
-      Spacer()
-      if let range = consumer.libraries.first(where: { $0.name == library })?.range {
-        Text(range).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
-      }
+    GroupRow {
+      Image(systemName: "macwindow").foregroundStyle(.tertiary).accessibilityHidden(true)
+      TwoLineView(
+        title: NameAndBadge(name: projectName(consumer.root), badge: consumer.packageManager.name),
+        caption: consumer.libraries.first(where: { $0.name == library }).map { "\($0.range) from the registry" }
+          ?? abbreviatedPath(consumer.root))
+      Spacer(minLength: 8)
       Button("Link") { Task { await model.link(library, into: consumer.root) } }
-        .controlSize(.small)
-        .foregroundStyle(.tint)
+        .buttonStyle(.accentPill)
         .disabled(model.isBusy(.link(library, consumer.root)))
         .help("Install the dev build of \(library) into \(projectName(consumer.root))")
     }
+    .help(abbreviatedPath(consumer.root))
     .contextMenu {
       Button("Show in Finder") { revealInFinder(consumer.root) }
-    }
-  }
-}
-
-private struct PathText: View {
-  let path: String
-
-  var body: some View {
-    HStack(spacing: 4) {
-      Text(abbreviatedPath(path)).lineLimit(1).truncationMode(.head).textSelection(.enabled)
-      Button("Show in Finder", systemImage: "arrow.right.circle.fill") { revealInFinder(path) }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .help("Show in Finder")
     }
   }
 }
@@ -589,70 +658,75 @@ private struct GroupDetail: View {
   }
 
   private func content(_ group: DryfitAPI.Group) -> some View {
-    Form {
+    Page {
+      Spacer()
+      Button {
+        Task { await model.restoreGroup(name) }
+      } label: {
+        Label("Restore all", systemImage: "arrow.uturn.backward")
+      }
+      .buttonStyle(.pill)
+      .disabled(model.isBusy(.restoreGroup(name)))
+      .help("Put every app in \(name) back on released versions")
+      PillMenu {
+        ForEach(model.status?.libraries ?? []) { library in
+          Button(library.name) { Task { await model.linkGroup(name, library: library.name) } }
+        }
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: "link.badge.plus")
+          Text("Link library")
+          Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
+        }
+      }
+      .disabled(model.isBusy(.linkGroup(name)) || (model.status?.libraries.isEmpty ?? true))
+      .help("Link a library into every app in \(name)")
+    } content: {
       if let error = model.actionError {
-        ErrorBanner(message: error) { model.dismissActionError() }
-          .listRowInsets(EdgeInsets())
-          .listRowBackground(Color.clear)
+        ErrorBanner(message: error) { model.dismissActionError() }.padding(.bottom, 12)
       }
-      Section {
-        HStack(spacing: 14) {
-          Tile(symbol: "square.stack.3d.up", tint: .indigo, size: 48)
-          VStack(alignment: .leading, spacing: 2) {
-            Text(group.name).font(.title2.bold())
-            Text("Link a library into all of these apps at once, and restore them together.")
-              .foregroundStyle(.secondary)
-          }
-        }
-        .padding(.vertical, 4)
-      }
-      Section("Apps") {
+      PageHeader(
+        symbol: "square.stack.3d.up", tint: .purple, title: group.name,
+        subtitle: "Link a library into all of these apps at once, and restore them together.")
+      SectionLabel("Apps")
+      HairlineGroup {
         ForEach(group.consumers, id: \.self) { consumer in
-          HStack {
-            VStack(alignment: .leading, spacing: 1) {
-              Text(projectName(consumer))
-              Text(abbreviatedPath(consumer)).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text(linked(consumer)).font(.callout).foregroundStyle(.secondary)
+          GroupRow {
+            TwoLine(title: projectName(consumer), caption: abbreviatedPath(consumer))
+            Spacer(minLength: 8)
+            Text(linked(consumer)).foregroundStyle(.tertiary).lineLimit(1)
           }
         }
-        HStack {
+        GroupRow {
           Spacer()
-          Button("Edit…") { navigation.groupEditor = .edit(group) }
+          Button("Edit…") { navigation.groupEditor = .edit(group) }.buttonStyle(.pill)
         }
       }
       if let warnings = model.status?.warnings.filter({ $0.group == name }), !warnings.isEmpty {
-        Section {
+        HairlineGroup(border: .orange.opacity(0.5)) {
           ForEach(Array(warnings.enumerated()), id: \.offset) { _, warning in
-            Label {
-              VStack(alignment: .leading, spacing: 2) {
-                Text("These apps run different builds of \(warning.library). Sync it, or restore the group.")
-                Text(warning.versions
+            GroupRow {
+              Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+              Text(
+                "\(warning.library) differs: "
+                  + warning.versions
                   .map { "\(projectName($0.consumer)) \(DevVersion.describe($0.version, timeZone: timeZone))" }
                   .joined(separator: ", "))
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-              }
-            } icon: {
-              Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
             }
           }
         }
+        .padding(.top, 12)
       }
-      Section {
-        HStack {
-          Text("Delete group")
-          Spacer()
-          Button("Delete…", role: .destructive) { confirmingDeletion = true }
+      HairlineGroup {
+        GroupRow {
+          TwoLine(title: "Delete group", caption: "Deleting the group leaves its apps as they are.")
+          Spacer(minLength: 8)
+          Button("Delete…") { confirmingDeletion = true }.buttonStyle(.dangerPill)
         }
-      } footer: {
-        Text("Deleting the group leaves its apps as they are.")
       }
+      .padding(.top, 12)
     }
-    .formStyle(.grouped)
-    .navigationTitle(group.name)
-    .navigationSubtitle(group.consumers.count == 1 ? "1 app" : "\(group.consumers.count) apps")
     .confirmationDialog("Delete the group \(name)?", isPresented: $confirmingDeletion) {
       Button("Delete", role: .destructive) {
         Task {
@@ -663,37 +737,11 @@ private struct GroupDetail: View {
     } message: {
       Text("Its apps stay linked or restored as they are now.")
     }
-    .toolbar {
-      ToolbarItem {
-        Button {
-          Task { await model.restoreGroup(name) }
-        } label: {
-          Label("Restore All", systemImage: "arrow.uturn.backward")
-        }
-        .labelStyle(.titleAndIcon)
-        .disabled(model.isBusy(.restoreGroup(name)))
-        .help("Put every app in \(name) back on released versions")
-      }
-      ToolbarSpacer(.fixed)
-      ToolbarItem {
-        Menu {
-          ForEach(model.status?.libraries ?? []) { library in
-            Button(library.name) { Task { await model.linkGroup(name, library: library.name) } }
-          }
-        } label: {
-          Label("Link Library", systemImage: "link.badge.plus")
-        }
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(.glassProminent)
-        .disabled(model.isBusy(.linkGroup(name)) || (model.status?.libraries.isEmpty ?? true))
-        .help("Link a library into every app in \(name)")
-      }
-    }
   }
 
   private func linked(_ consumer: String) -> String {
     let links = model.status?.links.filter { $0.consumer == consumer } ?? []
     guard !links.isEmpty else { return "Released versions" }
-    return links.map { "\($0.library) \($0.detail(timeZone: timeZone))" }.joined(separator: ", ")
+    return "Dev build of " + links.map(\.library).joined(separator: ", ")
   }
 }

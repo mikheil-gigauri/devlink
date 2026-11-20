@@ -54,17 +54,17 @@ public final class StatusMenu: NSObject {
     menu.addItem(item("Open dryfit", action: #selector(openMainWindow)))
     menu.addItem(item("Settings…", action: #selector(showSettings), key: ","))
     menu.addItem(.separator())
-    menu.addItem(item("Open Log", action: #selector(openLog)))
+    menu.addItem(item("Open log", action: #selector(openLog)))
     if !model.failures.isEmpty {
-      menu.addItem(item("Show Failures…", action: #selector(showFailures)))
+      menu.addItem(item("Show failures…", action: #selector(showFailures)))
     }
     if let openAtLogin = actions.openAtLogin {
-      let login = item("Open at Login", action: #selector(toggleOpenAtLogin))
+      let login = item("Open at login", action: #selector(toggleOpenAtLogin))
       login.state = openAtLogin.wrappedValue ? .on : .off
       menu.addItem(login)
     }
     if actions.checkForUpdates != nil {
-      menu.addItem(item("Check for Updates…", action: #selector(checkForUpdates)))
+      menu.addItem(item("Check for updates…", action: #selector(checkForUpdates)))
     }
     if model.connection == .online {
       menu.addItem(.separator())

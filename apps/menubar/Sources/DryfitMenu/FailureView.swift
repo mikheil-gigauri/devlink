@@ -14,16 +14,35 @@ public struct FailureView: View {
   public var body: some View {
     HStack(spacing: 0) {
       if failures.count > 1 {
-        List(failures, selection: $selection) { failure in
-          VStack(alignment: .leading, spacing: 2) {
-            Text(failure.title).lineLimit(2)
-            Text(failure.date, format: .dateTime.hour().minute()).font(.caption).foregroundStyle(.secondary)
+        ScrollView {
+          VStack(spacing: 0) {
+            ForEach(failures) { failure in
+              let on = failure.id == selected?.id
+              Button {
+                selection = failure.id
+              } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                  Text(failure.title).lineLimit(2).multilineTextAlignment(.leading)
+                  Text(failure.date, format: .dateTime.hour().minute()).font(DS.caption).foregroundStyle(.tertiary)
+                }
+                .font(DS.body)
+                .foregroundStyle(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(on ? DS.accentTint : .clear, in: .rect(cornerRadius: 6))
+                .contentShape(.rect)
+              }
+              .buttonStyle(.plain)
+              .accessibilityAddTraits(on ? .isSelected : [])
+            }
           }
-          .padding(.vertical, 2)
+          .padding(.horizontal, 4)
+          .padding(.vertical, 6)
         }
-        .listStyle(.inset)
-        .frame(width: 220)
-        Divider()
+        .frame(width: 200)
+        .background(.background.secondary)
+        Rectangle().fill(DS.hairline).frame(width: 0.5)
       }
       if let failure = selected {
         Detail(failure: failure)
@@ -31,6 +50,7 @@ public struct FailureView: View {
         Text("No failures").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
+    .font(DS.body)
     .frame(minWidth: 520, minHeight: 320)
   }
 
@@ -41,32 +61,50 @@ public struct FailureView: View {
 
 private struct Detail: View {
   let failure: Failure
+  @Environment(\.timeZone) private var timeZone
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text(failure.title).font(.title3.weight(.semibold))
-          Text(failure.date, format: .dateTime.hour().minute().second())
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-        Button("Copy Output") {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 8) {
+        Image(systemName: "xmark.circle").foregroundStyle(.red).frame(width: 14).accessibilityHidden(true)
+        Text(failure.title).font(DS.sheetTitle).lineLimit(2)
+        Spacer(minLength: 8)
+        Button("Copy output") {
           NSPasteboard.general.clearContents()
           NSPasteboard.general.setString(failure.detail, forType: .string)
         }
+        .buttonStyle(.pill)
       }
+      Text(when)
+        .font(DS.caption)
+        .foregroundStyle(.tertiary)
+        .padding(.leading, 22)
+        .padding(.top, 2)
+        .padding(.bottom, 10)
       ScrollView([.vertical, .horizontal]) {
         Text(failure.detail.isEmpty ? "No output was captured." : failure.detail)
-          .font(.system(.callout, design: .monospaced))
+          .font(DS.mono)
+          .lineSpacing(5)
+          .foregroundStyle(.secondary)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
-          .padding(10)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 8)
       }
-      .background(.background.secondary, in: .rect(cornerRadius: 6))
+      .background(DS.neutralFill, in: .rect(cornerRadius: DS.radius))
     }
-    .padding(16)
+    .padding(.horizontal, 16)
+    .padding(.vertical, 12)
+  }
+
+  /// "Today at 14:32".
+  private var when: String {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    formatter.doesRelativeDateFormatting = true
+    formatter.timeZone = timeZone
+    return formatter.string(from: failure.date)
   }
 }
 
@@ -87,7 +125,7 @@ public final class FailureWindow {
       let window = NSWindow(
         contentRect: NSRect(x: 0, y: 0, width: 720, height: 440),
         styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
-      window.title = "dryfit Failures"
+      window.title = "Failures"
       window.isReleasedWhenClosed = false
       window.contentView = NSHostingView(rootView: root)
       window.center()

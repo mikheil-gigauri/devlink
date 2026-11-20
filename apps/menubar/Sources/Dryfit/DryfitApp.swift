@@ -20,6 +20,8 @@ struct DryfitApp: App {
       MainWindow(model: delegate.model, navigation: delegate.navigation, actions: delegate.actions)
         .onAppear { UserDefaults.standard.set(true, forKey: Self.welcomedKey) }
     }
+    // No title bar: each page carries its own controls along its top, as in the design.
+    .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 900, height: 580)
     // Opens by itself only the first time, so a new user sees where to start.
     .defaultLaunchBehavior(UserDefaults.standard.bool(forKey: Self.welcomedKey) ? .suppressed : .presented)
