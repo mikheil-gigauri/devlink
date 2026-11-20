@@ -342,14 +342,24 @@ public struct LinkResult: Codable, Sendable, Equatable {
   public enum GuardOutcome: String, Codable, Sendable {
     case installed, declined
     case notARepo = "not-a-repo"
+    /// Linked, but the guard could not go in; `message` says why.
+    case failed
+    /// One a newer daemon reports, which this app does not know yet.
+    case unknown
+
+    public init(from decoder: any Decoder) throws {
+      self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unknown
+    }
   }
 
   public let link: Link
   /// Whether the commit guard went in (`guard` on the wire).
   public let guardOutcome: GuardOutcome
+  /// Why the guard could not go in, when it failed.
+  public let message: String?
 
   enum CodingKeys: String, CodingKey {
-    case link
+    case link, message
     case guardOutcome = "guard"
   }
 }

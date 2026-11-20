@@ -128,6 +128,10 @@ public struct LibraryRow: Identifiable, Equatable {
   static let minimumDelay = Duration.seconds(1)
   static let maximumDelay = Duration.seconds(10)
   static let startTimeout = Duration.seconds(30)
+  static let stableConnection = Duration.seconds(30)
+  static let unseenFailureCodes: Set<String> = [
+    "publish-failed", "registry-failed", "state-corrupt", "daemon-failed", "internal",
+  ]
 
   public init(
     connect: @escaping () async -> Lookup,
@@ -241,13 +245,17 @@ public struct LibraryRow: Identifiable, Equatable {
     while !Task.isCancelled {
       switch await connect() {
       case .running(let api, _):
-        delay = Self.minimumDelay
+        // Back to a quick retry only after a connection that held; one that drops straight away
+        // (a stream the daemon keeps ending) keeps backing off instead of spinning every second.
+        let connected = ContinuousClock.now
         await follow(api)
+        if connected.duration(to: .now) >= Self.stableConnection { delay = Self.minimumDelay }
       case .notRunning:
         api = nil
         if connection == .starting, let deadline = startDeadline, ContinuousClock.now < deadline { break }
         if connection == .starting {
           startError = "dryfit did not start within 30 seconds. Open the log to see why."
+          startDeadline = nil
         }
         connection = .offline
       case .incompatible(let health):
@@ -264,14 +272,17 @@ public struct LibraryRow: Identifiable, Equatable {
     guard connection == .offline else { return }
     connection = .starting
     startError = nil
+    // Set before launching: the launch itself can take seconds (a login shell loading nvm), and the
+    // connection loop must not call the start failed meanwhile.
+    startDeadline = .now + Self.startTimeout
     do {
       try await launch()
-      startDeadline = .now + Self.startTimeout
       cliMissing = false
       nudged = true
     } catch {
       cliMissing = (error as? DaemonLauncher.Failure) == .cliNotFound
       startError = error.localizedDescription
+      startDeadline = nil
       connection = .offline
     }
   }
@@ -332,7 +343,9 @@ public struct LibraryRow: Identifiable, Equatable {
     // Subscribed before reading status, so nothing that happens in between is missed.
     let events = api.events(after: lastEventID)
     // Online once there is something to show, so the menu never flashes an empty daemon.
-    await refresh()
+    // Anything shown as in progress belonged to the daemon before this connection; it may have died
+    // mid-job and never sent job:finished.
+    await refresh(clearingActivityWhenIdle: true)
     if roots == nil { roots = try? await api.roots() }
     if hiddenApps == nil { hiddenApps = try? await api.hiddenApps() }
     connection = .online
@@ -342,6 +355,7 @@ public struct LibraryRow: Identifiable, Equatable {
       for try await event in events { handle(event) }
     } catch {}
     self.api = nil
+    activity = nil
     if !Task.isCancelled { connection = .offline }
   }
 
@@ -378,8 +392,10 @@ public struct LibraryRow: Identifiable, Equatable {
     case .jobQueued, .stateChanged:
       scheduleRefresh()
     case .jobFinished(_, let error):
-      // A failed build has its own event with the output; anything else is reported here.
-      if let error, error.code != APIError.Code.buildFailed.rawValue { fail(error.message, error.message) }
+      // A failed build or install has its own event with the output. A refused request (drifted,
+      // already linked, bad input) went back to whoever asked, this app or the CLI, so only failures
+      // nobody saw are reported here.
+      if let error, Self.unseenFailureCodes.contains(error.code) { fail(error.message, error.message) }
       Task { await refresh(clearingActivityWhenIdle: true) }
     case .watchFailed(let library, let message):
       fail("Auto-sync of \(library) stopped", message)
@@ -437,7 +453,14 @@ public struct LibraryRow: Identifiable, Equatable {
   }
 
   public func link(_ library: String, into consumer: String) async {
-    await perform(.link(library, consumer)) { _ = try await $0.link(library: library, consumer: consumer) }
+    await perform(.link(library, consumer)) { api in
+      let result = try await api.link(library: library, consumer: consumer)
+      if result.guardOutcome == .failed {
+        // Linked all the same: say that nothing will stop the dev build from being committed.
+        self.actionError =
+          "Linked \(library), but the commit guard could not go in: \(result.message ?? "no reason given")"
+      }
+    }
   }
 
   /// Puts an app back as it was before linking. When its package.json changed since, asks first
@@ -445,6 +468,8 @@ public struct LibraryRow: Identifiable, Equatable {
   /// With `library`, only that library goes back to its release and the app's other links stay.
   public func restore(_ consumer: String, library: String? = nil, force: Bool = false) async {
     if force { driftedRestore = nil }
+    // Both would edit the same package.json; the second would only fail once the first is done.
+    guard !isRestoring(consumer) else { return }
     await perform(.restore(consumer, library)) { api in
       do {
         let result = try await api.restore(consumer: consumer, library: library, force: force)
@@ -520,6 +545,11 @@ public struct LibraryRow: Identifiable, Equatable {
     }
   }
 
+  /// Whether any restore of `consumer` runs: of one library or of all of them.
+  public func isRestoring(_ consumer: String) -> Bool {
+    inFlight.contains { if case .restore(consumer, _) = $0 { true } else { false } }
+  }
+
   public func restoreGroup(_ group: String) async {
     await perform(.restoreGroup(group)) { api in
       self.report(try await api.restoreGroup(group))
@@ -568,8 +598,14 @@ public struct LibraryRow: Identifiable, Equatable {
   }
 
   private func describe(_ job: Job) -> String {
-    let words = job.label.split(separator: " ").map { $0.hasPrefix("/") ? projectName(String($0)) : String($0) }
-    let text = words.joined(separator: " ")
+    // Labels end in absolute paths, which may hold spaces ("restore x in /Users/me/My Apps/shop"),
+    // and several apps are joined with ", ". Each path runs to the next ", " or the end.
+    // Scoped library names hold a "/" too, so a path is one that starts after a space.
+    var text = job.label
+    if let space = text.range(of: " /") {
+      let paths = text[space.upperBound...].split(separator: ", /").map { projectName("/" + $0) }
+      text = text[..<space.lowerBound] + " " + paths.joined(separator: ", ")
+    }
     return text.prefix(1).uppercased() + text.dropFirst()
   }
 }

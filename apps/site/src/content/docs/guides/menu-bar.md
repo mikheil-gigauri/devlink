@@ -26,8 +26,9 @@ through three steps: choose the folders where your apps live, add a library, and
   **Link** for the ones still on their release. **Add App…** (⇧⌘O) adds an app from outside your
   project folders. You can also drop a folder on the window: an app opens its page, a library opens the
   form that adds it.
-- Drag libraries, apps and groups in the sidebar to put them in your own order. The menu lists them,
-  and the apps under each library, in that same order.
+- Drag libraries, apps and groups in the sidebar to put them in your own order, or use **Move up** and
+  **Move down** in a row's context menu (⌥⌘↑ and ⌥⌘↓ for the open row). The menu lists them, and the
+  apps under each library, in that same order. ↑ and ↓ move through the sidebar.
 - **Hide app**, at the bottom of an app's page or in its row's context menu, stops listing an app you
   don't work on. Nothing in the app changes, and **Settings** lists hidden apps with **Show** to bring
   one back. A linked app has to be restored first.
@@ -48,7 +49,7 @@ From the menu you can:
 - turn Auto-sync on or off for each library, or sync it once, and watch a sync's progress on its card;
 - link a library to the apps that use it with one click, from the chips under it, or to any other
   app with **Other…**;
-- restore an app: its button shows when you point at the row;
+- restore an app with the arrow at the end of its row, also after a failed install;
 - fold a library's card with its arrow to keep the menu short;
 - see each app's installed version, and why an install failed, with the full output a click away;
 - link and restore saved groups, and see when a group's apps disagree on a version;
@@ -57,7 +58,7 @@ From the menu you can:
 It also tells you, in a notification, when an install fails while the menu is closed.
 
 Right-click (or Control-click) the menu bar icon for **Settings…**, the log, **Open at login**,
-**Check for updates…**, stopping dryfit, and quitting.
+**Check for updates…**, starting or stopping dryfit, and quitting.
 
 ## Settings
 

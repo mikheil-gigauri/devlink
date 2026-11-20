@@ -23,7 +23,7 @@ extension DryfitAPI.Link {
   var tint: Color {
     switch status {
     case .installed: .green
-    case .pending: .secondary
+    case .pending: DS.muted
     case .failed: .red
     }
   }
@@ -74,7 +74,7 @@ struct LinkMenuItems: View {
     if !candidates.isEmpty {
       Section("Apps that use \(library)") {
         ForEach(candidates) { consumer in
-          Button(consumer.name ?? projectName(consumer.root)) {
+          Button(projectName(consumer.root)) {
             Task { await model.link(library, into: consumer.root) }
           }
         }
@@ -95,13 +95,15 @@ struct ErrorBanner: View {
 
   var body: some View {
     HStack(alignment: .top, spacing: 7) {
-      Image(systemName: "xmark.circle").foregroundStyle(.red)
+      Image(systemName: "xmark.circle").foregroundStyle(.red).accessibilityHidden(true)
       Text(message).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
       Button("Dismiss", action: dismiss).buttonStyle(.pill)
     }
     .font(DS.body)
     .card()
+    // It arrives after a job, away from where VoiceOver is.
+    .onAppear { AccessibilityNotification.Announcement(message).post() }
   }
 }
 

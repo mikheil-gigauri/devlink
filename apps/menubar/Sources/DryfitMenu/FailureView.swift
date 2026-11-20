@@ -23,7 +23,7 @@ public struct FailureView: View {
               } label: {
                 VStack(alignment: .leading, spacing: 1) {
                   Text(failure.title).lineLimit(2).multilineTextAlignment(.leading)
-                  Text(failure.date, format: .dateTime.hour().minute()).font(DS.caption).foregroundStyle(.secondary)
+                  Text(failure.date, format: .dateTime.hour().minute()).font(DS.caption).foregroundStyle(DS.muted)
                 }
                 .font(DS.body)
                 .foregroundStyle(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
@@ -42,12 +42,22 @@ public struct FailureView: View {
         }
         .frame(width: 200)
         .background(.background.secondary)
+        .focusable()
+        .focusEffectDisabled()
+        .onMoveCommand { direction in
+          guard let index = failures.firstIndex(where: { $0.id == selected?.id }) else { return }
+          switch direction {
+          case .up where index > 0: selection = failures[index - 1].id
+          case .down where index < failures.count - 1: selection = failures[index + 1].id
+          default: break
+          }
+        }
         Rectangle().fill(DS.hairline).frame(width: 0.5)
       }
       if let failure = selected {
         Detail(failure: failure)
       } else {
-        Text("No failures").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+        Text("No failures").foregroundStyle(DS.muted).frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
     .font(DS.body)
@@ -77,7 +87,7 @@ private struct Detail: View {
       }
       Text(when)
         .font(DS.caption)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(DS.muted)
         .padding(.leading, 22)
         .padding(.top, 2)
         .padding(.bottom, 10)
@@ -85,7 +95,8 @@ private struct Detail: View {
         Text(failure.detail.isEmpty ? "No output was captured." : failure.detail)
           .font(DS.mono)
           .lineSpacing(5)
-          .foregroundStyle(.secondary)
+          // The output is what this window is for: full strength, not a caption's grey.
+          .foregroundStyle(.primary)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(.horizontal, 10)

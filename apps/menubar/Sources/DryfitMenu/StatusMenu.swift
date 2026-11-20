@@ -66,9 +66,13 @@ public final class StatusMenu: NSObject {
     if actions.checkForUpdates != nil {
       menu.addItem(item("Check for updates…", action: #selector(checkForUpdates)))
     }
+    // Whichever of the two applies, so the menu can always bring dryfit back.
     if model.connection == .online {
       menu.addItem(.separator())
       menu.addItem(item("Stop dryfit", action: #selector(stopDaemon)))
+    } else if model.connection == .offline, !model.cliMissing {
+      menu.addItem(.separator())
+      menu.addItem(item("Start dryfit", action: #selector(startDaemon)))
     }
     menu.addItem(.separator())
     menu.addItem(item("Quit dryfit", action: #selector(quit), key: "q"))
@@ -96,6 +100,7 @@ public final class StatusMenu: NSObject {
   @objc private func toggleOpenAtLogin() { actions.openAtLogin?.wrappedValue.toggle() }
   @objc private func checkForUpdates() { actions.checkForUpdates?() }
   @objc private func stopDaemon() { Task { await model.stopDaemon() } }
+  @objc private func startDaemon() { Task { await model.startDaemon() } }
   @objc private func quit() { actions.quit() }
 }
 
