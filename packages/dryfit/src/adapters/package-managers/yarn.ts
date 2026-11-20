@@ -1,5 +1,6 @@
 import type { DependencyField } from '../../core/model.ts';
 import type { PackageManagerAdapter } from '../../core/ports.ts';
+import { saveFlag } from './install-args.ts';
 import { tarballUrl } from './tarball-url.ts';
 
 const SAVE_FLAG: Readonly<Record<DependencyField, string | undefined>> = {
@@ -22,15 +23,14 @@ export const yarn: PackageManagerAdapter = {
   name: 'yarn',
   lockfiles: ['yarn.lock'],
 
-  install({ cwd, packageName, version, dependencyField, registryUrl }) {
-    const saveFlag = SAVE_FLAG[dependencyField];
+  install({ cwd, packages, registryUrl }) {
     const url = new URL(registryUrl);
     return {
       command: 'yarn',
       args: [
         'add',
-        `${packageName}@${tarballUrl(registryUrl, packageName, version)}`,
-        ...(saveFlag === undefined ? [] : [saveFlag]),
+        ...packages.map((pkg) => `${pkg.name}@${tarballUrl(registryUrl, pkg.name, pkg.version)}`),
+        ...saveFlag(packages, SAVE_FLAG),
       ],
       cwd,
       // Yarn refuses plain http except to hosts listed here; the local registry is loopback http.

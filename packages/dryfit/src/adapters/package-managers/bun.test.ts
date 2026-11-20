@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { installSpec } from '../../testing/install-spec.ts';
 import { bun } from './bun.ts';
-
-const base = {
-  cwd: '/apps/shop',
-  version: '1.4.1-dev.20261118143201',
-  dependencyField: 'dependencies',
-  registryUrl: 'http://127.0.0.1:4873/',
-} as const;
 
 describe('bun adapter', () => {
   it('writes the text bun.lock', () => {
@@ -16,7 +10,7 @@ describe('bun adapter', () => {
   describe('install', () => {
     it('installs the dev build’s tarball straight from the local registry', () => {
       // `--registry` does not override a scope mapped in .npmrc or bunfig.toml; a tarball URL does.
-      expect(bun.install({ ...base, packageName: '@acme/ui' })).toEqual({
+      expect(bun.install(installSpec(['@acme/ui']))).toEqual({
         command: 'bun',
         args: ['add', '@acme/ui@http://127.0.0.1:4873/@acme/ui/-/ui-1.4.1-dev.20261118143201.tgz'],
         cwd: '/apps/shop',
@@ -29,9 +23,24 @@ describe('bun adapter', () => {
       ['optionalDependencies', '--optional'],
       ['peerDependencies', '--peer'],
     ] as const)('keeps a package declared in %s in that field', (dependencyField, flag) => {
-      const args = bun.install({ ...base, packageName: '@acme/ui', dependencyField }).args;
+      const args = bun.install(installSpec([['@acme/ui', dependencyField]])).args;
 
       expect(args.slice(2)).toEqual(flag === undefined ? [] : [flag]);
+    });
+
+    it('installs several dev builds in one run, keeping each in its field when they differ', () => {
+      const args = bun.install(
+        installSpec([
+          ['@acme/common', 'dependencies'],
+          ['@acme/ui', 'devDependencies'],
+        ]),
+      ).args;
+
+      expect(args).toEqual([
+        'add',
+        '@acme/common@http://127.0.0.1:4873/@acme/common/-/common-1.4.1-dev.20261118143201.tgz',
+        '@acme/ui@http://127.0.0.1:4873/@acme/ui/-/ui-1.4.1-dev.20261118143201.tgz',
+      ]);
     });
   });
 

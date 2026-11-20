@@ -12,7 +12,7 @@ import {
   restoreGroup,
   saveGroup,
 } from '../core/use-cases/groups.ts';
-import { linkConsumer } from '../core/use-cases/link-consumer.ts';
+import { linkLibraries } from '../core/use-cases/link-consumer.ts';
 import { registerLibrary } from '../core/use-cases/register-library.ts';
 import { restoreConsumer } from '../core/use-cases/restore-consumer.ts';
 import { requireLibrary, sameLink, withLibrary, withLink } from '../core/use-cases/shared.ts';
@@ -177,7 +177,7 @@ export class DaemonService {
           `sync ${library}`,
           async () => {
             const result = await syncLibrary(deps, { library });
-            await this.#reapplyGuards(library);
+            await this.#reapplyGuards(result.installs.map((install) => install.consumer));
             return result;
           },
           `sync:${library}`,
@@ -204,15 +204,17 @@ export class DaemonService {
           : consumers.filter((consumer) => consumer.libraries.some((entry) => entry.name === library));
       },
 
-      link: ({ library, consumer, guard = true }) =>
-        job(`link ${library} into ${consumer}`, async () => {
-          const link = await linkConsumer(deps, { library, consumer });
-          if (!guard) return { link, guard: 'declined' as const };
+      link: ({ library, libraries = [], consumer, guard = true }) =>
+        job(`link ${[library, ...libraries].join(', ')} into ${consumer}`, async () => {
+          const links = await linkLibraries(deps, { libraries: [library, ...libraries], consumer });
+          const [link] = links;
+          if (!link) throw new DryfitError('invalid-request', `Linking ${library} returned nothing`, {});
+          if (!guard) return { link, links, guard: 'declined' as const };
           const installed = await this.#options.guard.install(link.consumer);
-          return {
-            link: installed === 'installed' ? await this.#markGuarded(link) : link,
-            guard: installed,
-          };
+          if (installed !== 'installed') return { link, links, guard: installed };
+          const guarded = [];
+          for (const each of links) guarded.push(await this.#markGuarded(each));
+          return { link: guarded[0] ?? link, links: guarded, guard: installed };
         }),
 
       restore: ({ consumer, library, force }) =>
@@ -336,11 +338,11 @@ export class DaemonService {
   }
 
   /** Husky and friends regenerate hook files on install, so a sync may have wiped the guard. */
-  async #reapplyGuards(library: string): Promise<void> {
+  async #reapplyGuards(consumers: readonly string[]): Promise<void> {
     const { links } = await this.#deps.state.load();
-    for (const link of links) {
-      if (link.library !== library || !link.guard) continue;
-      await this.#options.guard.install(link.consumer).catch(() => undefined);
+    const guarded = new Set(links.filter((link) => link.guard).map((link) => link.consumer));
+    for (const consumer of consumers) {
+      if (guarded.has(consumer)) await this.#options.guard.install(consumer).catch(() => undefined);
     }
   }
 

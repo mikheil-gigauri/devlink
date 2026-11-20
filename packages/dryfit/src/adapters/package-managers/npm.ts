@@ -1,5 +1,6 @@
 import type { DependencyField } from '../../core/model.ts';
 import type { PackageManagerAdapter, Publisher } from '../../core/ports.ts';
+import { registrySettings, saveFlag, scopeOf } from './install-args.ts';
 
 const QUIET = ['--no-audit', '--no-fund'] as const;
 
@@ -14,16 +15,17 @@ export const npm: PackageManagerAdapter = {
   name: 'npm',
   lockfiles: ['package-lock.json', 'npm-shrinkwrap.json'],
 
-  install({ cwd, packageName, version, dependencyField, registryUrl }) {
-    const saveFlag = SAVE_FLAG[dependencyField];
+  install({ cwd, packages, registryUrl }) {
     return {
       command: 'npm',
       args: [
         'install',
-        `${packageName}@${version}`,
+        ...packages.map((pkg) => `${pkg.name}@${pkg.version}`),
         '--save-exact',
-        ...(saveFlag === undefined ? [] : [saveFlag]),
-        registryFlag(packageName, registryUrl),
+        ...saveFlag(packages, SAVE_FLAG),
+        ...registrySettings(packages, registryUrl, (scope) =>
+          scope === undefined ? '--registry' : `--${scope}:registry`,
+        ),
         ...QUIET,
       ],
       cwd,
@@ -63,17 +65,3 @@ export const npmPublisher: Publisher = {
     return { '.npmrc': `${key}:_auth=${auth}\n` };
   },
 };
-
-/**
- * A scoped package can be pointed at the local registry on its own, leaving every other dependency
- * on the user's normal registry. An unscoped one cannot, so the whole install goes through the local
- * registry, which proxies everything it does not hold (ADR 0002).
- */
-function registryFlag(packageName: string, registryUrl: string): string {
-  const scope = scopeOf(packageName);
-  return scope === undefined ? `--registry=${registryUrl}` : `--${scope}:registry=${registryUrl}`;
-}
-
-function scopeOf(packageName: string): string | undefined {
-  return /^(@[^/]+)\//.exec(packageName)?.[1];
-}

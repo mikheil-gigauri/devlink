@@ -1,5 +1,6 @@
 import type { DependencyField } from '../../core/model.ts';
 import type { PackageManagerAdapter } from '../../core/ports.ts';
+import { registrySettings, saveFlag } from './install-args.ts';
 
 const SAVE_FLAG: Readonly<Record<DependencyField, string | undefined>> = {
   dependencies: undefined,
@@ -9,8 +10,8 @@ const SAVE_FLAG: Readonly<Record<DependencyField, string | undefined>> = {
 };
 
 /**
- * pnpm takes registries as `--config.<key>` for one command, so, like npm, only the library's scope
- * is pointed at the local registry. `minimumReleaseAge` is lifted for that one install: a dev build
+ * pnpm takes registries as `--config.<key>` for one command, so, like npm, only the libraries' scopes
+ * are pointed at the local registry. `minimumReleaseAge` is lifted for that one install: a dev build
  * is always seconds old, and pnpm would otherwise refuse it or record an exception in the project's
  * pnpm-workspace.yaml.
  */
@@ -18,19 +19,17 @@ export const pnpm: PackageManagerAdapter = {
   name: 'pnpm',
   lockfiles: ['pnpm-lock.yaml'],
 
-  install({ cwd, packageName, version, dependencyField, registryUrl }) {
-    const saveFlag = SAVE_FLAG[dependencyField];
-    const scope = /^(@[^/]+)\//.exec(packageName)?.[1];
+  install({ cwd, packages, registryUrl }) {
     return {
       command: 'pnpm',
       args: [
         'add',
-        `${packageName}@${version}`,
+        ...packages.map((pkg) => `${pkg.name}@${pkg.version}`),
         '--save-exact',
-        ...(saveFlag === undefined ? [] : [saveFlag]),
-        scope === undefined
-          ? `--config.registry=${registryUrl}`
-          : `--config.${scope}:registry=${registryUrl}`,
+        ...saveFlag(packages, SAVE_FLAG),
+        ...registrySettings(packages, registryUrl, (scope) =>
+          scope === undefined ? '--config.registry' : `--config.${scope}:registry`,
+        ),
         '--config.minimumReleaseAge=0',
       ],
       cwd,

@@ -1,6 +1,6 @@
 import { builtInIntegrations } from '../adapters/integrations/index.ts';
 import { npm, npmPublisher } from '../adapters/package-managers/npm.ts';
-import type { CommandSpec, DryfitState, Manifest } from '../core/model.ts';
+import { type CommandSpec, DEPENDENCY_FIELDS, type DryfitState, type Manifest } from '../core/model.ts';
 import type { CoreDeps } from '../core/ports.ts';
 import { formatManifest } from '../core/project/manifest.ts';
 import { isRecord } from '../core/util/json.ts';
@@ -115,13 +115,14 @@ export function createScenario({ files = scenarioFiles(), state }: ScenarioOptio
 }
 
 /**
- * Behaves like `npm install <pkg>@<version>` closely enough for restore tests: it rewrites the
+ * Behaves like `npm install <pkg>@<version>...` closely enough for restore tests: it rewrites the
  * manifest field and the lockfile entry. `failIn` makes it rewrite the manifest and then fail,
  * like npm does when a later step (a peer conflict, a postinstall script) blows up.
  */
 export class SimulatedNpm {
   readonly #fs: InMemoryFileSystem;
   readonly #failing = new Set<string>();
+  readonly #together = new Map<string, readonly string[]>();
 
   constructor(fs: InMemoryFileSystem) {
     this.#fs = fs;
@@ -141,37 +142,70 @@ export class SimulatedNpm {
       : failed('npm error The `npm ci` command can only install with an existing package-lock.json');
   }
 
-  async install(spec: CommandSpec) {
-    const specifier = spec.args[1];
-    if (spec.args[0] !== 'install') return ok();
-    if (specifier === undefined || specifier.startsWith('--')) return this.#installAll(spec);
+  /** The packages each `npm install <pkg>...` was given, in order. */
+  readonly installs: string[][] = [];
 
-    const at = specifier.lastIndexOf('@');
-    const name = specifier.slice(0, at);
-    const version = specifier.slice(at + 1);
-    const field = spec.args.includes('--save-dev')
+  async install(spec: CommandSpec) {
+    const specifiers = spec.args.slice(1).filter((arg) => !arg.startsWith('--'));
+    if (spec.args[0] !== 'install') return ok();
+    if (specifiers.length === 0) return this.#installAll(spec);
+    this.installs.push(specifiers);
+
+    const flagged = spec.args.includes('--save-dev')
       ? 'devDependencies'
       : spec.args.includes('--save-optional')
         ? 'optionalDependencies'
         : spec.args.includes('--save-peer')
           ? 'peerDependencies'
-          : 'dependencies';
+          : undefined;
 
     const manifestPath = joinPath(spec.cwd, 'package.json');
     const manifest = JSON.parse((await this.#fs.readText(manifestPath)) ?? '{}') as Record<string, unknown>;
-    const current = isRecord(manifest[field]) ? manifest[field] : {};
-    manifest[field] = { ...current, [name]: version };
+    const parsed = specifiers.map((specifier) => {
+      const at = specifier.lastIndexOf('@');
+      return { name: specifier.slice(0, at), version: specifier.slice(at + 1) };
+    });
+    for (const { name, version } of parsed) {
+      // Without a flag npm keeps a package in the field it is declared in, else adds it to dependencies.
+      const field =
+        flagged ??
+        DEPENDENCY_FIELDS.find((candidate) => isRecord(manifest[candidate]) && name in manifest[candidate]) ??
+        'dependencies';
+      const current = isRecord(manifest[field]) ? manifest[field] : {};
+      manifest[field] = { ...current, [name]: version };
+    }
     await this.#fs.writeText(manifestPath, formatManifest(manifest));
 
-    if (this.#failing.has(spec.cwd)) return failed('npm error ERESOLVE could not resolve');
+    const refusal = this.#refusal(spec.cwd, parsed);
+    if (refusal !== undefined) return failed(refusal);
 
     const lockPath = joinPath(spec.cwd, 'package-lock.json');
     const lock = JSON.parse(
       (await this.#fs.readText(lockPath)) ?? json({ lockfileVersion: 3, packages: {} }),
     );
-    lock.packages[`node_modules/${name}`] = { version, resolved: `${REGISTRY}${name}/-/x-${version}.tgz` };
+    for (const { name, version } of parsed) {
+      lock.packages[`node_modules/${name}`] = { version, resolved: `${REGISTRY}${name}/-/x-${version}.tgz` };
+    }
     await this.#fs.writeText(lockPath, json(lock));
     return ok();
+  }
+
+  /**
+   * Makes installs into `cwd` fail like npm's ERESOLVE unless `together` are all installed in the
+   * same run, the way packages that pin each other exactly behave (ADR 0014).
+   */
+  requireTogether(cwd: string, together: readonly string[]): void {
+    this.#together.set(cwd, together);
+  }
+
+  #refusal(cwd: string, parsed: readonly { readonly name: string }[]): string | undefined {
+    if (this.#failing.has(cwd)) return 'npm error ERESOLVE could not resolve';
+    const together = this.#together.get(cwd);
+    const names = parsed.map((pkg) => pkg.name);
+    if (together?.some((name) => names.includes(name)) && !together.every((name) => names.includes(name))) {
+      return `npm error ERESOLVE unable to resolve dependency tree: ${together.join(' and ')} pin each other`;
+    }
+    return undefined;
   }
 
   /** A bare `npm install` writes a lockfile when there is none, unless told not to. */

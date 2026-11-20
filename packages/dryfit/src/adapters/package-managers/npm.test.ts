@@ -1,19 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { installSpec } from '../../testing/install-spec.ts';
 import { npm, npmPublisher } from './npm.ts';
 
 const registryUrl = 'http://127.0.0.1:4873/';
 
 describe('npm adapter', () => {
   describe('install', () => {
-    const base = {
-      cwd: '/apps/shop',
-      version: '1.4.1-dev.20261118143201',
-      dependencyField: 'dependencies',
-      registryUrl,
-    } as const;
-
     it('pins the exact version and points only the package scope at the local registry', () => {
-      expect(npm.install({ ...base, packageName: '@acme/ui' })).toEqual({
+      expect(npm.install(installSpec(['@acme/ui']))).toEqual({
         command: 'npm',
         args: [
           'install',
@@ -28,9 +22,7 @@ describe('npm adapter', () => {
     });
 
     it('uses the local registry for everything when the package is unscoped', () => {
-      expect(npm.install({ ...base, packageName: 'ui-kit' }).args).toContain(
-        '--registry=http://127.0.0.1:4873/',
-      );
+      expect(npm.install(installSpec(['ui-kit'])).args).toContain('--registry=http://127.0.0.1:4873/');
     });
 
     it.each([
@@ -39,10 +31,52 @@ describe('npm adapter', () => {
       ['optionalDependencies', '--save-optional'],
       ['peerDependencies', '--save-peer'],
     ] as const)('keeps a package declared in %s in that field', (dependencyField, flag) => {
-      const args = npm.install({ ...base, packageName: '@acme/ui', dependencyField }).args;
+      const args = npm.install(installSpec([['@acme/ui', dependencyField]])).args;
       const saveFlags = args.filter((arg) => /^--save-(dev|optional|peer)$/.test(arg));
 
       expect(saveFlags).toEqual(flag === undefined ? [] : [flag]);
+    });
+
+    it('installs several dev builds in one run, one registry setting per scope', () => {
+      expect(npm.install(installSpec(['@acme/common', '@acme/ui', '@tools/lint'])).args).toEqual([
+        'install',
+        '@acme/common@1.4.1-dev.20261118143201',
+        '@acme/ui@1.4.1-dev.20261118143201',
+        '@tools/lint@1.4.1-dev.20261118143201',
+        '--save-exact',
+        '--@acme:registry=http://127.0.0.1:4873/',
+        '--@tools:registry=http://127.0.0.1:4873/',
+        '--no-audit',
+        '--no-fund',
+      ]);
+    });
+
+    it('passes no save flag when the packages sit in different fields, so npm keeps each where it is', () => {
+      const args = npm.install(
+        installSpec([
+          ['@acme/common', 'dependencies'],
+          ['@acme/ui', 'devDependencies'],
+        ]),
+      ).args;
+
+      expect(args.filter((arg) => arg.startsWith('--save-'))).toEqual(['--save-exact']);
+    });
+
+    it('keeps a shared field when every package sits in it', () => {
+      const args = npm.install(
+        installSpec([
+          ['@acme/common', 'devDependencies'],
+          ['@acme/ui', 'devDependencies'],
+        ]),
+      ).args;
+
+      expect(args).toContain('--save-dev');
+    });
+
+    it('uses the local registry for everything when any package is unscoped', () => {
+      const args = npm.install(installSpec(['@acme/ui', 'ui-kit'])).args;
+
+      expect(args.filter((arg) => arg.includes('registry='))).toEqual(['--registry=http://127.0.0.1:4873/']);
     });
   });
 

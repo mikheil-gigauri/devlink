@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { failed } from '../../testing/fakes.ts';
 import { createScenario, HOME, LIB } from '../../testing/scenario.ts';
-import type { DryfitState } from '../model.ts';
+import type { DryfitState, LibraryRecord } from '../model.ts';
 import { publishLibrary } from './publish-library.ts';
 
 const withBuild: DryfitState = {
@@ -80,6 +80,96 @@ describe('publishLibrary', () => {
     await publishLibrary(deps, { library: '@acme/ui' });
 
     expect(JSON.parse(stagedManifest).publishConfig).toEqual({ access: 'restricted' });
+  });
+
+  describe('libraries that depend on each other (ADR 0014)', () => {
+    const COMMON = '/repos/common';
+    const FORMS = '/repos/forms';
+    const workspace = (common: Partial<LibraryRecord> = {}): DryfitState => ({
+      ...withBuild,
+      libraries: [
+        ...withBuild.libraries,
+        {
+          name: '@acme/common',
+          root: COMMON,
+          publishDir: COMMON,
+          lastPublishedVersion: '19.24.1-dev.20261118120000',
+          ...common,
+        },
+        { name: '@acme/forms', root: FORMS, publishDir: FORMS },
+      ],
+    });
+
+    async function stagedManifestFor(state: DryfitState, manifest: object) {
+      const { deps, fs, process } = createScenario({ state });
+      await fs.writeText(
+        `${LIB}/dist/ui/package.json`,
+        JSON.stringify({ name: '@acme/ui', version: '1.4.0', ...manifest }),
+      );
+      let staged = '';
+      process.on('npm publish', (spec) => {
+        staged = fs.snapshot(spec.cwd)[`${spec.cwd}/package.json`] ?? '';
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+      await publishLibrary(deps, { library: '@acme/ui' });
+      return { staged: JSON.parse(staged), fs };
+    }
+
+    it("pins every runtime dependency on a registered library to that library's latest dev build", async () => {
+      const { staged } = await stagedManifestFor(workspace(), {
+        dependencies: { '@acme/common': '19.24.0', rxjs: '^7.8.0' },
+        peerDependencies: { '@acme/common': '^19.0.0', '@angular/core': '^20.0.0' },
+        optionalDependencies: { '@acme/common': '~19.24.0' },
+      });
+
+      expect(staged).toMatchObject({
+        dependencies: { '@acme/common': '19.24.1-dev.20261118120000', rxjs: '^7.8.0' },
+        peerDependencies: { '@acme/common': '19.24.1-dev.20261118120000', '@angular/core': '^20.0.0' },
+        optionalDependencies: { '@acme/common': '19.24.1-dev.20261118120000' },
+      });
+    });
+
+    it('leaves devDependencies, and siblings never published, as they are', async () => {
+      const { staged } = await stagedManifestFor(workspace(), {
+        devDependencies: { '@acme/common': '19.24.0' },
+        peerDependencies: { '@acme/forms': '2.0.0' },
+      });
+
+      expect(staged.devDependencies).toEqual({ '@acme/common': '19.24.0' });
+      expect(staged.peerDependencies).toEqual({ '@acme/forms': '2.0.0' });
+    });
+
+    it("resolves a sibling's workspace: range to its dev build instead of refusing it", async () => {
+      const { staged } = await stagedManifestFor(workspace(), {
+        dependencies: { '@acme/common': 'workspace:^' },
+      });
+
+      expect(staged.dependencies).toEqual({ '@acme/common': '19.24.1-dev.20261118120000' });
+    });
+
+    it('still refuses a workspace: range on a sibling with no dev build to pin', async () => {
+      const { deps, fs } = createScenario({ state: workspace({ lastPublishedVersion: undefined }) });
+      await fs.writeText(
+        `${LIB}/dist/ui/package.json`,
+        JSON.stringify({
+          name: '@acme/ui',
+          version: '1.4.0',
+          dependencies: { '@acme/common': 'workspace:*' },
+        }),
+      );
+
+      await expect(publishLibrary(deps, { library: '@acme/ui' })).rejects.toMatchObject({
+        code: 'invalid-manifest',
+      });
+    });
+
+    it('changes only the staged copy, never the build output', async () => {
+      const { fs } = await stagedManifestFor(workspace(), { dependencies: { '@acme/common': '19.24.0' } });
+
+      expect(JSON.parse((await fs.readText(`${LIB}/dist/ui/package.json`)) ?? '{}').dependencies).toEqual({
+        '@acme/common': '19.24.0',
+      });
+    });
   });
 
   it('hands npm the registry credentials through the staged .npmrc only', async () => {

@@ -28,7 +28,13 @@ export const operations = {
   sync: s.object({ library: s.string() }),
   watch: s.object({ library: s.string(), enabled: s.boolean() }),
   discover: s.object({ library: s.optional(s.string()) }),
-  link: s.object({ library: s.string(), consumer: s.path(), guard: s.optional(s.boolean()) }),
+  link: s.object({
+    library: s.string(),
+    /** More libraries to link along with `library`, installed together in one run (ADR 0014). */
+    libraries: s.optional(s.array(s.string())),
+    consumer: s.path(),
+    guard: s.optional(s.boolean()),
+  }),
   restore: s.object({ consumer: s.path(), library: s.optional(s.string()), force: s.optional(s.boolean()) }),
   saveGroup: s.object({ name: s.string(), consumers: s.array(s.path()) }),
   deleteGroup: s.object({ name: s.string() }),
@@ -98,7 +104,10 @@ export interface HiddenApps {
 }
 
 export interface LinkResult {
+  /** The link for `library`. */
   readonly link: LinkRecord;
+  /** The links for `library` and every one of `libraries`, in that order. */
+  readonly links: readonly LinkRecord[];
   readonly guard: 'installed' | 'declined' | 'not-a-repo';
 }
 

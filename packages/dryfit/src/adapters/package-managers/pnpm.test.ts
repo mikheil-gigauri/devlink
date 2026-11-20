@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { installSpec } from '../../testing/install-spec.ts';
 import { pnpm } from './pnpm.ts';
-
-const base = {
-  cwd: '/apps/shop',
-  version: '1.4.1-dev.20261118143201',
-  dependencyField: 'dependencies',
-  registryUrl: 'http://127.0.0.1:4873/',
-} as const;
 
 describe('pnpm adapter', () => {
   it('writes pnpm-lock.yaml', () => {
@@ -15,7 +9,7 @@ describe('pnpm adapter', () => {
 
   describe('install', () => {
     it('pins the exact version, points only the scope at the local registry, and lets a fresh build in', () => {
-      expect(pnpm.install({ ...base, packageName: '@acme/ui' })).toEqual({
+      expect(pnpm.install(installSpec(['@acme/ui']))).toEqual({
         command: 'pnpm',
         args: [
           'add',
@@ -30,7 +24,7 @@ describe('pnpm adapter', () => {
     });
 
     it('uses the local registry for everything when the package is unscoped', () => {
-      expect(pnpm.install({ ...base, packageName: 'ui-kit' }).args).toContain(
+      expect(pnpm.install(installSpec(['ui-kit'])).args).toContain(
         '--config.registry=http://127.0.0.1:4873/',
       );
     });
@@ -41,11 +35,29 @@ describe('pnpm adapter', () => {
       ['optionalDependencies', '--save-optional'],
       ['peerDependencies', '--save-peer'],
     ] as const)('keeps a package declared in %s in that field', (dependencyField, flag) => {
-      const args = pnpm.install({ ...base, packageName: '@acme/ui', dependencyField }).args;
+      const args = pnpm.install(installSpec([['@acme/ui', dependencyField]])).args;
 
       expect(args.filter((arg) => /^--save-(dev|optional|peer)$/.test(arg))).toEqual(
         flag === undefined ? [] : [flag],
       );
+    });
+
+    it('installs several dev builds in one run, keeping each in its field when they differ', () => {
+      const args = pnpm.install(
+        installSpec([
+          ['@acme/common', 'dependencies'],
+          ['@acme/ui', 'devDependencies'],
+        ]),
+      ).args;
+
+      expect(args).toEqual([
+        'add',
+        '@acme/common@1.4.1-dev.20261118143201',
+        '@acme/ui@1.4.1-dev.20261118143201',
+        '--save-exact',
+        '--config.@acme:registry=http://127.0.0.1:4873/',
+        '--config.minimumReleaseAge=0',
+      ]);
     });
   });
 

@@ -243,7 +243,7 @@ describe('restoreConsumer', () => {
 
       const result = await restoreConsumer(deps, { consumer: SHOP, library: '@acme/ui' });
 
-      expect(result).toEqual({ ok: true });
+      expect(result).toEqual({ ok: true, libraries: ['@acme/ui'] });
       const manifest = JSON.parse((await fs.readText(`${SHOP}/package.json`)) ?? '{}');
       expect(manifest.dependencies['@acme/ui']).toBe('^1.4.0');
       expect(manifest.dependencies['@acme/forms']).toBe(forms?.installedVersion);
@@ -284,7 +284,7 @@ describe('restoreConsumer', () => {
 
       const result = await restoreConsumer(deps, { consumer: SHOP, library: '@acme/ui' });
 
-      expect(result).toEqual({ ok: false, output: 'npm error network' });
+      expect(result).toEqual({ ok: false, output: 'npm error network', libraries: ['@acme/ui'] });
       expect(store.current.links).toEqual([{ library: '@acme/forms', consumer: SHOP, status: 'pending' }]);
     });
 

@@ -19,5 +19,6 @@ and update the old one's status line.
 | 0011 | [Project website](0011-project-website.md)                                                 | Accepted |
 | 0012 | [Daemon runtime, API contract and CLI](0012-daemon-runtime-api-and-cli.md)                 | Accepted |
 | 0013 | [Menu bar app structure and API contract](0013-menu-bar-app-structure-and-api-contract.md) | Accepted |
+| 0014 | [Libraries that pin each other](0014-libraries-that-pin-each-other.md)                     | Accepted |
 
 Template: Status, Context, Decision, Consequences. Keep each under a page.

@@ -162,10 +162,8 @@ describe('dryfit CLI', () => {
 
   it('links consumers given relative to here, into the library this folder belongs to', async () => {
     const client = new FakeClient();
-    client.replies.link = {
-      link: { library: '@acme/ui', consumer: '/Users/me/repos/shop', status: 'pending' },
-      guard: 'installed',
-    };
+    const link = { library: '@acme/ui', consumer: '/Users/me/repos/shop', status: 'pending' as const };
+    client.replies.link = { link, links: [link], guard: 'installed' };
 
     const { code, stdout } = await dryfit('link ../../shop', { client, cwd: '/Users/me/repos/ui-lib/src' });
 
@@ -180,15 +178,13 @@ describe('dryfit CLI', () => {
 
   it('exits 1 when the first install into a linked consumer fails, and says why', async () => {
     const client = new FakeClient();
-    const failed = {
-      link: {
-        library: '@acme/ui',
-        consumer: '/Users/me/repos/shop',
-        status: 'failed' as const,
-        message: 'npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree',
-      },
-      guard: 'installed' as const,
+    const link = {
+      library: '@acme/ui',
+      consumer: '/Users/me/repos/shop',
+      status: 'failed' as const,
+      message: 'npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree',
     };
+    const failed = { link, links: [link], guard: 'installed' as const };
     client.replies.link = failed;
 
     const json = await dryfit('link /Users/me/repos/shop --json', { client, cwd: '/Users/me/repos/ui-lib' });
@@ -200,6 +196,33 @@ describe('dryfit CLI', () => {
     expect(human.stdout).toContain('Install into ~/repos/shop failed');
     expect(human.stdout).toContain('ERESOLVE unable to resolve dependency tree');
     expect(human.stdout).not.toContain('Next:');
+  });
+
+  it('names each library whose install failed when several were linked, showing npm’s reason once', async () => {
+    const client = new FakeClient();
+    client.replies.status = status({ libraries: [ui, forms] });
+    const message = 'npm error code ERESOLVE';
+    const failedLink = (library: string) => ({
+      library,
+      consumer: '/Users/me/repos/shop',
+      status: 'failed' as const,
+      message,
+    });
+    const first = failedLink('@acme/forms');
+    client.replies.link = { link: first, links: [first, failedLink('@acme/ui')], guard: 'installed' };
+
+    const { code, stdout } = await dryfit(
+      'link /Users/me/repos/shop --library @acme/forms --library @acme/ui',
+      {
+        client,
+        cwd: '/Users/me',
+      },
+    );
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('Install of @acme/forms into ~/repos/shop failed');
+    expect(stdout).toContain('Install of @acme/ui into ~/repos/shop failed');
+    expect(stdout.split(message).length - 1).toBe(1);
   });
 
   it('asks which library when it cannot tell', async () => {
@@ -215,10 +238,8 @@ describe('dryfit CLI', () => {
   it('passes --no-guard and an explicit --library through', async () => {
     const client = new FakeClient();
     client.replies.status = status({ libraries: [ui, forms] });
-    client.replies.link = {
-      link: { library: '@acme/forms', consumer: '/Users/me/repos/shop', status: 'pending' },
-      guard: 'declined',
-    };
+    const link = { library: '@acme/forms', consumer: '/Users/me/repos/shop', status: 'pending' as const };
+    client.replies.link = { link, links: [link], guard: 'declined' };
 
     await dryfit('link /Users/me/repos/shop --library @acme/forms --no-guard', { client, cwd: '/Users/me' });
 
@@ -227,6 +248,53 @@ describe('dryfit CLI', () => {
       consumer: '/Users/me/repos/shop',
       guard: false,
     });
+  });
+
+  it('links several libraries into a consumer in one call, so they install together', async () => {
+    const client = new FakeClient();
+    client.replies.status = status({ libraries: [ui, forms] });
+    const formsLink = {
+      library: '@acme/forms',
+      consumer: '/Users/me/repos/shop',
+      status: 'installed' as const,
+      installedVersion: '2.0.1-dev.20261120101010',
+    };
+    const links = [
+      formsLink,
+      {
+        library: '@acme/ui',
+        consumer: '/Users/me/repos/shop',
+        status: 'installed' as const,
+        installedVersion: '1.4.1-dev.20261120101011',
+      },
+    ];
+    client.replies.link = { link: formsLink, links, guard: 'installed' };
+
+    const { code, stdout } = await dryfit(
+      'link /Users/me/repos/shop --library @acme/forms --library @acme/ui',
+      {
+        client,
+        cwd: '/Users/me',
+      },
+    );
+
+    expect(code).toBe(0);
+    expect(client.calls.at(-1)?.input).toEqual({
+      library: '@acme/forms',
+      libraries: ['@acme/ui'],
+      consumer: '/Users/me/repos/shop',
+    });
+    expect(stdout).toContain('Linked @acme/forms, @acme/ui into ~/repos/shop');
+    expect(stdout).toContain('@acme/ui running 1.4.1-dev.20261120101011');
+  });
+
+  it('names every library a restore took back with the one asked for', async () => {
+    const client = new FakeClient();
+    client.replies.restore = { ok: true, libraries: ['@acme/forms', '@acme/ui'] };
+
+    const { stdout } = await dryfit('restore /Users/me/repos/shop --library @acme/ui', { client });
+
+    expect(stdout).toContain('Restored @acme/forms, @acme/ui in ~/repos/shop');
   });
 
   it('restores the current folder when no consumer is named', async () => {
@@ -258,7 +326,16 @@ describe('dryfit CLI', () => {
     ];
     client.replies.sync = {
       version,
-      installs: [{ consumer: '/Users/me/repos/shop', ok: false, version, output: 'npm ERR! ERESOLVE' }],
+      published: [{ library: '@acme/ui', version }],
+      installs: [
+        {
+          consumer: '/Users/me/repos/shop',
+          ok: false,
+          version,
+          libraries: [{ library: '@acme/ui', version }],
+          output: 'npm ERR! ERESOLVE',
+        },
+      ],
     };
 
     const { code, stdout } = await dryfit('sync', { client });
@@ -473,7 +550,16 @@ describe('dryfit CLI', () => {
     const client = new FakeClient();
     client.replies.sync = {
       version,
-      installs: [{ consumer: '/Users/me/repos/shop', ok: false, version, output: 'npm ERR!' }],
+      published: [{ library: '@acme/ui', version }],
+      installs: [
+        {
+          consumer: '/Users/me/repos/shop',
+          ok: false,
+          version,
+          libraries: [{ library: '@acme/ui', version }],
+          output: 'npm ERR!',
+        },
+      ],
     };
     const failed = [{ consumer: '/Users/me/repos/shop', status: 'failed' as const, message: 'no' }];
     client.replies.linkGroup = failed;

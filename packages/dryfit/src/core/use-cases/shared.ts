@@ -7,7 +7,7 @@ import { joinPath, pathSlug } from '../util/path.ts';
 /** The dist-tag every dev version is published under, so `latest` is never touched (ADR 0004). */
 export const DEV_TAG = 'dryfit';
 
-export function requireLibrary(state: DryfitState, name: string): LibraryRecord {
+export function requireLibrary(state: Pick<DryfitState, 'libraries'>, name: string): LibraryRecord {
   const library = state.libraries.find((candidate) => candidate.name === name);
   if (!library) {
     throw new DryfitError('library-not-found', `No library named ${name} is registered`, { library: name });

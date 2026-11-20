@@ -1,5 +1,13 @@
+import type { DryfitState } from '../model.ts';
 import type { CoreDeps } from '../ports.ts';
-import { type InstallOutcome, installLink } from './install-link.ts';
+import {
+  dependenciesOf,
+  dependencyOrder,
+  dependentsOf,
+  type LibraryGraph,
+  loadLibraryGraph,
+} from '../project/library-graph.ts';
+import { type InstallOutcome, installLinks, type LibraryVersion, linkedSet } from './install-link.ts';
 import { publishLibrary } from './publish-library.ts';
 import { requireLibrary } from './shared.ts';
 
@@ -8,25 +16,67 @@ export interface SyncLibraryInput {
 }
 
 export interface SyncResult {
+  /** The new dev version of the library asked for. */
   readonly version: string;
+  /** Every library published, in the order it was, the one asked for among them (ADR 0014). */
+  readonly published: readonly LibraryVersion[];
+  /** One outcome per consumer linked to any published library. */
   readonly installs: readonly InstallOutcome[];
 }
 
 /**
- * One full cycle: build and publish the library once, then install that version into every linked
- * consumer in turn. Consumers are installed one at a time because package managers share a global
- * cache that does not tolerate concurrent writers well.
+ * One full cycle: build and publish the library, along with the registered libraries whose dev builds
+ * must move with it (ADR 0014), then install each linked consumer's dev builds in one run. Consumers
+ * are installed one at a time because package managers share a global cache that does not tolerate
+ * concurrent writers well.
  */
 export async function syncLibrary(deps: CoreDeps, { library: name }: SyncLibraryInput): Promise<SyncResult> {
-  const { version } = await publishLibrary(deps, { library: name });
+  const before = await deps.state.load();
+  requireLibrary(before, name);
+  const graph = await loadLibraryGraph(deps.fs, before.libraries);
+
+  const published: LibraryVersion[] = [];
+  for (const library of dependencyOrder(graph, publishSet(before, graph, name))) {
+    const { version } = await publishLibrary(deps, { library });
+    published.push({ library, version });
+  }
 
   const state = await deps.state.load();
-  const library = requireLibrary(state, name);
-  const consumers = state.links.filter((link) => link.library === name).map((link) => link.consumer);
+  const touched = new Set(published.map((entry) => entry.library));
+  const consumers = [
+    ...new Set(state.links.filter((link) => touched.has(link.library)).map((link) => link.consumer)),
+  ];
 
   const installs: InstallOutcome[] = [];
   for (const consumer of consumers) {
-    installs.push((await installLink(deps, { library, consumer, version })).outcome);
+    const libraries = linkedSet(state, consumer, name);
+    installs.push((await installLinks(deps, { consumer, libraries })).outcome);
   }
-  return { version, installs };
+  const version = published.find((entry) => entry.library === name)?.version ?? '';
+  return { version, published, installs };
+}
+
+/**
+ * The library asked for, then until nothing changes: every library depending on one in the set that
+ * has a dev build or is linked (its dev build pins a version about to be replaced), and every library
+ * one in the set depends on that is linked but was never published (so a new set is complete at once).
+ */
+function publishSet(state: DryfitState, graph: LibraryGraph, name: string): Set<string> {
+  const linked = new Set(state.links.map((link) => link.library));
+  const published = new Set(
+    state.libraries.filter((library) => library.lastPublishedVersion !== undefined).map((l) => l.name),
+  );
+  const set = new Set([name]);
+  for (let size = 0; size !== set.size; ) {
+    size = set.size;
+    for (const member of [...set]) {
+      for (const dependent of dependentsOf(graph, member)) {
+        if (published.has(dependent) || linked.has(dependent)) set.add(dependent);
+      }
+      for (const dependency of dependenciesOf(graph, member)) {
+        if (linked.has(dependency) && !published.has(dependency)) set.add(dependency);
+      }
+    }
+  }
+  return set;
 }
