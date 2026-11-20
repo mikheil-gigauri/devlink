@@ -16,7 +16,8 @@ through three steps: choose the folders where your apps live, add a library, and
 
 - **Add Library** (the **+** button at the bottom of the sidebar, or ⌘O) asks for the library's folder,
   then shows how dryfit will build it and which folder it publishes. Change either before adding it,
-  or later with **Change…**.
+  or later with **Change…**. [Build and publish settings](/dryfit/guides/libraries/) explains what to
+  choose.
 - A library's page lists the apps it is linked into, with the version each one runs, and below them the
   apps in your project folders that use the library, each with a **Link** button. **Choose App…** links
   an app from anywhere else.
