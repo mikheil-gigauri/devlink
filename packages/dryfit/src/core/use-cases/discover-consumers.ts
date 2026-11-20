@@ -28,8 +28,9 @@ const SKIPPED_FOLDERS = new Set(['node_modules', 'dist', 'build', 'coverage']);
 
 /**
  * Lists projects that depend on a registered library (ADR 0005). Read-only: it never changes a
- * project. The search stops at the first package.json in a branch, because that folder owns the
- * lockfile and is where an install has to run.
+ * project. The search stops at a consumer, because that folder owns the lockfile and is where an
+ * install has to run, and at a registered library. Any other package.json (a stray one in the home
+ * folder, a project that uses none of the libraries) does not hide the folders below it.
  */
 export async function discoverConsumers(
   deps: CoreDeps,
@@ -38,18 +39,21 @@ export async function discoverConsumers(
   const { libraries } = await deps.state.load();
   if (libraries.length === 0) return [];
 
-  const libraryRoots = new Set(libraries.map((library) => library.root));
-  const found: DiscoveredConsumer[] = [];
+  const libraryRoots = new Set(libraries.map((library) => joinPath(library.root)));
+  // Keyed by folder: roots may overlap (`~/repos` and `~/repos/team`), and each project is listed once.
+  const found = new Map<string, DiscoveredConsumer>();
 
   const visit = async (dir: string, depth: number): Promise<void> => {
+    if (libraryRoots.has(dir)) return;
     const entries = await deps.fs.readDir(dir);
 
     if (entries.some((entry) => entry.name === 'package.json' && !entry.isDirectory)) {
-      if (libraryRoots.has(dir)) return;
       const project = await tryLoadProject(deps, dir);
       const consumer = project && asConsumer(project, libraries);
-      if (consumer) found.push(consumer);
-      return;
+      if (consumer) {
+        found.set(consumer.root, consumer);
+        return;
+      }
     }
 
     if (depth >= maxDepth) return;
@@ -60,8 +64,8 @@ export async function discoverConsumers(
     }
   };
 
-  for (const root of roots) await visit(joinPath(root), 0);
-  return found.sort((a, b) => (a.root < b.root ? -1 : a.root > b.root ? 1 : 0));
+  for (const root of new Set(roots.map((root) => joinPath(root)))) await visit(root, 0);
+  return [...found.values()].sort((a, b) => (a.root < b.root ? -1 : a.root > b.root ? 1 : 0));
 }
 
 async function tryLoadProject(deps: CoreDeps, dir: string): Promise<ProjectInfo | undefined> {

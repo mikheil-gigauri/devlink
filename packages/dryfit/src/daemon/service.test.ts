@@ -192,6 +192,16 @@ describe('DaemonService', () => {
     expect(roots()).toEqual(['/code/b', '/code/a']);
   });
 
+  it('searches the folders holding the libraries when no folders are configured', async () => {
+    const { service } = setup();
+    await service.call('setRoots', { roots: [] });
+
+    const found = await service.call('discover', {});
+
+    expect(found.map((consumer) => consumer.root)).toEqual([ADMIN, SHOP]);
+    expect(await service.call('roots', {})).toEqual({ roots: [] });
+  });
+
   it('leaves hidden apps out of discovery until they are shown again', async () => {
     const { service, hiddenApps } = setup();
     const roots = async () => (await service.call('discover', {})).map((consumer) => consumer.root);
@@ -232,6 +242,10 @@ describe('DaemonService', () => {
   it('links several libraries in one job, guarding every link', async () => {
     const forms: LibraryRecord = { name: '@acme/forms', root: '/repos/forms', publishDir: '/repos/forms' };
     const { service, guard, store, fs } = setup({ ...registered, libraries: [library, forms] });
+    await fs.writeText(
+      '/repos/forms/package.json',
+      JSON.stringify({ name: '@acme/forms', version: '2.0.0' }),
+    );
     await fs.writeText(
       `${SHOP}/package.json`,
       JSON.stringify({ name: 'shop', dependencies: { '@acme/ui': '^1.4.0', '@acme/forms': '^2.0.0' } }),

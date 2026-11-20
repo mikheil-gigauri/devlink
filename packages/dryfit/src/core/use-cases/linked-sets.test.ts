@@ -188,6 +188,22 @@ describe('libraries that pin each other (ADR 0014)', () => {
       ]);
     });
 
+    it('publishes libraries never published, dependencies first, then installs them together', async () => {
+      const { deps, npm, store, staged } = workspace();
+
+      const links = await linkLibraries(deps, { libraries: [UI, COMMON], consumer: APP });
+
+      const common = versionOf(store.current, COMMON);
+      const ui = versionOf(store.current, UI);
+      expect([...staged.keys()]).toEqual([COMMON, UI]);
+      expect(staged.get(UI)?.peerDependencies).toEqual({ [COMMON]: common });
+      expect(npm.installs).toEqual([[`${UI}@${ui}`, `${COMMON}@${common}`]]);
+      expect(links.map((link) => [link.library, link.status])).toEqual([
+        [UI, 'installed'],
+        [COMMON, 'installed'],
+      ]);
+    });
+
     it('records the sibling versions a dev build pinned, so the next link reuses it', async () => {
       const { deps, store, staged } = workspace({ published });
 

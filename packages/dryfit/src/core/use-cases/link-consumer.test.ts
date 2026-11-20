@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { failed } from '../../testing/fakes.ts';
 import { ADMIN, BLOG, createScenario, HOME, json, LIB, SHOP, scenarioFiles } from '../../testing/scenario.ts';
 import type { DryfitState } from '../model.ts';
 import { pathSlug } from '../util/path.ts';
@@ -31,14 +32,41 @@ describe('linkConsumer', () => {
     });
   });
 
-  it('records a pending link and installs nothing while the library has never been published', async () => {
-    const { deps, store, process } = createScenario({ state: registered });
+  it('publishes a library that was never published, then installs it, so linking changes the app', async () => {
+    const { deps, store, fs, process } = createScenario({ state: registered });
 
     const link = await linkConsumer(deps, { library: '@acme/ui', consumer: SHOP });
 
-    expect(link).toEqual({ library: '@acme/ui', consumer: SHOP, status: 'pending' });
-    expect(store.current.links).toEqual([link]);
-    expect(process.calls).toEqual([]);
+    const version = store.current.libraries[0]?.lastPublishedVersion;
+    expect(version).toBe('1.4.1-dev.20261118143201');
+    expect(process.lines().filter((line) => line.includes('npm publish'))).toHaveLength(1);
+    expect(process.lines(SHOP)).toEqual([
+      `npm install @acme/ui@${version} --save-exact --@acme:registry=http://127.0.0.1:4873/ --no-audit --no-fund`,
+    ]);
+    expect(link).toEqual({
+      library: '@acme/ui',
+      consumer: SHOP,
+      status: 'installed',
+      installedVersion: version,
+    });
+    expect(JSON.parse((await fs.readText(`${SHOP}/package.json`)) ?? '').dependencies['@acme/ui']).toBe(
+      version,
+    );
+  });
+
+  it('fails with the build output and leaves the link pending when the first build fails', async () => {
+    const build = { command: 'npm', args: ['run', 'build'], cwd: LIB };
+    const { deps, store, process } = createScenario({
+      state: { ...registered, libraries: [{ ...library, build }] },
+    });
+    process.on('npm run build', failed('src/button.ts:3:7 - error TS2322'));
+
+    await expect(linkConsumer(deps, { library: '@acme/ui', consumer: SHOP })).rejects.toMatchObject({
+      code: 'build-failed',
+      details: { library: '@acme/ui', output: expect.stringContaining('TS2322') },
+    });
+    expect(store.current.links).toEqual([{ library: '@acme/ui', consumer: SHOP, status: 'pending' }]);
+    expect(process.lines(SHOP)).toEqual([]);
   });
 
   it('installs the latest dev version straight away when there is one', async () => {
@@ -90,6 +118,7 @@ describe('linkConsumer', () => {
         name: 'shop',
         dependencies: { '@acme/ui': '^1.4.0', '@acme/icons': '^2.0.0' },
       }),
+      '/repos/icons/package.json': json({ name: '@acme/icons', version: '2.0.0' }),
     };
     const { deps, fs } = createScenario({
       files,
@@ -161,7 +190,7 @@ describe('linkConsumer', () => {
     await linkConsumer(deps, { library: '@acme/ui', consumer: `${SHOP}/` });
     await linkConsumer(deps, { library: '@acme/ui', consumer: `${SHOP}/./src/..` });
 
-    expect(store.current.links).toEqual([{ library: '@acme/ui', consumer: SHOP, status: 'pending' }]);
+    expect(store.current.links.map((link) => [link.consumer, link.status])).toEqual([[SHOP, 'installed']]);
     expect((await fs.readDir(`${HOME}/snapshots`)).map((entry) => entry.name)).toEqual([
       pathSlug(SHOP).toString(),
     ]);
@@ -202,7 +231,7 @@ describe('linkConsumer', () => {
 
     await linkConsumer({ ...deps, fs }, { library: '@acme/ui', consumer: SHOP });
 
-    expect(store.current.libraries.map((entry) => entry.name)).toEqual(['@acme/ui', '@acme/icons']);
+    expect(store.current.libraries.map((entry) => entry.name).sort()).toEqual(['@acme/icons', '@acme/ui']);
   });
 
   it('rejects a package manager it has no adapter for yet', async () => {
