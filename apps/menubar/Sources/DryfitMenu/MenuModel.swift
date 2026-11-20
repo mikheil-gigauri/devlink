@@ -82,6 +82,10 @@ public struct LibraryRow: Identifiable, Equatable {
   /// Newest first.
   public internal(set) var failures: [Failure] = []
   public internal(set) var hasUnseenFailure = false
+  /// Apps whose framework caches dryfit cleared after installing a dev build: a dev server that is
+  /// running still holds what was deleted and shows the change only after a restart (ADR 0007).
+  /// Kept until the user says they restarted it, or the app is put back.
+  public internal(set) var restartNeeded: Set<String> = []
   public internal(set) var consumers: [DiscoveredConsumer] = []
   /// Apps the user added by hand from outside the project folders, until they are linked.
   public internal(set) var addedApps: [DiscoveredConsumer] = []
@@ -332,6 +336,11 @@ public struct LibraryRow: Identifiable, Equatable {
     actionError = nil
   }
 
+  /// The user restarted the app's dev server, or does not run one.
+  public func restarted(_ consumer: String) {
+    restartNeeded.remove(consumer)
+  }
+
   /// The user dismissed the failures they have read.
   public func clearFailures() {
     failures = []
@@ -386,6 +395,10 @@ public struct LibraryRow: Identifiable, Equatable {
       fail("Install of \(library) into \(projectName(consumer)) failed", output, consumer: consumer)
     case .consumerRestored(let consumer, let library, _):
       activity = library.map { "Restored \($0) in \(projectName(consumer))" } ?? "Restored \(projectName(consumer))"
+      // Back on its releases, the app has no dev build left to restart for.
+      if library == nil { restartNeeded.remove(consumer) }
+    case .cachesCleared(let consumer, _):
+      restartNeeded.insert(consumer)
     case .jobStarted(let job):
       activity = describe(job)
       scheduleRefresh()
@@ -400,7 +413,7 @@ public struct LibraryRow: Identifiable, Equatable {
     case .watchFailed(let library, let message):
       fail("Auto-sync of \(library) stopped", message)
       scheduleRefresh()
-    case .buildSucceeded, .installSucceeded, .cachesCleared, .libraryChanged, .unknown:
+    case .buildSucceeded, .installSucceeded, .libraryChanged, .unknown:
       break
     }
   }

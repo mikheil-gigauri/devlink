@@ -102,6 +102,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
         Failure(title: "Install of @acme/ui into admin failed", detail: failed, date: at, consumer: admin)
       ]
       model.activity = "Installing @acme/ui into admin…"
+      model.restartNeeded = [shop]
     }
     assertSnapshot(of: MenuContent(model: busy, actions: MenuActions()), named: "online")
   }

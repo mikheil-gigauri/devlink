@@ -163,7 +163,7 @@ describe('dryfit CLI', () => {
   it('links consumers given relative to here, into the library this folder belongs to', async () => {
     const client = new FakeClient();
     const link = { library: '@acme/ui', consumer: '/Users/me/repos/shop', status: 'pending' as const };
-    client.replies.link = { link, links: [link], guard: 'installed' };
+    client.replies.link = { link, links: [link], guard: 'installed', clearedCaches: [] };
 
     const { code, stdout } = await dryfit('link ../../shop', { client, cwd: '/Users/me/repos/ui-lib/src' });
 
@@ -176,6 +176,25 @@ describe('dryfit CLI', () => {
     expect(stdout).toContain('commit guard installed');
   });
 
+  it('says to restart the dev server of a consumer whose caches the link cleared', async () => {
+    const client = new FakeClient();
+    const link = {
+      library: '@acme/ui',
+      consumer: '/Users/me/repos/shop',
+      status: 'installed' as const,
+      installedVersion: '1.4.1-dev.20261118143201',
+    };
+    client.replies.link = { link, links: [link], guard: 'installed', clearedCaches: ['.angular/cache'] };
+
+    const { stdout } = await dryfit('link ../shop', { client });
+
+    const lines = stdout.split('\n');
+    const linked = lines.findIndex((line) => line.includes('Linked @acme/ui into ~/repos/shop'));
+    expect(lines[linked + 2]).toBe(
+      '! Restart the dev server in ~/repos/shop if it is running (dryfit cleared .angular/cache)',
+    );
+  });
+
   it('exits 1 when the first install into a linked consumer fails, and says why', async () => {
     const client = new FakeClient();
     const link = {
@@ -184,7 +203,7 @@ describe('dryfit CLI', () => {
       status: 'failed' as const,
       message: 'npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree',
     };
-    const failed = { link, links: [link], guard: 'installed' as const };
+    const failed = { link, links: [link], guard: 'installed' as const, clearedCaches: [] };
     client.replies.link = failed;
 
     const json = await dryfit('link /Users/me/repos/shop --json', { client, cwd: '/Users/me/repos/ui-lib' });
@@ -209,7 +228,12 @@ describe('dryfit CLI', () => {
       message,
     });
     const first = failedLink('@acme/forms');
-    client.replies.link = { link: first, links: [first, failedLink('@acme/ui')], guard: 'installed' };
+    client.replies.link = {
+      link: first,
+      links: [first, failedLink('@acme/ui')],
+      guard: 'installed',
+      clearedCaches: [],
+    };
 
     const { code, stdout } = await dryfit(
       'link /Users/me/repos/shop --library @acme/forms --library @acme/ui',
@@ -239,7 +263,7 @@ describe('dryfit CLI', () => {
     const client = new FakeClient();
     client.replies.status = status({ libraries: [ui, forms] });
     const link = { library: '@acme/forms', consumer: '/Users/me/repos/shop', status: 'pending' as const };
-    client.replies.link = { link, links: [link], guard: 'declined' };
+    client.replies.link = { link, links: [link], guard: 'declined', clearedCaches: [] };
 
     await dryfit('link /Users/me/repos/shop --library @acme/forms --no-guard', { client, cwd: '/Users/me' });
 
@@ -268,7 +292,7 @@ describe('dryfit CLI', () => {
         installedVersion: '1.4.1-dev.20261120101011',
       },
     ];
-    client.replies.link = { link: formsLink, links, guard: 'installed' };
+    client.replies.link = { link: formsLink, links, guard: 'installed', clearedCaches: [] };
 
     const { code, stdout } = await dryfit(
       'link /Users/me/repos/shop --library @acme/forms --library @acme/ui',
@@ -323,6 +347,9 @@ describe('dryfit CLI', () => {
         version,
         output: 'npm ERR! ERESOLVE',
       },
+      { type: 'install:started', library: '@acme/ui', consumer: '/Users/me/repos/admin', version },
+      { type: 'install:succeeded', library: '@acme/ui', consumer: '/Users/me/repos/admin', version },
+      { type: 'caches:cleared', consumer: '/Users/me/repos/admin', paths: ['node_modules/.vite'] },
     ];
     client.replies.sync = {
       version,
@@ -345,6 +372,7 @@ describe('dryfit CLI', () => {
     expect(stdout).toContain(`Published @acme/ui@${version}`);
     expect(stdout).toContain('Install into ~/repos/shop failed');
     expect(stdout).toContain('npm ERR! ERESOLVE');
+    expect(stdout).toContain('Restart the dev server in ~/repos/admin if it is running');
   });
 
   it('shows status: libraries, links with their versions, and coherence warnings', async () => {

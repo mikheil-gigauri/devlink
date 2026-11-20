@@ -239,7 +239,10 @@
           "guard": true
         }
       ],
-      "guard": "installed"
+      "guard": "installed",
+      "clearedCaches": [
+        ".angular/cache"
+      ]
     },
     "restore": {
       "ok": false,
