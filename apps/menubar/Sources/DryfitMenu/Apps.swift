@@ -61,6 +61,7 @@ extension MenuModel {
   /// Works out what a folder is from its package.json and shows it: a registered library's page,
   /// an app that uses one of the libraries, or (when `orAddAsLibrary`) the form that adds a library.
   public func open(_ root: String, navigation: AppNavigation, orAddAsLibrary: Bool) {
+    let root = normalizedPath(root)
     actionError = nil
     if let library = status?.libraries.first(where: { $0.root == root }) {
       navigation.selection = .library(library.name)

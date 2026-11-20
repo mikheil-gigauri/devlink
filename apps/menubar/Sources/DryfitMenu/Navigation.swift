@@ -64,8 +64,21 @@ public enum FolderPanel {
         panel.begin { continuation.resume(returning: $0) }
       }
     }
-    return response == .OK ? panel.urls.map { $0.path(percentEncoded: false) } : []
+    return response == .OK ? panel.urls.map(folderPath) : []
   }
+}
+
+/// A folder's path spelled the way the daemon stores it: no trailing slash. A folder URL's path ends in
+/// one, and `/repos/shop/` next to the daemon's `/repos/shop` listed one app twice and never matched
+/// its link.
+func folderPath(_ url: URL) -> String {
+  normalizedPath(url.path(percentEncoded: false))
+}
+
+func normalizedPath(_ path: String) -> String {
+  var path = path
+  while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+  return path
 }
 
 extension MenuModel {

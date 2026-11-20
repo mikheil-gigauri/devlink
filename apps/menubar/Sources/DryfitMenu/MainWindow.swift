@@ -51,7 +51,7 @@ public struct MainWindow: View {
     }
     .dropDestination(for: URL.self) { urls, _ in
       guard model.connection == .online, let folder = urls.first(where: \.hasDirectoryPath) else { return false }
-      model.open(folder.path(percentEncoded: false), navigation: navigation, orAddAsLibrary: true)
+      model.open(folderPath(folder), navigation: navigation, orAddAsLibrary: true)
       return true
     }
     .showsInDock()
