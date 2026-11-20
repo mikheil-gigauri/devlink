@@ -118,6 +118,7 @@ private struct Sidebar: View {
   let model: MenuModel
   @Bindable var navigation: AppNavigation
   @FocusState private var focused: Bool
+  @State private var dragging: String?
 
   var body: some View {
     let apps = model.apps
@@ -134,7 +135,7 @@ private struct Sidebar: View {
               item: item, navigation: navigation, focused: focused,
               symbol: failed ? "exclamationmark.triangle" : "shippingbox", symbolTint: failed ? .red : nil,
               name: row.library.name, caption: caption(row), watched: row.library.isWatched, count: row.links.count,
-              reorder: rows.reorder(item)!, select: select
+              reorder: rows.reorder(item)!, select: select, dragging: $dragging
             ) {
               Button("Sync now") { Task { await model.sync(row.library.name) } }
               Button("Show in Finder") { revealInFinder(row.library.root) }
@@ -152,7 +153,7 @@ private struct Sidebar: View {
                 symbol: app.hasFailedInstall ? "exclamationmark.triangle" : "macwindow",
                 symbolTint: app.hasFailedInstall ? .red : app.linked.isEmpty ? DS.muted : nil,
                 name: app.name, caption: caption(app), watched: false, count: app.linked.count,
-                reorder: rows.reorder(item)!, select: select
+                reorder: rows.reorder(item)!, select: select, dragging: $dragging
               ) {
                 Button("Show in Finder") { revealInFinder(app.root) }
                 Divider()
@@ -169,7 +170,7 @@ private struct Sidebar: View {
               SidebarRow(
                 item: item, navigation: navigation, focused: focused, symbol: "square.stack.3d.up", symbolTint: nil,
                 name: group.name, caption: group.consumers.count == 1 ? "1 app" : "\(group.consumers.count) apps",
-                watched: false, count: group.consumers.count, reorder: rows.reorder(item)!, select: select
+                watched: false, count: group.consumers.count, reorder: rows.reorder(item)!, select: select, dragging: $dragging
               ) {
                 EmptyView()
               }
@@ -200,11 +201,15 @@ private struct Sidebar: View {
       .focusEffectDisabled()
       .onKeyPress(keys: [.upArrow, .downArrow]) { press in
         let up = press.key == .upArrow
-        if press.modifiers.contains(.command), press.modifiers.contains(.option) {
+        // Arrow keys carry the keypad flag; any other modifier is someone else's shortcut.
+        let modifiers = press.modifiers.subtracting([.numericPad, .capsLock])
+        if modifiers == [.command, .option] {
           guard let item = navigation.selection, let reorder = rows.reorder(item) else { return .ignored }
           reorder.move(by: up ? -1 : 1)
-        } else {
+        } else if modifiers.isEmpty {
           navigation.selection = rows.step(from: navigation.selection, by: up ? -1 : 1)
+        } else {
+          return .ignored
         }
         return .handled
       }
@@ -282,11 +287,14 @@ private struct Sidebar: View {
   }
 
   private func caption(_ row: LibraryRow) -> String {
-    if row.links.contains(where: { $0.status == .failed }) { return "Install failed" }
-    let apps = switch row.links.count {
-    case 0: "Not linked"
-    case 1: "Linked to 1 app"
-    default: "Linked to \(row.links.count) apps"
+    let apps = if row.links.contains(where: { $0.status == .failed }) {
+      "Install failed"
+    } else {
+      switch row.links.count {
+      case 0: "Not linked"
+      case 1: "Linked to 1 app"
+      default: "Linked to \(row.links.count) apps"
+      }
     }
     return row.library.isWatched ? "\(apps) · Auto-sync on" : apps
   }
@@ -362,47 +370,58 @@ private struct Reorder {
     model.move(kind, ids: ids, from: IndexSet(integer: from), to: offset > 0 ? from + offset + 1 : from + offset)
   }
 
+  /// Whether a row dragged with `payload` is one of this list's.
+  func accepts(_ payload: String) -> Bool { source(payload) != nil }
+
+  /// Whether dropping the dragged row above, or below, this one would change the order.
+  func moves(_ payload: String, below: Bool) -> Bool { destination(payload, below: below) != nil }
+
   /// Puts the dragged row just above this one, or just below it. False for a row from another list,
   /// or a drop that would leave it where it is.
   func drop(_ payload: String, below: Bool) -> Bool {
-    let parts = payload.split(separator: "\u{1F}", maxSplits: 1).map(String.init)
-    guard parts.count == 2, parts[0] == "\(kind)", let from = ids.firstIndex(of: parts[1]), let target = index
-    else { return false }
-    let to = below ? target + 1 : target
-    guard to != from, to != from + 1 else { return false }
+    guard let (from, to) = destination(payload, below: below) else { return false }
     model.move(kind, ids: ids, from: IndexSet(integer: from), to: to)
     return true
+  }
+
+  private func source(_ payload: String) -> Int? {
+    let parts = payload.split(separator: "\u{1F}", maxSplits: 1).map(String.init)
+    guard parts.count == 2, parts[0] == "\(kind)" else { return nil }
+    return ids.firstIndex(of: parts[1])
+  }
+
+  private func destination(_ payload: String, below: Bool) -> (from: Int, to: Int)? {
+    guard let from = source(payload), let target = index else { return nil }
+    let to = below ? target + 1 : target
+    return to == from || to == from + 1 ? nil : (from, to)
   }
 }
 
 /// Where a drag over a row would put the dragged row: the half the pointer is in decides above or below,
-/// and the marker is drawn at that edge, so it shows where the row lands whichever way it moves.
+/// and the marker is drawn at that edge, so it shows where the row lands whichever way it moves. The
+/// sidebar knows which row is being dragged, so a row from another list, or a drop that would leave it
+/// where it is, shows no marker at all.
 private struct RowDrop: DropDelegate {
   let reorder: Reorder
+  let dragging: String?
   let height: CGFloat
   @Binding var marker: VerticalEdge?
 
-  private static let types: [UTType] = [.utf8PlainText, .plainText]
-
-  func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: Self.types) }
+  func validateDrop(info: DropInfo) -> Bool { dragging.map(reorder.accepts) ?? false }
 
   func dropUpdated(info: DropInfo) -> DropProposal? {
-    marker = info.location.y < height / 2 ? .top : .bottom
-    return DropProposal(operation: .move)
+    guard let dragging else { return DropProposal(operation: .forbidden) }
+    let below = info.location.y >= height / 2
+    marker = reorder.moves(dragging, below: below) ? (below ? .bottom : .top) : nil
+    return DropProposal(operation: marker == nil ? .forbidden : .move)
   }
 
   func dropExited(info: DropInfo) { marker = nil }
 
   func performDrop(info: DropInfo) -> Bool {
-    let below = marker == .bottom
-    marker = nil
-    guard let provider = info.itemProviders(for: Self.types).first else { return false }
-    let reorder = reorder
-    _ = provider.loadObject(ofClass: NSString.self) { string, _ in
-      guard let payload = string as? String else { return }
-      Task { @MainActor in _ = reorder.drop(payload, below: below) }
-    }
-    return true
+    defer { marker = nil }
+    guard let dragging, let marker else { return false }
+    return reorder.drop(dragging, below: marker == .bottom)
   }
 }
 
@@ -420,6 +439,8 @@ private struct SidebarRow<Menu: View>: View {
   let count: Int
   let reorder: Reorder
   let select: (SidebarItem) -> Void
+  /// The row being dragged, if any, as its payload.
+  @Binding var dragging: String?
   @ViewBuilder let menu: Menu
   @State private var marker: VerticalEdge?
   @State private var height: CGFloat = 0
@@ -474,10 +495,14 @@ private struct SidebarRow<Menu: View>: View {
       }
     }
     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-    .draggable(reorder.payload) {
-      Text(name).font(DS.body).padding(.horizontal, 10).padding(.vertical, 4)
+    // onDrag rather than draggable: it says when a drag starts, so the rows know which one it is.
+    .onDrag {
+      dragging = reorder.payload
+      return NSItemProvider(object: reorder.payload as NSString)
     }
-    .onDrop(of: [.utf8PlainText, .plainText], delegate: RowDrop(reorder: reorder, height: height, marker: $marker))
+    .onDrop(
+      of: [.utf8PlainText, .plainText],
+      delegate: RowDrop(reorder: reorder, dragging: dragging, height: height, marker: $marker))
   }
 }
 

@@ -102,8 +102,6 @@ struct ErrorBanner: View {
     }
     .font(DS.body)
     .card()
-    // It arrives after a job, away from where VoiceOver is.
-    .onAppear { AccessibilityNotification.Announcement(message).post() }
   }
 }
 

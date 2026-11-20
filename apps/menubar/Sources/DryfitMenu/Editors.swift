@@ -34,6 +34,7 @@ struct LibraryEditor: View {
         Spacer()
         if loadError != nil {
           // Nothing to add: one way out, not a Cancel beside a button that can never be clicked.
+          // Return through the default action, Escape through the exit command below.
           Button("Close") { dismiss() }.buttonStyle(.primaryPill).keyboardShortcut(.defaultAction)
         } else {
           Button("Cancel") { dismiss() }.buttonStyle(.pill).keyboardShortcut(.cancelAction).disabled(saving)
@@ -50,6 +51,8 @@ struct LibraryEditor: View {
     .frame(width: 420)
     // Closed mid-save, the save would still finish and then move the window to the library.
     .interactiveDismissDisabled(saving)
+    // The error state has no Cancel to carry Escape.
+    .onExitCommand { if loadError != nil { dismiss() } }
     .task {
       do {
         let found = try await model.inspect(root)
