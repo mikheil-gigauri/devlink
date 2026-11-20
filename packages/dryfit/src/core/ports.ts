@@ -59,6 +59,8 @@ export interface InstallSpec {
 
 export interface PublishSpec {
   readonly cwd: string;
+  /** The package being published, so a scoped one can be pinned to the local registry. */
+  readonly packageName: string;
   readonly registryUrl: string;
   readonly tag: string;
 }

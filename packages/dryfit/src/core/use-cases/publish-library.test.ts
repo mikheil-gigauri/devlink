@@ -28,7 +28,7 @@ describe('publishLibrary', () => {
       `${LIB} npm run build`,
       expect.stringMatching(
         new RegExp(
-          `^${HOME}/staging/acme_ui-[0-9a-f]{8} npm publish --registry=http://127.0.0.1:4873/ --tag=dryfit`,
+          `^${HOME}/staging/acme_ui-[0-9a-f]{8} npm publish --registry=http://127.0.0.1:4873/ --@acme:registry=http://127.0.0.1:4873/ --tag=dryfit`,
         ),
       ),
     ]);
@@ -55,6 +55,31 @@ describe('publishLibrary', () => {
       module: 'fesm2022/acme-ui.mjs',
     });
     expect(fs.snapshot(LIB)).toEqual(before);
+  });
+
+  it("drops publishConfig's registry overrides, which would beat the local registry, and keeps the rest", async () => {
+    const { deps, fs, process } = createScenario({ state: withBuild });
+    await deps.fs.writeText(
+      `${LIB}/dist/ui/package.json`,
+      JSON.stringify({
+        name: '@acme/ui',
+        version: '1.4.0',
+        publishConfig: {
+          registry: 'https://registry.npmjs.org/',
+          '@acme:registry': 'https://npm.acme.dev/',
+          access: 'restricted',
+        },
+      }),
+    );
+    let stagedManifest = '';
+    process.on('npm publish', (spec) => {
+      stagedManifest = fs.snapshot(spec.cwd)[`${spec.cwd}/package.json`] ?? '';
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    await publishLibrary(deps, { library: '@acme/ui' });
+
+    expect(JSON.parse(stagedManifest).publishConfig).toEqual({ access: 'restricted' });
   });
 
   it('hands npm the registry credentials through the staged .npmrc only', async () => {
