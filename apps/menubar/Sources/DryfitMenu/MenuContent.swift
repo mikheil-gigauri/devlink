@@ -163,14 +163,14 @@ private struct Footer: View {
       }
       Spacer(minLength: 8)
       Button(action: showSettings) {
-        Image(systemName: "gearshape").frame(width: 18, height: 18).contentShape(.rect)
+        Image(systemName: "gearshape").frame(width: 18, height: 18).hitTarget()
       }
       .buttonStyle(.plain)
       .help("Settings (⌘,)")
       .accessibilityLabel("Settings")
     }
     .font(DS.body)
-    .foregroundStyle(.secondary)
+    .foregroundStyle(DS.muted)
     .frame(minHeight: 18)
     .padding(.horizontal, 12)
     .padding(.vertical, 7)
@@ -232,7 +232,7 @@ private struct OnlineContent: View {
       if !model.groups.isEmpty {
         Text("Groups")
           .font(DS.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(DS.muted)
           .padding(.horizontal, 2)
           .padding(.top, 6)
           .padding(.bottom, 4)
@@ -258,10 +258,10 @@ private struct Centered<Actions: View>: View {
     VStack(spacing: 0) {
       Image(systemName: symbol)
         .font(.system(size: 24))
-        .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+        .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(DS.muted))
         .accessibilityHidden(true)
       Text(title).font(DS.headline).multilineTextAlignment(.center).padding(.top, 6).padding(.bottom, 4)
-      Text(text).font(DS.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
+      Text(text).font(DS.body).foregroundStyle(DS.muted).multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
       actions
     }
@@ -293,14 +293,15 @@ private struct FailureBanner: View {
 
   var body: some View {
     HStack(alignment: .top, spacing: 7) {
-      Image(systemName: "xmark.circle").foregroundStyle(.red)
+      Image(systemName: "xmark.circle").foregroundStyle(.red).accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
         Text(failure.title).font(DS.medium)
-        Text(firstLine).font(DS.mono).foregroundStyle(.secondary).lineLimit(2)
+        Text(firstLine).font(DS.mono).foregroundStyle(DS.muted).lineLimit(2)
         HStack(spacing: 6) {
-          Button(more > 0 ? "Show all \(more + 1)" : "Show output") { actions.showFailures(failure.id) }
+          Button(more > 0 ? "Show \(more + 1) failures" : "Show output") { actions.showFailures(failure.id) }
             .buttonStyle(.pill)
-          Button("Dismiss") { model.clearFailures() }.buttonStyle(.pill)
+          // Clears every failure, so with more than one it says so.
+          Button(more > 0 ? "Dismiss all" : "Dismiss") { model.clearFailures() }.buttonStyle(.pill)
         }
         .padding(.top, 4)
       }
@@ -322,7 +323,7 @@ struct DriftedRestoreBanner: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(alignment: .top, spacing: 7) {
-        Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+        Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).accessibilityHidden(true)
         Text("\(projectName(request.consumer))'s package.json changed after it was linked. Restoring puts back the version from before linking, and drops those changes.")
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -360,9 +361,9 @@ private struct LibraryCard: View {
         } label: {
           Image(systemName: isFolded ? "chevron.right" : "chevron.down")
             .font(.system(size: 11))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(DS.muted)
             .frame(width: 12, height: 22)
-            .contentShape(.rect)
+            .hitTarget(CGSize(width: 12, height: 22))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isFolded ? "Show \(name)'s apps" : "Hide \(name)'s apps")
@@ -372,8 +373,9 @@ private struct LibraryCard: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .help("Show \(name) in the dryfit window")
-        Text("Auto").font(DS.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+        Text("Auto").font(DS.caption).foregroundStyle(DS.muted).accessibilityHidden(true)
         Toggle("Auto-sync \(name)", isOn: watch)
           .toggleStyle(.mini)
           .disabled(model.isBusy(.watch(name)))
@@ -447,16 +449,18 @@ private struct LinkRowView: View {
         Button("Failed · Show output") { actions.showFailures(failure.id) }
           .buttonStyle(.plain)
           .foregroundStyle(.red)
+          .lineLimit(1)
       } else {
         Text(link.status == .installed ? shortVersion(link.detail(timeZone: timeZone)) : link.detail(timeZone: timeZone))
-          .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+          .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(DS.muted))
           .lineLimit(1)
-        IconButton(
-          symbol: "arrow.uturn.backward",
-          label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
-          busy: busy
-        ) { Task { await model.restore(link.consumer, library: link.library) } }
       }
+      // A failed install is when putting the app back matters most, so it is offered there too.
+      IconButton(
+        symbol: "arrow.uturn.backward",
+        label: "Put \(projectName(link.consumer)) back on the release of \(link.library)",
+        busy: busy
+      ) { Task { await model.restore(link.consumer, library: link.library) } }
     }
     .font(DS.body)
     .padding(4)
@@ -478,7 +482,7 @@ private struct LinkChips: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       if !candidates.isEmpty {
-        Text("Also uses it:").font(DS.caption).foregroundStyle(.secondary)
+        Text("Also uses it:").font(DS.caption).foregroundStyle(DS.muted)
       }
       FlowLayout(spacing: 4) {
         ForEach(candidates) { consumer in
@@ -522,22 +526,23 @@ private struct GroupRowView: View {
 
   var body: some View {
     HStack(spacing: 7) {
-      Image(systemName: "square.stack.3d.up").foregroundStyle(.secondary).accessibilityHidden(true)
+      Image(systemName: "square.stack.3d.up").foregroundStyle(DS.muted).accessibilityHidden(true)
       Button(action: open) {
         TwoLine(title: group.name, caption: subtitle, titleFont: DS.medium)
           .frame(maxWidth: .infinity, alignment: .leading)
           .contentShape(.rect)
       }
       .buttonStyle(.plain)
-      PillMenu {
+      PillMenu(busy: model.isBusy(.linkGroup(group.name))) {
         Section("Link into every app in \(group.name)") {
           ForEach(model.libraries) { row in
             Button(row.library.name) { Task { await model.linkGroup(group.name, library: row.library.name) } }
           }
         }
       } label: {
-        if model.isBusy(.linkGroup(group.name)) { ProgressView().controlSize(.mini) } else { Text("Link…") }
+        Text("Link…")
       }
+      .disabled(model.libraries.isEmpty)
       .help("Link a library into every app in \(group.name)")
       IconButton(
         symbol: "arrow.uturn.backward", label: "Put every app in \(group.name) back on released versions",
@@ -570,8 +575,9 @@ struct FlowLayout: Layout {
     for row in rows(width: bounds.width, subviews: subviews) {
       var x = bounds.minX
       for index in row.indices {
-        let size = subviews[index].sizeThatFits(.unspecified)
-        subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: .unspecified)
+        let proposal = Self.proposal(for: subviews[index], width: bounds.width)
+        let size = subviews[index].sizeThatFits(proposal)
+        subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: proposal)
         x += size.width + spacing
       }
       y += row.height + spacing
@@ -582,7 +588,7 @@ struct FlowLayout: Layout {
     var rows: [(indices: [Int], width: CGFloat, height: CGFloat)] = []
     var current: (indices: [Int], width: CGFloat, height: CGFloat) = ([], 0, 0)
     for index in subviews.indices {
-      let size = subviews[index].sizeThatFits(.unspecified)
+      let size = subviews[index].sizeThatFits(Self.proposal(for: subviews[index], width: width))
       let needed = current.indices.isEmpty ? size.width : current.width + spacing + size.width
       if needed > width, !current.indices.isEmpty {
         rows.append(current)
@@ -593,6 +599,12 @@ struct FlowLayout: Layout {
     }
     if !current.indices.isEmpty { rows.append(current) }
     return rows
+  }
+
+  /// Its ideal size, or the row's width when that is less, so a long name truncates instead of
+  /// running out of the card.
+  private static func proposal(for subview: LayoutSubview, width: CGFloat) -> ProposedViewSize {
+    subview.sizeThatFits(.unspecified).width > width ? ProposedViewSize(width: width, height: nil) : .unspecified
   }
 }
 
@@ -612,15 +624,15 @@ struct ServiceUnavailableView: View {
       VStack(spacing: 0) {
         if model.connection == .starting {
           ProgressView().controlSize(.small).padding(.top, 12)
-          Text("Starting…").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
+          Text("Starting…").font(DS.caption).foregroundStyle(DS.muted).padding(.top, 6)
         } else if model.isBusy(.installCLI) {
           ProgressView().controlSize(.small).padding(.top, 12)
-          Text("Installing with npm…").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
+          Text("Installing with npm…").font(DS.caption).foregroundStyle(DS.muted).padding(.top, 6)
         } else if model.cliMissing {
           Button("Install dryfit") { Task { await model.installCLI() } }
             .buttonStyle(.primaryPill)
             .padding(.top, 12)
-          Text("Runs \(DaemonLauncher.installCommand)").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
+          Text("Runs \(DaemonLauncher.installCommand)").font(DS.caption).foregroundStyle(DS.muted).padding(.top, 6)
         } else {
           Button("Start dryfit") { Task { await model.startDaemon() } }
             .buttonStyle(.primaryPill)
@@ -722,14 +734,14 @@ struct UpdateDryfitControl: View {
       if model.isBusy(.updateCLI) {
         ProgressView().controlSize(.small)
         if prominent {
-          Text("Updating with npm…").font(DS.caption).foregroundStyle(.secondary).padding(.top, 6)
+          Text("Updating with npm…").font(DS.caption).foregroundStyle(DS.muted).padding(.top, 6)
         }
       } else if prominent {
         Button("Update dryfit") { Task { await model.updateCLI() } }
           .buttonStyle(.primaryPill)
         Text("Runs npm install --global @dryfit/cli@latest")
           .font(DS.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(DS.muted)
           .multilineTextAlignment(.center)
           .padding(.top, 6)
       } else {
