@@ -51,6 +51,9 @@ From the menu you can:
 
 It also tells you, in a notification, when an install fails while the menu is closed.
 
+Right-click (or Control-click) the menu bar icon for **Settings…**, the log, **Open at Login**,
+**Check for Updates…**, stopping dryfit, and quitting.
+
 ## Settings
 
 **Settings** (⌘,) holds the folders dryfit searches for apps, the apps you hid, dryfit's service with
@@ -85,5 +88,5 @@ it is older than the app, the menu says so and offers **Update**: it runs
 links and watches carry over. Settings shows the same.
 
 To choose when, turn off **Install updates automatically** in Settings: the app then asks before
-installing. **Check for Updates…** in the menu's **⋯** looks right away. Versions from before 0.3.0 do not
+installing. **Check for Updates…** in the icon's right-click menu looks right away. Versions from before 0.3.0 do not
 update themselves; download the newest once more.

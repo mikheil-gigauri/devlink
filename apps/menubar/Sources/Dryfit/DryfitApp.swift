@@ -12,7 +12,7 @@ struct DryfitApp: App {
     MenuBarExtra {
       MenuContent(model: delegate.model, navigation: delegate.navigation, actions: delegate.actions)
     } label: {
-      Image(nsImage: MenuBarIcon.image(for: delegate.model.icon))
+      MenuBarLabel(icon: delegate.model.icon, menu: delegate.statusMenu)
     }
     .menuBarExtraStyle(.window)
 
@@ -61,6 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   let updates = Updates()
   private let home = DryfitHome.locate()
   private var failureWindow: FailureWindow?
+  /// What a right-click on the menu bar icon shows.
+  private(set) lazy var statusMenu = StatusMenu(model: model, actions: actions)
   private var connection: Task<Void, Never>?
 
   override init() {
@@ -91,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     connection = Task { [model] in await model.run() }
+    statusMenu.install()
   }
 
   var actions: MenuActions {

@@ -135,39 +135,24 @@ private struct Footer: View {
           .buttonStyle(.borderless)
       }
       Spacer(minLength: 8)
-      Menu {
+    }
+    .font(.callout)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 8)
+    // The rest of what the footer's menu held is on the menu bar icon's right-click menu. These keep
+    // its shortcuts working while the window is open.
+    .background {
+      Group {
         Button("Settings…") {
           openSettings()
           NSApp.activate()
         }
         .keyboardShortcut(",")
-        Button("Open Log", action: actions.openLog)
-        if !model.failures.isEmpty {
-          Button("Show Failures…") { actions.showFailures(nil) }
-        }
-        if let openAtLogin = actions.openAtLogin {
-          Toggle("Open at Login", isOn: openAtLogin)
-        }
-        if let checkForUpdates = actions.checkForUpdates {
-          Button("Check for Updates…", action: checkForUpdates)
-        }
-        if model.connection == .online {
-          Divider()
-          Button("Stop dryfit") { Task { await model.stopDaemon() } }
-        }
-        Divider()
         Button("Quit", action: actions.quit).keyboardShortcut("q")
-      } label: {
-        Image(systemName: "ellipsis.circle")
       }
-      .menuStyle(.borderlessButton)
-      .menuIndicator(.hidden)
-      .fixedSize()
-      .accessibilityLabel("More")
+      .opacity(0)
+      .accessibilityHidden(true)
     }
-    .font(.callout)
-    .padding(.horizontal, 14)
-    .padding(.vertical, 8)
   }
 }
 

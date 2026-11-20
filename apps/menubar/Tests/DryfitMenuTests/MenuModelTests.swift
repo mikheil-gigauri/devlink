@@ -466,4 +466,41 @@ import Testing
     #expect(navigation.selection == .library("@acme/ui"))
     #expect(model.actionError == nil)
   }
+
+  @Test func rightClickingTheMenuBarIconOffersWhatTheFootersMenuDid() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    func titles(_ actions: MenuActions) -> [String] {
+      StatusMenu(model: model, actions: actions).makeMenu().items.map(\.title).filter { !$0.isEmpty }
+    }
+
+    #expect(titles(MenuActions(checkForUpdates: {})) == [
+      "Open dryfit", "Settings…", "Open Log", "Check for Updates…", "Stop dryfit", "Quit dryfit",
+    ])
+    #expect(!titles(MenuActions()).contains("Check for Updates…"))
+  }
+
+  /// The Open panel hands back folder paths ending in a slash; the daemon stores them without one.
+  @Test func opensAFolderChosenWithATrailingSlashAsTheSameApp() async throws {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+    let folder = FileManager.default.temporaryDirectory.appending(path: "dryfit-slash-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let store = folder.appending(path: "store")
+    try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+    try #"{"name":"store","dependencies":{"@acme/forms":"^2.0.0"}}"#
+      .write(to: store.appending(path: "package.json"), atomically: true, encoding: .utf8)
+    let root = store.path(percentEncoded: false)
+    let navigation = AppNavigation()
+
+    model.open(root + "/", navigation: navigation, orAddAsLibrary: false)
+    model.open(root, navigation: navigation, orAddAsLibrary: false)
+
+    #expect(navigation.selection == .app(root))
+    #expect(model.apps.filter { $0.name == "store" }.map(\.root) == [root])
+    #expect(folderPath(URL(filePath: root, directoryHint: .isDirectory)) == root)
+    #expect(normalizedPath("/") == "/")
+  }
 }
