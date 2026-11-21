@@ -1,7 +1,7 @@
 name: CI
 
-# Pull requests run this directly. Pushes to main run it through release.yml, which releases only once
-# it passes.
+# Pull requests run this, and it is the gate: make it a required check in branch protection. release.yml
+# does not re-run it.
 on:
   pull_request:
   workflow_call:

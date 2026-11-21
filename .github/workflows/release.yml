@@ -7,16 +7,12 @@ on:
 
 permissions: {}
 
+# No CI here. Pull requests are the gate (required checks in branch protection), and the release pull
+# request gets CI too. Re-running the whole matrix on main could only block a release on a flaky test
+# or a drifted runner, not on a code change nobody had checked.
 jobs:
-  ci:
-    name: CI
-    uses: ./.github/workflows/ci.yml
-    permissions:
-      contents: read
-
   npm:
     name: npm
-    needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # One release at a time. The lock only orders runs that reach it, so a run also checks below that
@@ -54,6 +50,10 @@ jobs:
           # This job can publish to npm (OIDC) and push to the repository. A compromised dependency's
           # postinstall must not run with that; publishing needs no install script (prepack builds).
           ignore-scripts: "true"
+      # The one cheap check kept: the package still builds and packs. prepack runs the build.
+      - if: steps.newest.outputs.newest == 'true'
+        name: Check the package builds and packs
+        run: npm pack --dry-run -w @dryfit/cli
       # GitHub runs no workflows for what GITHUB_TOKEN pushes, so the release pull request is pushed as
       # the release GitHub App instead, and gets CI. Without the App it falls back to GITHUB_TOKEN.
       - id: app-token
