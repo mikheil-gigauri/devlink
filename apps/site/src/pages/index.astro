@@ -13,9 +13,9 @@ const repo = 'https://github.com/mikheil-gigauri/dryfit';
 const download = `${repo}/releases/latest/download/Dryfit.dmg`;
 const docs = (path: string) => `${base}${path}/`;
 const canonical = new URL(base, Astro.site).href;
-const title = 'dryfit: try your next release in the apps that will install it';
+const title = 'dryfit: test your npm library in real apps, without npm link or yalc';
 const description =
-  'dryfit publishes every change you save to a registry on your machine, installs it in the apps you choose, and puts them back exactly as they were.';
+  'Test an unreleased npm library inside the apps that use it, without npm link or yalc. dryfit publishes every change to a registry on your machine, installs it in the apps you choose, and puts them back exactly as they were.';
 const ogImage = new URL(`${base}menu/online.light.png`, Astro.site).href;
 const apps = ['shop', 'admin', 'checkout'];
 
@@ -48,23 +48,23 @@ const shortfalls = [
 
 const steps = [
   {
+    title: 'Set up',
+    command: 'dryfit init && dryfit add',
+    text: 'In your library’s folder: dryfit learns where your apps live, starts its background service, and works out how the library builds.',
+  },
+  {
     title: 'Link an app',
-    command: 'dryfit link ../shop',
-    text: 'dryfit saves the app’s package.json and lockfile, and adds a git hook that keeps dev builds out of commits.',
+    command: 'dryfit link shop',
+    text: 'dryfit saves the app’s package.json and lockfile, installs a dev build, and adds a git hook that keeps dev builds out of commits.',
   },
   {
-    title: 'Watch the library',
-    command: 'dryfit watch',
-    text: 'Work as usual. Every save starts a build.',
-  },
-  {
-    title: 'Get a new version',
+    title: 'Save a change',
     command: '1.4.1-dev.20261119143201',
-    text: 'Each build is published under a version that never existed, installed by the app’s package manager, with stale framework caches cleared.',
+    text: 'With dryfit watch on, every save is built and published under a version that never existed, installed by the app’s package manager, with stale framework caches cleared. dryfit says when to restart a dev server.',
   },
   {
     title: 'Restore',
-    command: 'dryfit restore ../shop',
+    command: 'dryfit restore shop',
     text: 'package.json and the lockfile go back byte for byte, and the app reinstalls from them.',
   },
 ];
@@ -130,18 +130,20 @@ const steps = [
     <main id="main">
       <section class="hero">
         <div class="pitch">
+          <p class="eyebrow">For npm library authors: an alternative to npm link and yalc</p>
           <h1>Try your next release in the apps that will install it.</h1>
           <p class="lede">
             dryfit publishes every change you save to a registry on your machine, installs it in the apps you choose,
             and puts them back exactly as they were.
           </p>
-          <div class="command" data-copy="npx @dryfit/cli init">
-            <code><span class="prompt" aria-hidden="true">$</span> npx @dryfit/cli init</code>
+          <div class="command" data-copy="npm i -g @dryfit/cli">
+            <code><span class="prompt" aria-hidden="true">$</span> npm i -g @dryfit/cli</code>
             <button type="button" class="copy">Copy</button>
             <span class="copied" role="status"></span>
           </div>
           <p class="next">
-            Works with npm, pnpm, Yarn 2+ and Bun on macOS and Linux.
+            Then run <code>dryfit init</code> in your library’s folder. Works with npm, pnpm, Yarn 2+ and Bun on macOS
+            and Linux.
             <a href={docs('guides/getting-started')}>Read the getting started guide</a>
           </p>
         </div>
@@ -561,6 +563,13 @@ const steps = [
       grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
     }
   }
+  .eyebrow {
+    margin: 0 0 1.25rem;
+    color: var(--pencil);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
   h1 {
     font-size: clamp(3rem, 6.4vw, 5.5rem);
     line-height: 0.92;
@@ -577,6 +586,9 @@ const steps = [
     max-width: var(--measure);
     font-size: 0.9375rem;
     margin: 1.25rem 0 0;
+  }
+  .next code {
+    color: var(--ink);
   }
   .next a {
     display: block;

@@ -10,22 +10,25 @@ Website and docs: **[mikheil-gigauri.github.io/dryfit](https://mikheil-gigauri.g
 
 ## Using it
 
-You need Node 22.12 or newer, macOS or Linux, and apps that install with npm, pnpm, Yarn 2+ or Bun. In the
-folder of the library you are working on:
+You need Node 22.12 or newer, macOS or Linux, and apps that install with npm, pnpm, Yarn 2+ or Bun. Install
+it, then work in the folder of the library you are changing:
 
 ```bash
-npx @dryfit/cli init                      # remembers where your projects live; starts dryfit
-npx @dryfit/cli add                       # detects Nx, Angular CLI or a build script
-npx @dryfit/cli consumers                 # who uses it; nothing changes yet
-npx @dryfit/cli link ../shop ../admin     # opt in: snapshot, dev install, commit guard
-npx @dryfit/cli watch                     # every save: build, publish, install, clear caches
-npx @dryfit/cli restore ../shop ../admin  # back to exactly what you had
+npm install --global @dryfit/cli
+dryfit init                  # remembers where your projects live; starts dryfit
+dryfit add                   # detects Nx, Angular CLI or a build script
+dryfit consumers             # who uses it; nothing changes yet
+dryfit link shop admin       # opt in: snapshot, dev install, commit guard
+dryfit watch                 # every save: build, publish, install, clear caches
+dryfit unwatch               # stop (Ctrl-C in watch only stops the log)
+dryfit restore shop admin    # back to exactly what you had
 ```
 
-Once you use it daily, `npm install --global @dryfit/cli` puts `dryfit` on your PATH, and
-`dryfit daemon install` starts it at login. `dryfit status` shows what is linked and running,
-`dryfit doctor` checks the setup, and every command takes `--json` for scripts and agents.
-`dryfit agent install` teaches Claude Code to use dryfit, so you can ask it to try your library in an app.
+Apps go by the names `dryfit consumers` lists, or by their folders, such as `../shop`. To try it without
+installing, use `npx @dryfit/cli` in place of `dryfit`. `dryfit daemon install` starts it at login (macOS).
+`dryfit status` shows what is linked and running, `dryfit doctor` checks the setup, and every command takes
+`--json` for scripts and agents. `dryfit agent install` teaches Claude Code to use dryfit, so you can ask it
+to try your library in an app.
 
 Consumers that run together, such as a federation host and its remotes, can be saved as a group
 (`dryfit group save checkout ../shell ../cart`), linked and restored together (`--group checkout`), and
