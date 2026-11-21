@@ -17,7 +17,10 @@ interface Entry {
 }
 
 /** Ends a sentence that does not already end in punctuation. */
-const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);
+/** Help-text prose as MDX: a placeholder such as `<consumer>` would otherwise be read as a JSX tag. */
+const prose = (text: string) => text.replace(/(?<!`)<[\w-]+>(?!`)/g, (placeholder) => `\`${placeholder}\``);
+
+const sentence = (text: string) => prose(/[.!?]$/.test(text) ? text : `${text}.`);
 
 /** The help text's sections: a title line, then commands, each followed by its indented options. */
 function parseUsage(usage: string) {
@@ -57,7 +60,7 @@ function cliReference(): string {
     '',
     NOTICE,
     '',
-    `This page is the output of \`dryfit --help\`, laid out. ${notes.join(' ')}`,
+    `This page is the output of \`dryfit --help\`, laid out. ${prose(notes.join(' '))}`,
     '',
   ];
   for (const { title, entries } of sections) {

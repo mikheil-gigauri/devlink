@@ -1,4 +1,4 @@
-import { isAbsolute, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { type ParseArgsConfig, parseArgs } from 'node:util';
 import { DryfitError } from '../core/errors.ts';
 import type { LibraryRecord } from '../core/model.ts';
@@ -113,6 +113,7 @@ Agents
   agent uninstall               Remove the skill again (same options)
   agent show                    Print the skill, for agents that read instructions elsewhere
 
+A <consumer> is the app's folder, or its name as \`dryfit consumers\` lists it.
 Every command accepts --json, and then reports errors as JSON on stderr too.
 Exit codes: 0 done, 1 failed, 2 used wrongly, 130 interrupted.
 `;
@@ -240,6 +241,71 @@ const HINTS: Partial<Record<string, string>> = {
 
 const absolute = (ctx: RunContext, path: string) =>
   isAbsolute(path) ? resolve(path) : resolve(ctx.cwd, path);
+
+interface KnownProject {
+  readonly root: string;
+  readonly name?: string | undefined;
+}
+
+/**
+ * Consumers as typed: a path, or a bare name as `dryfit consumers` shows it (the package name or the
+ * folder name) when a known project goes by it and no known project lives at that path from here.
+ * `known` lists the projects a name may mean; it is asked at most once, and only for a bare name.
+ */
+async function consumerPaths(
+  ctx: RunContext,
+  typed: readonly string[],
+  known: () => Promise<readonly KnownProject[]>,
+  /** Refuse a bare name no known project goes by, for commands that would accept any path quietly. */
+  { strict = false } = {},
+): Promise<string[]> {
+  let projects: readonly KnownProject[] | undefined;
+  const paths: string[] = [];
+  for (const arg of typed) {
+    const path = absolute(ctx, arg);
+    // A scoped package name has a slash too, but never starts with a dot or a slash.
+    if (arg.startsWith('.') || arg.startsWith('/') || (arg.includes('/') && !arg.startsWith('@'))) {
+      paths.push(path);
+      continue;
+    }
+    projects ??= await known();
+    if (projects.some((project) => project.root === path)) {
+      paths.push(path);
+      continue;
+    }
+    const roots = [
+      ...new Set(
+        projects
+          .filter((project) => project.name === arg || basename(project.root) === arg)
+          .map((project) => project.root),
+      ),
+    ];
+    if (roots.length > 1)
+      throw new CliError(
+        `More than one app is called ${arg}. Name it by its path:\n${roots.map((root) => `  ${root}`).join('\n')}`,
+        2,
+      );
+    if (roots[0] === undefined && strict)
+      throw new CliError(
+        `No app is called ${arg}. Name it as \`dryfit consumers\` lists it, or give its path.`,
+        2,
+      );
+    paths.push(roots[0] ?? path);
+  }
+  return paths;
+}
+
+/** Projects that use a registered library, and those linked, by the name `dryfit consumers` shows. */
+const usingProjects = (client: ApiClient) => async (): Promise<KnownProject[]> => {
+  const [found, status] = await Promise.all([client.call('discover', {}), client.call('status', {})]);
+  return [...found, ...linkedProjects(status)];
+};
+
+const hiddenProjects = (client: ApiClient) => async (): Promise<KnownProject[]> =>
+  (await client.call('hiddenApps', {})).hiddenApps.map((root) => ({ root }));
+
+const linkedProjects = (status: StatusView): KnownProject[] =>
+  status.links.map((link) => ({ root: link.consumer }));
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
@@ -454,7 +520,13 @@ const COMMANDS: Record<string, Command> = {
         for (const app of hiddenApps) out.line(out.path(app));
         return 0;
       }
-      const consumers = positionals.map((path) => absolute(ctx, path));
+      // Hiding needs a name dryfit knows, and an app hidden already still goes by its folder name.
+      const consumers = await consumerPaths(
+        ctx,
+        positionals,
+        async () => [...(await usingProjects(client)()), ...(await hiddenProjects(client)())],
+        { strict: true },
+      );
       const result = await client.call('hideApps', { consumers, hidden: true });
       if (json) return printJson(out, result);
       for (const app of consumers) out.ok(`Hid ${out.path(app)}`);
@@ -466,8 +538,10 @@ const COMMANDS: Record<string, Command> = {
   unhide: {
     async run({ positionals, ctx, out, json }) {
       if (positionals.length === 0) throw new CliError('Which apps? Usage: dryfit unhide <consumer>...', 2);
-      const consumers = positionals.map((path) => absolute(ctx, path));
-      const result = await (await ctx.connect()).call('hideApps', { consumers, hidden: false });
+      const client = await ctx.connect();
+      // dryfit keeps only the folders of hidden apps, so they go by their folder names.
+      const consumers = await consumerPaths(ctx, positionals, hiddenProjects(client), { strict: true });
+      const result = await client.call('hideApps', { consumers, hidden: false });
       if (json) return printJson(out, result);
       for (const app of consumers) out.ok(`Listing ${out.path(app)} again`);
       return 0;
@@ -515,7 +589,7 @@ const COMMANDS: Record<string, Command> = {
         | { consumer: string; error: { code: string; message: string } }
       )[] = [];
       let failed = 0;
-      for (const consumer of positionals.map((path) => absolute(ctx, path))) {
+      for (const consumer of await consumerPaths(ctx, positionals, usingProjects(client))) {
         let result: OperationOutputs['link'];
         try {
           result = await client.call('link', {
@@ -673,7 +747,7 @@ const COMMANDS: Record<string, Command> = {
         if (consumers.length === 0) throw new CliError('Usage: dryfit group save <name> <consumer>...', 2);
         const group = await client.call('saveGroup', {
           name,
-          consumers: consumers.map((path) => absolute(ctx, path)),
+          consumers: await consumerPaths(ctx, consumers, usingProjects(client)),
         });
         if (json) return printJson(out, group);
         out.ok(`Saved group ${group.name}: ${group.consumers.map(out.path).join(', ')}`);
@@ -773,7 +847,7 @@ function restoreCommand(): Command {
         return anyFailed(outcomes);
       }
 
-      let consumers = positionals.map((path) => absolute(ctx, path));
+      let consumers = await consumerPaths(ctx, positionals, usingProjects(client));
       if (values.all === true) {
         consumers = [...new Set((await client.call('status', {})).links.map((link) => link.consumer))];
         if (consumers.length === 0 && !json) out.line('Nothing is linked.');
