@@ -111,6 +111,11 @@ export interface LinkResult {
   /** `failed`: linked, but the guard could not go in; `message` says why. */
   readonly guard: 'installed' | 'declined' | 'not-a-repo' | 'failed';
   readonly message?: string;
+  /**
+   * Cache folders the install cleared, relative to the consumer. A dev server that is running shows
+   * the dev build only after a restart (ADR 0007). Empty when nothing was installed or cleared.
+   */
+  readonly clearedCaches: readonly string[];
 }
 
 export interface Done {

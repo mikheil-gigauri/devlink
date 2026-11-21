@@ -450,6 +450,17 @@ private struct LinkRowView: View {
           .buttonStyle(.plain)
           .foregroundStyle(.red)
           .lineLimit(1)
+      } else if link.status == .installed, model.restartNeeded.contains(link.consumer) {
+        // Orange marks it, as elsewhere for icons; the words stay primary to keep their contrast.
+        Button { model.restarted(link.consumer) } label: {
+          HStack(spacing: 3) {
+            Image(systemName: "arrow.clockwise").foregroundStyle(.orange).accessibilityHidden(true)
+            Text("Restart dev server")
+          }
+        }
+        .buttonStyle(.plain)
+        .lineLimit(1)
+        .help(restartHelp)
       } else {
         Text(link.status == .installed ? shortVersion(link.detail(timeZone: timeZone)) : link.detail(timeZone: timeZone))
           .foregroundStyle(link.status == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(DS.muted))
@@ -471,6 +482,10 @@ private struct LinkRowView: View {
   }
 
   private var busy: Bool { model.isBusy(.restore(link.consumer, link.library)) }
+
+  private var restartHelp: String {
+    "\(shortVersion(link.detail(timeZone: timeZone))) is installed, and dryfit cleared \(projectName(link.consumer))’s caches. A running dev server shows it only after a restart. Click once you have."
+  }
 }
 
 /// Apps that use the library and are not linked to it, each linked with one click, then a menu for

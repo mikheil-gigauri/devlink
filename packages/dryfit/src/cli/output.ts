@@ -74,7 +74,10 @@ export function renderEvent(out: Output, event: HubEvent, options: { readonly jo
       out.output(event.output);
       return;
     case 'caches:cleared':
-      out.line(out.dim(`  cleared ${event.paths.join(', ')}`));
+      // The running dev server still holds what was deleted, so the change shows only after a restart (ADR 0007).
+      out.warn(
+        `Restart the dev server in ${out.path(event.consumer)} if it is running ${out.dim(`(dryfit cleared ${event.paths.join(', ')})`)}`,
+      );
       return;
     case 'consumer:restored':
       if (event.library !== undefined) {

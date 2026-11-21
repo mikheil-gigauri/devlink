@@ -127,7 +127,7 @@ export const outputs = {
       libraries: [{ name: '@acme/ui', field: 'devDependencies', range: '~1.4.0' }],
     },
   ],
-  link: { link: shopLink, links: [shopLink], guard: 'installed' },
+  link: { link: shopLink, links: [shopLink], guard: 'installed', clearedCaches: ['.angular/cache'] },
   restore: { ok: false, output: 'npm error network request failed' },
   saveGroup: group,
   deleteGroup: { ok: true },

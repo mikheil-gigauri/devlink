@@ -311,10 +311,13 @@ async function withProgress<T>(
   }
 }
 
-const aboutAnyLibrary = (event: HubEvent) => 'library' in event;
+// Cleared caches name no library, but they follow an install of one, and say when to restart a dev server.
+const aboutAnyLibrary = (event: HubEvent) => 'library' in event || event.type === 'caches:cleared';
 
 const aboutLibrary = (library: string) => (event: HubEvent) =>
-  'library' in event ? event.library === library : event.type === 'consumer:restored';
+  'library' in event
+    ? event.library === library
+    : event.type === 'consumer:restored' || event.type === 'caches:cleared';
 
 /** Follows events until Ctrl-C. */
 async function follow(input: CommandInput, client: ApiClient, relevant: (event: HubEvent) => boolean) {
@@ -507,7 +510,10 @@ const COMMANDS: Record<string, Command> = {
 
       if (positionals.length === 0)
         throw new CliError('Which consumers? Usage: dryfit link <consumer>...', 2);
-      const results = [];
+      const results: (
+        | OperationOutputs['link']
+        | { consumer: string; error: { code: string; message: string } }
+      )[] = [];
       let failed = 0;
       for (const consumer of positionals.map((path) => absolute(ctx, path))) {
         let result: OperationOutputs['link'];
@@ -551,11 +557,17 @@ const COMMANDS: Record<string, Command> = {
             out.line(out.dim(`  ${prefix}running ${link.installedVersion}`));
           }
         }
+        if (result.clearedCaches.length > 0)
+          renderEvent(
+            out,
+            { type: 'caches:cleared', consumer, paths: result.clearedCaches },
+            { jobs: false },
+          );
       }
       if (json) return printJson(out, results, failed);
       if (failed === 0)
         out.line(
-          `Next: ${out.bold('dryfit sync')} to build and install, or ${out.bold('dryfit watch')} to do it on every change.`,
+          `Next: after a change, ${out.bold('dryfit sync')} installs it, or ${out.bold('dryfit watch')} does it on every save.`,
         );
       return failed;
     },

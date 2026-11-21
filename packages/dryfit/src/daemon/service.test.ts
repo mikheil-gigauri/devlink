@@ -250,6 +250,8 @@ describe('DaemonService', () => {
     const result = await service.call('link', { library: '@acme/ui', consumer: SHOP });
 
     expect(result.guard).toBe('installed');
+    // Returned with the link, so a client need not catch the caches:cleared event to say so.
+    expect(result.clearedCaches).toContain('.angular/cache');
     expect(guard.installed).toEqual(new Set([SHOP]));
     expect((await store.load()).links[0]?.guard).toBe(true);
   });

@@ -218,6 +218,25 @@ import Testing
     await eventually { model.activity == "Restored @acme/ui in shop" }
   }
 
+  @Test func asksForADevServerRestartAfterCachesAreClearedUntilTheUserSaysSoOrTheAppIsPutBack() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(.cachesCleared(consumer: shop, paths: [".angular/cache"]), id: 1)
+    await eventually { model.restartNeeded == [shop] }
+    model.restarted(shop)
+    #expect(model.restartNeeded.isEmpty)
+
+    daemon.channel.send(.cachesCleared(consumer: shop, paths: [".angular/cache"]), id: 2)
+    await eventually { model.restartNeeded == [shop] }
+    daemon.channel.send(.consumerRestored(consumer: shop, library: "@acme/ui", ok: true), id: 3)
+    await eventually { model.activity == "Restored @acme/ui in shop" }
+    #expect(model.restartNeeded == [shop])
+    daemon.channel.send(.consumerRestored(consumer: shop, library: nil, ok: true), id: 4)
+    await eventually { model.restartNeeded.isEmpty }
+  }
+
   @Test func refusesADaemonOfAnotherAPIVersion() async {
     let newer = Health(name: "dryfit", version: "2.0.0", apiVersion: 2, pid: 1, registryUrl: "", startedAt: "")
     let model = makeModel(lookup: { .incompatible(newer) })

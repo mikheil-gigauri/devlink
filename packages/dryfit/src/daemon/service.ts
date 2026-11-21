@@ -1,6 +1,6 @@
 import { DryfitError } from '../core/errors.ts';
 import type { LibraryRecord, LinkRecord } from '../core/model.ts';
-import type { CoreDeps } from '../core/ports.ts';
+import type { CoreDeps, DryfitEvent } from '../core/ports.ts';
 import { detectLibraryBuild } from '../core/project/detect-library-build.ts';
 import { readManifest } from '../core/project/manifest.ts';
 import { coherenceWarnings } from '../core/status/coherence.ts';
@@ -220,25 +220,33 @@ export class DaemonService {
 
       link: ({ library, libraries = [], consumer, guard = true }) =>
         job(`link ${[library, ...libraries].join(', ')} into ${consumer}`, async () => {
-          const links = await linkLibraries(deps, {
-            libraries: [library, ...libraries],
-            consumer: await this.#spelling(consumer),
-          });
+          // Jobs run one at a time, so the caches cleared while this one runs are this link's.
+          const clearedCaches: string[] = [];
+          const events = {
+            emit: (event: DryfitEvent) => {
+              if (event.type === 'caches:cleared') clearedCaches.push(...event.paths);
+              deps.events.emit(event);
+            },
+          };
+          const links = await linkLibraries(
+            { ...deps, events },
+            { libraries: [library, ...libraries], consumer: await this.#spelling(consumer) },
+          );
           const [link] = links;
           if (!link) throw new DryfitError('invalid-request', `Linking ${library} returned nothing`, {});
-          if (!guard) return { link, links, guard: 'declined' as const };
+          if (!guard) return { link, links, guard: 'declined' as const, clearedCaches };
           let installed: 'installed' | 'not-a-repo';
           try {
             installed = await this.#options.guard.install(link.consumer);
           } catch (error) {
             // The app is linked by now; a guard that could not go in is a warning, not a failed link.
             const message = error instanceof Error ? error.message : String(error);
-            return { link, links, guard: 'failed' as const, message };
+            return { link, links, guard: 'failed' as const, message, clearedCaches };
           }
-          if (installed !== 'installed') return { link, links, guard: installed };
+          if (installed !== 'installed') return { link, links, guard: installed, clearedCaches };
           const guarded = [];
           for (const each of links) guarded.push(await this.#markGuarded(each));
-          return { link: guarded[0] ?? link, links: guarded, guard: installed };
+          return { link: guarded[0] ?? link, links: guarded, guard: installed, clearedCaches };
         }),
 
       restore: ({ consumer, library, force }) =>
