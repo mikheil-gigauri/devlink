@@ -82,6 +82,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // A checkout's CLI ($DRYFIT_CLI) is not npm's to update.
       update: ProcessInfo.processInfo.environment["DRYFIT_CLI", default: ""].isEmpty
         ? { try await launcher.updateCLI() } : nil,
+      // launchd needs a built app's stable path; under `swift run` there is nothing to start at login.
+      startAtLogin: Bundle.main.bundleURL.pathExtension == "app"
+        ? StartAtLogin(isOn: { launcher.startsAtLogin }, set: { try await launcher.setStartAtLogin($0) }) : nil,
       notifier: relay,
       orderStore: .userDefaults())
     super.init()

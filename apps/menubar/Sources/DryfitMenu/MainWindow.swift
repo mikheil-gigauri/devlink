@@ -333,6 +333,18 @@ private struct WelcomeView: View {
         ) {
           EmptyView()
         }
+        if let startsAtLogin = model.startsAtLogin {
+          Step(
+            number: 4, title: "Keep it running",
+            detail: "Start dryfit when you log in, so auto-sync is on again after a restart. Opening this app at login does not start it.",
+            done: startsAtLogin
+          ) {
+            if !startsAtLogin {
+              Button("Start at login") { Task { await model.setStartAtLogin(true) } }
+                .buttonStyle(.pill(busy: model.isBusy(.startAtLogin)))
+            }
+          }
+        }
         if let error = model.actionError {
           ErrorBanner(message: error) { model.dismissActionError() }.padding(.top, 12)
         }

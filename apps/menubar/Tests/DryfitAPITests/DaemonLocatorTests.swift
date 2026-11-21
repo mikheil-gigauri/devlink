@@ -115,6 +115,20 @@ private func health(pid: Int32, apiVersion: Int = 1, name: String = "dryfit") ->
     #expect(await commands.ran.last == ["/bin/zsh", "-l", "-c", "dryfit daemon start"])
   }
 
+  @Test func setsUpAndRemovesStartingAtLoginWithTheCLI() async throws {
+    let commands = Commands(replies: [0, 0])
+    let launcher = launcher(agentInstalled: false, commands)
+
+    try await launcher.setStartAtLogin(true, environment: [:])
+    try await launcher.setStartAtLogin(false, environment: ["DRYFIT_CLI": "/repo/dist/dryfit.mjs"])
+
+    #expect(await commands.ran == [
+      ["/bin/zsh", "-l", "-c", "dryfit daemon install"],
+      ["/bin/zsh", "-l", "-c", "/repo/dist/dryfit.mjs daemon uninstall"],
+    ])
+    #expect(!launcher.startsAtLogin)
+  }
+
   @Test func triesAnInteractiveShellToo_whereNvmUsuallySetsThePath() async throws {
     let commands = Commands(replies: [127, 0])
 
