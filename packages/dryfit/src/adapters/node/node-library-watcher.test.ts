@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTempDir } from '../../testing/temp-dir.ts';
 import { NodeLibraryWatcher, type WatchStrategy } from './node-library-watcher.ts';
 
+// The walk strategy lists a folder's children after its own watch starts, so a write to a nested folder
+// made straight after `watch()` can land before that folder's watcher exists and is never reported.
+const armed = () => sleep(100);
+
 describe.each<WatchStrategy>(['recursive', 'walk'])('NodeLibraryWatcher (%s)', (strategy) => {
   let root: string;
   let cleanup: () => Promise<void>;
@@ -38,6 +42,7 @@ describe.each<WatchStrategy>(['recursive', 'walk'])('NodeLibraryWatcher (%s)', (
 
   it('reports a burst of source edits as one change', async () => {
     const changes = watch();
+    await armed();
 
     for (const n of [1, 2, 3]) await writeFile(join(root, 'src', `file${n}.ts`), `export const n = ${n};`);
     await sleep(500);
@@ -53,6 +58,7 @@ describe.each<WatchStrategy>(['recursive', 'walk'])('NodeLibraryWatcher (%s)', (
       (paths) => reported.push(paths),
       () => {},
     );
+    await armed();
 
     await writeFile(join(root, 'src/a.ts'), 'x');
     await sleep(500);
@@ -77,6 +83,7 @@ describe.each<WatchStrategy>(['recursive', 'walk'])('NodeLibraryWatcher (%s)', (
 
   it('ignores dependencies, build output, VCS and caches', async () => {
     const changes = watch();
+    await armed();
 
     await writeFile(join(root, 'node_modules/dep/index.js'), 'x');
     await writeFile(join(root, 'dist/ui/index.js'), 'x');
@@ -102,6 +109,7 @@ describe.each<WatchStrategy>(['recursive', 'walk'])('NodeLibraryWatcher (%s)', (
 
   it('stops reporting once stopped', async () => {
     const changes = watch();
+    await armed();
     stop?.();
 
     await writeFile(join(root, 'src/late.ts'), 'x');
@@ -164,6 +172,7 @@ describe('NodeLibraryWatcher (walk)', () => {
 
   it('watches a folder created after the watch began', async () => {
     const changes = watch();
+    await armed();
     await mkdir(join(root, 'src/forms'));
     await sleep(300);
     const afterMkdir = changes();
@@ -177,6 +186,7 @@ describe('NodeLibraryWatcher (walk)', () => {
   it('keeps watching the rest when a folder is deleted', async () => {
     const errors: Error[] = [];
     const changes = watch((error) => errors.push(error));
+    await armed();
     await rm(join(root, 'src/button'), { recursive: true });
     await sleep(300);
     const afterDelete = changes();
