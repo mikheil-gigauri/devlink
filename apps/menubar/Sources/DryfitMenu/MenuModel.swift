@@ -48,6 +48,17 @@ public struct RestoreRequest: Equatable, Sendable {
   }
 }
 
+/// Whether dryfit's service starts when the user logs in (`dryfit daemon install`), and how to change it.
+public struct StartAtLogin {
+  public let isOn: () -> Bool
+  public let set: (Bool) async throws -> Void
+
+  public init(isOn: @escaping () -> Bool, set: @escaping (Bool) async throws -> Void) {
+    self.isOn = isOn
+    self.set = set
+  }
+}
+
 /// A library with the consumers it is linked into.
 public struct LibraryRow: Identifiable, Equatable {
   public let library: Library
@@ -81,7 +92,7 @@ public struct LibraryRow: Identifiable, Equatable {
     case sync(String), watch(String), link(String, String), restore(String, String?)
     case linkGroup(String), restoreGroup(String), discover
     case register(String), unregister(String), saveGroup(String), deleteGroup(String)
-    case roots, stop, installCLI, updateCLI
+    case roots, stop, installCLI, updateCLI, startAtLogin
     /// Hiding or showing an app again, by its folder.
     case hide(String)
   }
@@ -118,6 +129,9 @@ public struct LibraryRow: Identifiable, Equatable {
   /// An app whose restore was refused because its package.json changed since it was linked. The
   /// user decides whether to restore it anyway.
   public var driftedRestore: RestoreRequest?
+  /// Whether dryfit's service starts at login, so auto-sync is on again after a restart; nil where
+  /// the app cannot change it (outside a built app). The app opening at login does not start it.
+  public internal(set) var startsAtLogin: Bool?
   /// The order the user put libraries, apps and groups in; kept between launches.
   public internal(set) var order: ItemOrder {
     didSet { if order != oldValue { orderStore.save(order) } }
@@ -129,6 +143,7 @@ public struct LibraryRow: Identifiable, Equatable {
   @ObservationIgnored private let install: () async throws -> Void
   /// Updates the CLI and restarts the daemon with it; nil when the app cannot (a checkout's CLI).
   @ObservationIgnored private let update: (() async throws -> Void)?
+  @ObservationIgnored private let startAtLogin: StartAtLogin?
   @ObservationIgnored private let notifier: any Notifier
   @ObservationIgnored private let orderStore: ItemOrderStore
   /// Tests' clock; nil sleeps for real.
@@ -154,6 +169,7 @@ public struct LibraryRow: Identifiable, Equatable {
     install: @escaping () async throws -> Void = {},
     appVersion: String? = nil,
     update: (() async throws -> Void)? = nil,
+    startAtLogin: StartAtLogin? = nil,
     notifier: any Notifier,
     orderStore: ItemOrderStore = .memory,
     // No closure literal as the default: Swift 6.2 on macOS 26 aborts in swift_task_dealloc when a
@@ -166,6 +182,8 @@ public struct LibraryRow: Identifiable, Equatable {
     self.install = install
     self.appVersion = appVersion
     self.update = update
+    self.startAtLogin = startAtLogin
+    self.startsAtLogin = startAtLogin?.isOn()
     self.notifier = notifier
     self.orderStore = orderStore
     self.order = orderStore.load()
@@ -330,6 +348,23 @@ public struct LibraryRow: Identifiable, Equatable {
     } catch {
       updateError = error.localizedDescription
     }
+  }
+
+  /// Starts dryfit's service at login, or stops doing so. Either way the service runs on: turning it
+  /// on restarts it under launchd, and turning it off stops launchd's, so it is started again here.
+  public func setStartAtLogin(_ enabled: Bool) async {
+    guard let startAtLogin, !inFlight.contains(.startAtLogin) else { return }
+    inFlight.insert(.startAtLogin)
+    actionError = nil
+    do {
+      try await startAtLogin.set(enabled)
+      if !enabled { try await launch() }
+      nudged = true
+    } catch {
+      actionError = error.localizedDescription
+    }
+    startsAtLogin = startAtLogin.isOn()
+    inFlight.remove(.startAtLogin)
   }
 
   /// Stops the daemon. The app keeps running and offers to start it again.

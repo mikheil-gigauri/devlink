@@ -56,8 +56,22 @@ public struct DaemonLauncher: Sendable {
       let kick = await run(["/bin/launchctl", "kickstart", "gui/\(userID)/\(Self.agentLabel)"], environment)
       if kick.exitCode == 0 { return }
     }
-    let cli = environment["DRYFIT_CLI"].flatMap { $0.isEmpty ? nil : $0 } ?? "dryfit"
-    try await runInShell("\(cli) daemon start", environment)
+    try await runInShell("\(Self.cli(environment)) daemon start", environment)
+  }
+
+  /// Whether `dryfit daemon install` set dryfit up to start at login.
+  public var startsAtLogin: Bool { agentInstalled() }
+
+  /// `dryfit daemon install` or `uninstall`. Installing restarts the daemon under launchd;
+  /// uninstalling stops launchd's daemon.
+  public func setStartAtLogin(_ enabled: Bool, environment: [String: String] = ProcessInfo.processInfo.environment)
+    async throws
+  {
+    try await runInShell("\(Self.cli(environment)) daemon \(enabled ? "install" : "uninstall")", environment)
+  }
+
+  private static func cli(_ environment: [String: String]) -> String {
+    environment["DRYFIT_CLI"].flatMap { $0.isEmpty ? nil : $0 } ?? "dryfit"
   }
 
   /// Installs the CLI with npm, at the user's request: `npm install --global @dryfit/cli`.

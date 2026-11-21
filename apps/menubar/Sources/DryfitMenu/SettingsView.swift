@@ -98,6 +98,20 @@ public struct SettingsView: View {
               Text(registry).foregroundStyle(DS.muted).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
             }
           }
+          if let startsAtLogin = model.startsAtLogin {
+            GroupRow {
+              Text("Start dryfit at login")
+              Spacer(minLength: 8)
+              if model.isBusy(.startAtLogin) { ProgressView().controlSize(.mini) }
+              Toggle(
+                "Start dryfit at login",
+                isOn: Binding(get: { startsAtLogin }, set: { on in Task { await model.setStartAtLogin(on) } })
+              )
+              .toggleStyle(.mini)
+              .disabled(model.isBusy(.startAtLogin))
+            }
+            .help("Start dryfit when you log in, so auto-sync is on again after a restart")
+          }
           GroupRow {
             Button("Open log", action: actions.openLog).buttonStyle(.pill)
             Spacer()
