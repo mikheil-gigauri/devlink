@@ -164,6 +164,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
       model.connection = .online
       model.roots = []
       model.status = Status(daemon: health)
+      model.startsAtLogin = false
     }
     assertSnapshot(
       of: MainWindow(model: fresh, navigation: AppNavigation(), actions: MenuActions()), named: "window-welcome",
@@ -176,6 +177,7 @@ let at = Date(timeIntervalSince1970: 1_795_000_000)
       model.roots = ["/Users/me/repos", "/Users/me/work"]
       model.hiddenApps = ["/Users/me/repos/old-shop"]
       model.status = Status(daemon: health)
+      model.startsAtLogin = true
     }
     // A page of the dryfit window, opened from the sidebar's gear or with ⌘,.
     let navigation = AppNavigation()

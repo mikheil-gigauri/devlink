@@ -11,19 +11,30 @@ public struct Failure: Identifiable, Equatable, Sendable {
   public let date: Date
   /// The app an install failed in, so its row can show the output.
   public let consumer: String?
+  /// What failed, such as the build of one library, so a newer failure of it replaces this one and a
+  /// success clears it. Nil for one-off failures, which stay until dismissed.
+  public let subject: String?
 
-  public init(id: UUID = UUID(), title: String, detail: String, date: Date = .now, consumer: String? = nil) {
+  public init(
+    id: UUID = UUID(), title: String, detail: String, date: Date = .now, consumer: String? = nil,
+    subject: String? = nil
+  ) {
     self.id = id
     self.title = title
     self.detail = detail
     self.date = date
     self.consumer = consumer
+    self.subject = subject
   }
 }
 
 /// Posts failures where the user will see them: a system notification in the app.
 public protocol Notifier: AnyObject {
-  func post(_ failure: Failure)
+  /// `quietly` when the same thing was failing already: the user has heard, so it replaces the last
+  /// notification of it without a sound.
+  func post(_ failure: Failure, quietly: Bool)
+  /// What `failure` was about works again; `message` says so in place of its notification.
+  func recovered(_ failure: Failure, message: String)
 }
 
 /// A restore to retry once the user agrees: an app, and the one library in it or nil for all.
@@ -34,6 +45,17 @@ public struct RestoreRequest: Equatable, Sendable {
   public init(consumer: String, library: String? = nil) {
     self.consumer = consumer
     self.library = library
+  }
+}
+
+/// Whether dryfit's service starts when the user logs in (`dryfit daemon install`), and how to change it.
+public struct StartAtLogin {
+  public let isOn: () -> Bool
+  public let set: (Bool) async throws -> Void
+
+  public init(isOn: @escaping () -> Bool, set: @escaping (Bool) async throws -> Void) {
+    self.isOn = isOn
+    self.set = set
   }
 }
 
@@ -70,7 +92,7 @@ public struct LibraryRow: Identifiable, Equatable {
     case sync(String), watch(String), link(String, String), restore(String, String?)
     case linkGroup(String), restoreGroup(String), discover
     case register(String), unregister(String), saveGroup(String), deleteGroup(String)
-    case roots, stop, installCLI, updateCLI
+    case roots, stop, installCLI, updateCLI, startAtLogin
     /// Hiding or showing an app again, by its folder.
     case hide(String)
   }
@@ -107,6 +129,9 @@ public struct LibraryRow: Identifiable, Equatable {
   /// An app whose restore was refused because its package.json changed since it was linked. The
   /// user decides whether to restore it anyway.
   public var driftedRestore: RestoreRequest?
+  /// Whether dryfit's service starts at login, so auto-sync is on again after a restart; nil where
+  /// the app cannot change it (outside a built app). The app opening at login does not start it.
+  public internal(set) var startsAtLogin: Bool?
   /// The order the user put libraries, apps and groups in; kept between launches.
   public internal(set) var order: ItemOrder {
     didSet { if order != oldValue { orderStore.save(order) } }
@@ -118,6 +143,7 @@ public struct LibraryRow: Identifiable, Equatable {
   @ObservationIgnored private let install: () async throws -> Void
   /// Updates the CLI and restarts the daemon with it; nil when the app cannot (a checkout's CLI).
   @ObservationIgnored private let update: (() async throws -> Void)?
+  @ObservationIgnored private let startAtLogin: StartAtLogin?
   @ObservationIgnored private let notifier: any Notifier
   @ObservationIgnored private let orderStore: ItemOrderStore
   /// Tests' clock; nil sleeps for real.
@@ -143,6 +169,7 @@ public struct LibraryRow: Identifiable, Equatable {
     install: @escaping () async throws -> Void = {},
     appVersion: String? = nil,
     update: (() async throws -> Void)? = nil,
+    startAtLogin: StartAtLogin? = nil,
     notifier: any Notifier,
     orderStore: ItemOrderStore = .memory,
     // No closure literal as the default: Swift 6.2 on macOS 26 aborts in swift_task_dealloc when a
@@ -155,6 +182,8 @@ public struct LibraryRow: Identifiable, Equatable {
     self.install = install
     self.appVersion = appVersion
     self.update = update
+    self.startAtLogin = startAtLogin
+    self.startsAtLogin = startAtLogin?.isOn()
     self.notifier = notifier
     self.orderStore = orderStore
     self.order = orderStore.load()
@@ -321,6 +350,23 @@ public struct LibraryRow: Identifiable, Equatable {
     }
   }
 
+  /// Starts dryfit's service at login, or stops doing so. Either way the service runs on: turning it
+  /// on restarts it under launchd, and turning it off stops launchd's, so it is started again here.
+  public func setStartAtLogin(_ enabled: Bool) async {
+    guard let startAtLogin, !inFlight.contains(.startAtLogin) else { return }
+    inFlight.insert(.startAtLogin)
+    actionError = nil
+    do {
+      try await startAtLogin.set(enabled)
+      if !enabled { try await launch() }
+      nudged = true
+    } catch {
+      actionError = error.localizedDescription
+    }
+    startsAtLogin = startAtLogin.isOn()
+    inFlight.remove(.startAtLogin)
+  }
+
   /// Stops the daemon. The app keeps running and offers to start it again.
   public func stopDaemon() async {
     await perform(.stop) { _ = try await $0.shutdown() }
@@ -386,17 +432,28 @@ public struct LibraryRow: Identifiable, Equatable {
     case .buildStarted(let library):
       activity = "Building \(library)…"
     case .buildFailed(let library, let output):
-      fail("Build of \(library) failed", output)
+      fail("Build of \(library) failed", output, subject: Self.buildSubject(library))
+    case .buildSucceeded(let library):
+      recover(Self.buildSubject(library), "\(library) builds again")
     case .publishSucceeded(let library, let version):
       activity = "Published \(library) \(DevVersion.describe(version))"
     case .installStarted(let library, let consumer, _):
       activity = "Installing \(library) into \(projectName(consumer))…"
     case .installFailed(let library, let consumer, _, let output):
-      fail("Install of \(library) into \(projectName(consumer)) failed", output, consumer: consumer)
+      fail(
+        "Install of \(library) into \(projectName(consumer)) failed", output, consumer: consumer,
+        subject: Self.installSubject(library, consumer))
+    case .installSucceeded(let library, let consumer, _):
+      recover(Self.installSubject(library, consumer), "\(library) installs into \(projectName(consumer)) again")
     case .consumerRestored(let consumer, let library, _):
       activity = library.map { "Restored \($0) in \(projectName(consumer))" } ?? "Restored \(projectName(consumer))"
       // Back on its releases, the app has no dev build left to restart for.
       if library == nil { restartNeeded.remove(consumer) }
+      // Nor a failed install to show: its row is gone, and the failure would turn into a banner.
+      failures.removeAll { failure in
+        failure.consumer == consumer && (library.map { failure.subject == Self.installSubject($0, consumer) } ?? true)
+      }
+      if failures.isEmpty { hasUnseenFailure = false }
     case .cachesCleared(let consumer, _):
       restartNeeded.insert(consumer)
     case .jobStarted(let job):
@@ -411,18 +468,34 @@ public struct LibraryRow: Identifiable, Equatable {
       if let error, Self.unseenFailureCodes.contains(error.code) { fail(error.message, error.message) }
       Task { await refresh(clearingActivityWhenIdle: true) }
     case .watchFailed(let library, let message):
-      fail("Auto-sync of \(library) stopped", message)
+      fail("Auto-sync of \(library) stopped", message, subject: "watch \(library)")
       scheduleRefresh()
-    case .buildSucceeded, .installSucceeded, .libraryChanged, .unknown:
+    case .libraryChanged, .unknown:
       break
     }
   }
 
-  private func fail(_ title: String, _ detail: String, consumer: String? = nil) {
-    let failure = Failure(title: title, detail: detail, consumer: consumer)
-    failures = Array(([failure] + failures).prefix(20))
+  private static func buildSubject(_ library: String) -> String { "build \(library)" }
+  private static func installSubject(_ library: String, _ consumer: String) -> String {
+    "install \(library) into \(consumer)"
+  }
+
+  /// Records a failure. One of something already failing takes its place, so saving a broken file again
+  /// and again shows one failure, not a pile, and notifies once with a sound.
+  private func fail(_ title: String, _ detail: String, consumer: String? = nil, subject: String? = nil) {
+    let failure = Failure(title: title, detail: detail, consumer: consumer, subject: subject)
+    let repeated = subject != nil && failures.contains { $0.subject == subject }
+    failures = Array(([failure] + failures.filter { subject == nil || $0.subject != subject }).prefix(20))
     hasUnseenFailure = true
-    notifier.post(failure)
+    notifier.post(failure, quietly: repeated)
+  }
+
+  /// What failed works again: its failure is gone from the menu, and its notification says so.
+  private func recover(_ subject: String, _ message: String) {
+    guard let failure = failures.first(where: { $0.subject == subject }) else { return }
+    failures.removeAll { $0.subject == subject }
+    if failures.isEmpty { hasUnseenFailure = false }
+    notifier.recovered(failure, message: message)
   }
 
   private func scheduleRefresh() {

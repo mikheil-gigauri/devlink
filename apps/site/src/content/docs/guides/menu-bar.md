@@ -64,7 +64,10 @@ Right-click (or Control-click) the menu bar icon for **Settings…**, the log, *
 
 **Settings** is a page of the window: open it with the gear at the bottom of the sidebar, with ⌘, or
 from the menu bar icon's right-click menu. It holds the folders dryfit searches for apps, the apps you
-hid, dryfit's service with its log, **Open at login**, and updates.
+hid, dryfit's service with its log and **Start dryfit at login**, **Open at login**, and updates.
+
+**Open at login** opens the app, but does not start dryfit itself. Turn on **Start dryfit at login**
+(the same as `dryfit daemon install`) so auto-sync is running again after a restart.
 
 ## Install
 

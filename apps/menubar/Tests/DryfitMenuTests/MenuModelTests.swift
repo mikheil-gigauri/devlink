@@ -18,7 +18,8 @@ import Testing
     launch: @escaping @MainActor () async throws -> Void = {},
     install: @escaping @MainActor () async throws -> Void = {},
     appVersion: String? = nil,
-    update: (@MainActor () async throws -> Void)? = nil
+    update: (@MainActor () async throws -> Void)? = nil,
+    startAtLogin: StartAtLogin? = nil
   ) -> MenuModel {
     let daemon = daemon
     return MenuModel(
@@ -27,6 +28,7 @@ import Testing
       install: install,
       appVersion: appVersion,
       update: update,
+      startAtLogin: startAtLogin,
       notifier: notifier,
       sleep: { _ in try await Task.sleep(for: .milliseconds(2)) }
     )
@@ -237,6 +239,39 @@ import Testing
     await eventually { model.restartNeeded.isEmpty }
   }
 
+  @Test func startsDryfitAtLogin_andKeepsItRunningWhenTurnedOff() async {
+    var installed = false
+    var launches = 0
+    let model = makeModel(
+      launch: { launches += 1 },
+      startAtLogin: StartAtLogin(isOn: { installed }, set: { installed = $0 }))
+    #expect(model.startsAtLogin == false)
+
+    await model.setStartAtLogin(true)
+    #expect(model.startsAtLogin == true)
+    #expect(launches == 0)
+
+    // Uninstalling stops launchd's daemon, so the app starts it again the usual way.
+    await model.setStartAtLogin(false)
+    #expect(model.startsAtLogin == false)
+    #expect(launches == 1)
+    #expect(!model.isBusy(.startAtLogin))
+  }
+
+  @Test func saysWhyStartingAtLoginFailed_andShowsWhatIsTrue() async {
+    struct Refused: LocalizedError { var errorDescription: String? { "launchctl could not load the agent" } }
+    let model = makeModel(startAtLogin: StartAtLogin(isOn: { false }, set: { _ in throw Refused() }))
+
+    await model.setStartAtLogin(true)
+
+    #expect(model.startsAtLogin == false)
+    #expect(model.actionError == "launchctl could not load the agent")
+  }
+
+  @Test func offersNoStartAtLoginWhereTheAppCannotSetItUp() {
+    #expect(makeModel().startsAtLogin == nil)
+  }
+
   @Test func refusesADaemonOfAnotherAPIVersion() async {
     let newer = Health(name: "dryfit", version: "2.0.0", apiVersion: 2, pid: 1, registryUrl: "", startedAt: "")
     let model = makeModel(lookup: { .incompatible(newer) })
@@ -343,6 +378,55 @@ import Testing
 
     model.menuOpened()
     #expect(model.icon == .idle)
+  }
+
+  @Test func aBuildThatKeepsFailingIsOneFailure_heardOnce() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(.buildFailed(library: "@acme/ui", output: "TS2304: Cannot find name 'Butto'."), id: 1)
+    daemon.channel.send(.buildFailed(library: "@acme/ui", output: "TS2304: Cannot find name 'Buton'."), id: 2)
+    await eventually { notifier.posted.count == 2 }
+
+    #expect(model.failures.map(\.detail) == ["TS2304: Cannot find name 'Buton'."])
+    #expect(notifier.quiet.map(\.detail) == ["TS2304: Cannot find name 'Buton'."])
+  }
+
+  @Test func aBuildOrInstallThatWorksAgainClearsItsFailureAndSaysSo() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(.buildFailed(library: "@acme/ui", output: "TS2304"), id: 1)
+    daemon.channel.send(
+      .installFailed(library: "@acme/ui", consumer: admin, version: version, output: "npm ERR! ERESOLVE"), id: 2)
+    daemon.channel.send(.watchFailed(library: "@acme/forms", message: "EMFILE"), id: 3)
+    await eventually { model.failures.count == 3 }
+
+    daemon.channel.send(.buildSucceeded(library: "@acme/ui"), id: 4)
+    daemon.channel.send(.installSucceeded(library: "@acme/ui", consumer: shop, version: version), id: 5)
+    daemon.channel.send(.installSucceeded(library: "@acme/ui", consumer: admin, version: version), id: 6)
+    await eventually { model.failures.count == 1 }
+
+    #expect(model.failures.map(\.title) == ["Auto-sync of @acme/forms stopped"])
+    #expect(notifier.recoveries == ["@acme/ui builds again", "@acme/ui installs into admin again"])
+    #expect(model.icon == .attention)
+  }
+
+  @Test func restoringAnAppClearsItsFailedInstalls_andNothingIsLeftToSee() async {
+    let model = makeModel()
+    let task = await started(model)
+    defer { task.cancel() }
+
+    daemon.channel.send(
+      .installFailed(library: "@acme/ui", consumer: admin, version: version, output: "npm ERR! ERESOLVE"), id: 1)
+    await eventually { model.failures.count == 1 }
+    daemon.channel.send(.consumerRestored(consumer: admin, library: nil, ok: true), id: 2)
+    await eventually { model.failures.isEmpty }
+
+    #expect(!model.hasUnseenFailure)
+    #expect(notifier.recoveries.isEmpty)
   }
 
   @Test func reportsFailedInstallsAndJobsWithoutOwnEvents() async {
